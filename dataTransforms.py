@@ -1,4 +1,9 @@
 
+def define_proximal(x, closeness_threshold = 2):
+    if x < 2:
+        return True
+    return False
+
 class InputTransformer():
     def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
         raise NotImplementedError
@@ -155,6 +160,9 @@ class WindowCorrelateAverageTransform(WindowTransform):
         return data
 
 class WindowCorrelateProximityPostVelocity(WindowTransform):
+    '''
+    This takes the velocity statistics of the object only after a proximal occurrance. 
+    '''
     def format_function(models, changepoints, correlate_trajectory, trajectory, window):
         correlate = correlate_trajectory[max(0,changepoints[1]-window+1):min(len(trajectory),changepoints[1]+window+1)]
         values = trajectory[changepoints[1]:min(changepoints[i] + window+5, changepoints[i+1], len(trajectory))]
@@ -175,7 +183,7 @@ class WindowCorrelateProximityPostVelocity(WindowTransform):
         behavior_statistics = {key: np.median(s_i[key], axis = 0) for key in s_i.keys()}    
         dat = [(key, (val, vv)) for ((kv, vv), (key, val)) in zip(behavior_statistics.items(), changepoint_statistics.items())]
         dat.sort(key=lambda x: x[0])
-        data = np.array([v1 for key,(v1, v2) in dat]), np.array([v2 for key,(v1, v2) in dat])
+        data = np.array([v1 for key,(v1, v2) in dat if define_proximal(v2)])#, np.array([v2 for key,(v1, v2) in dat])
         return data
 
 class WindowCorrelateProximity(WindowTransform):
