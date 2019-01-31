@@ -1,3 +1,7 @@
+import numpy as np
+
+    
+# argument options for selecting transforms
 
 def define_proximal(x, closeness_threshold = 2):
     if x < 2:
@@ -8,7 +12,7 @@ class InputTransformer():
     def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
         raise NotImplementedError
 
-    def discover_modes(models, changepoints, trajectory=[], values=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints, trajectory=[], values=[], window=-1, total=-1):
         raise NotImplementedError
 
 
@@ -17,28 +21,28 @@ class SegmentTransform(InputTransformer):
         self.segment = True
 
 class ParameterTransform(SegmentTransform):
-    def format_function(models, changepoints, correlate_trajectory, trajectory, window=None):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window=None):
         return models[0].parameters().flatten()
 
-    def discover_modes(models, changepoints=[], trajectory=[], values=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints=[], trajectory=[], values=[], window=-1, total=-1):
         model_parameters = [m.A.flatten().tolist() for m in models]
         data = np.array(model_parameters)
         return data
 
 class VelocitySegmentTransform(SegmentTransform):
-    def format_function(models, changepoints, correlate_trajectory, trajectory, window=None):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window=None):
         values = trajectory[changepoints[0]:changepoints[1] + 1]
         values = values[1:] - values[:-1]
         stats = np.sum(values, axis = 0)/float(len(values))
         return stats
 
-    def discover_modes(models, changepoints, trajectory=[], values=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints, trajectory=[], values=[], window=-1, total=-1):
         '''
         values should have at least one more than total.
         gathers changepoint data which is the average of deltas within a segment
         '''
         changepoints.append(total)
-        values = values[1:] - values[:-1]
+        values = trajectory[1:] - trajectory[:-1]
         c_d = {changepoints[i]: values[changepoints[i]:changepoints[i+1]] for i in range(len(changepoints)-1)}
         changepoint_statistics = {key: np.sum(c_d[key], axis = 0)/float(len(c_d[key])) for key in c_d.keys()}
         dat = [(key, val) for key, val in changepoint_statistics.items()]
@@ -48,9 +52,8 @@ class VelocitySegmentTransform(SegmentTransform):
         return data
 
 
-
 class SegmentAccelerationTransform(SegmentTransform):
-    def format_function(models, changepoints, correlate_trajectory, trajectory, window=None):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window=None):
         # ignores spurious changepoints
         values1 = trajectory[changepoints[0]:changepoints[1] + 1]
         values1 = values1[1:] - values1[:-1]
@@ -60,7 +63,7 @@ class SegmentAccelerationTransform(SegmentTransform):
         stats2 = np.sum(values2, axis = 0)/float(len(values2))
         return stats2 - stats1
 
-    def discover_modes(models, changepoints, trajectory=[], values=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints, trajectory=[], values=[], window=-1, total=-1):
         '''
         takes the delta of changepoint statistics at a changepoint
         '''
@@ -81,12 +84,12 @@ class SegmentAccelerationTransform(SegmentTransform):
 
 
 class SegmentCorrelateAverageTransform(SegmentTransform):
-    def format_function(models, changepoints, correlate_trajectory, trajectory, window=None):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window=None):
         correlate = correlate_trajectory[changepoints[1]:changepoints[2]]
         stats = np.sum(correlate, axis = 0)/float(len(correlate))
         return stats
 
-    def discover_modes(models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
         changepoints.append(total)
         c_d = {changepoints[i]: correlate[changepoints[i]:changepoints[i+1]] for i in range(len(changepoints)-1)}
         changepoint_statistics = {key: np.sum(c_d[key], axis = 0)/len(c_d[key]) for key in c_d.keys()}
@@ -102,7 +105,7 @@ class WindowTransform(InputTransformer):
         self.segment = False
 
 class WindowPositionTransform(WindowTransform):
-    def format_function(models, changepoints, correlate_trajectory, trajectory, window):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
         v1 = trajectory[max(0,changepoints[1]-window+1):changepoints[1]+1]
         v2 = trajectory[changepoints[1]+1:min(len(trajectory),changepoints[1]+window+1)]
         vshape = trajectory[0].shape
@@ -116,7 +119,7 @@ class WindowPositionTransform(WindowTransform):
             v2 = np.sum(v2, axis=0)
         return np.array(v1.tolist() + v2.tolist()).flatten()
 
-    def discover_modes(models, changepoints, trajectory=[], values=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints, trajectory=[], values=[], window=-1, total=-1):
         '''
         takes the delta of changepoint statistics at a changepoint
         TODO: clipping may help identify clusters
@@ -147,11 +150,11 @@ class WindowPositionTransform(WindowTransform):
         return data
 
 class WindowCorrelateAverageTransform(WindowTransform):
-    def format_function(models, changepoints, correlate_trajectory, trajectory, window):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
         correlate = correlate_trajectory[max(0,changepoints[1]-window+1):min(len(trajectory),changepoints[1]+window+1)]
         return np.sum(correlate, axis = 0)/float(len(correlate))
 
-    def discover_modes(models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
         c_d = {changepoints[i]: correlate[max(0,changepoints[i]-window):min(total, changepoints[i]+window+1)] for i in range(len(changepoints))}
         changepoint_statistics = {key: np.sum(c_d[key], axis = 0)/len(c_d[key]) for key in c_d.keys()}
         dat = [(key, val) for key, val in changepoint_statistics.items()]
@@ -159,18 +162,19 @@ class WindowCorrelateAverageTransform(WindowTransform):
         data = np.array([val for key,val in dat])
         return data
 
+
 class WindowCorrelateProximityPostVelocity(WindowTransform):
     '''
     This takes the velocity statistics of the object only after a proximal occurrance. 
     '''
-    def format_function(models, changepoints, correlate_trajectory, trajectory, window):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
         correlate = correlate_trajectory[max(0,changepoints[1]-window+1):min(len(trajectory),changepoints[1]+window+1)]
         values = trajectory[changepoints[1]:min(changepoints[i] + window+5, changepoints[i+1], len(trajectory))]
         values = values[1:] - values[:-1]
         stats = np.median(values, axis = 0)
         return (correlate[np.argmin(np.abs(c_d[key][:,0]))], stats)
 
-    def discover_modes(models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
         # models is not models here, but the actual correlate data
         c_d = {changepoints[i]: correlate[max(0,changepoints[i]-window):min(total, changepoints[i]+window+1)] for i in range(len(changepoints))}
         changepoint_statistics = {key: c_d[key][np.argmin(np.abs(c_d[key][:,0]))] for key in c_d.keys()}
@@ -186,12 +190,37 @@ class WindowCorrelateProximityPostVelocity(WindowTransform):
         data = np.array([v1 for key,(v1, v2) in dat if define_proximal(v2)])#, np.array([v2 for key,(v1, v2) in dat])
         return data
 
+class WindowPostVelocity(WindowTransform):
+    '''
+    This takes the velocity statistics of the object only after a proximal occurrance. 
+    '''
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
+        values = trajectory[changepoints[1]:min(changepoints[i] + window+5, changepoints[i+1], len(trajectory))]
+        values = values[1:] - values[:-1]
+        stats = np.median(values, axis = 0)
+        return stats
+
+    def mode_statistics(self, models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
+        # models is not models here, but the actual correlate data
+        s_i = dict()
+        for i in range(len(changepoints)-1):
+            s_i[changepoints[i]] = trajectory[changepoints[i] + 1:min(changepoints[i] + window+5, changepoints[i+1])] - trajectory[changepoints[i]:min(changepoints[i] + window+4, changepoints[i+1]-1)]
+        s_i[changepoints[-1]] = trajectory[changepoints[-1] + 1:changepoints[-1] + window+5] - trajectory[changepoints[-1]:min(changepoints[-1] + window+4, len(trajectory)-1)]
+        # s_i = {changepoints[i]: trajectory[changepoints[i] + 1:min(changepoints[i] + window+5, changepoints[i+1])] - trajectory[changepoints[i]:min(changepoints[i] + window+4, len(trajectory)-1)] for i in range(len(changepoints))} # let's assume this is the right data for now, +5 is hard coded
+        # behavior_statistics = {key: np.sum(s_i[key], axis = 0)/max(len(s_i[key]), 1) for key in s_i.keys()}    
+        behavior_statistics = {key: np.median(s_i[key], axis = 0) for key in s_i.keys()}    
+        dat = [(key, val) for key, val in behavior_statistics.items()]
+        dat.sort(key=lambda x: x[0])
+        data = np.array([v1 for key, v1 in dat])#, np.array([v2 for key,(v1, v2) in dat])
+        return data
+
+
 class WindowCorrelateProximity(WindowTransform):
-    def format_function(models, changepoints, correlate_trajectory, trajectory, window):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
         correlate = correlate_trajectory[max(0,changepoints[1]-window+1):min(len(trajectory),changepoints[1]+window+1)]
         return correlate[np.argmin(np.abs(c_d[key][:,0]))]
 
-    def discover_modes(models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
+    def mode_statistics(self, models, changepoints, trajectory=[], correlate=[], window=-1, total=-1):
         c_d = {changepoints[i]: correlate[max(0,changepoints[i]-window):min(total, changepoints[i]+window+1)] for i in range(len(changepoints))}
         changepoint_statistics = {key: np.min(np.sum(np.abs(c_d[key]), axis = 1)) for key in c_d.keys()}
         dat = [(key, val) for key, val in changepoint_statistics.items()]
@@ -199,6 +228,9 @@ class WindowCorrelateProximity(WindowTransform):
         data = np.array([val for key,val in dat])
         return data
 
+arg_transform = {"param": ParameterTransform, "SVel": VelocitySegmentTransform, "SAcc": SegmentAccelerationTransform, 
+        "SCorAvg": SegmentCorrelateAverageTransform, "WPos": WindowPositionTransform, "WCorAvg": WindowCorrelateAverageTransform,
+        "WVel": WindowPostVelocity, "WProx": WindowCorrelateProximity}
 
 
 

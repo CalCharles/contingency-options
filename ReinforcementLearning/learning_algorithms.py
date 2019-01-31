@@ -4,7 +4,9 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 import sys, glob, copy, os, collections, time
 import numpy as np
-from rl_template import sample_actions, pytorch_model
+from ReinforcementLearning.train_rl import sample_actions
+from ReinforcementLearning.models import pytorch_model
+
 
 
 class LearningOptimizer():
@@ -17,6 +19,7 @@ class LearningOptimizer():
         self.models = train_models
         self.optimizers = []
         self.current_duration = args.num_steps
+        self.lr = args.lr
 
     def interUpdateModel(self, step):
         # see evolutionary methods for how this is used
@@ -40,7 +43,6 @@ class LearningOptimizer():
                 n_states = min(rollouts.buffer_filled - 1, len(rollouts.state_queue) - 1)
                 # print(n_states)
                 grad_indexes = np.random.choice(list(range(n_states)), min(args.num_grad_states, n_states), replace=False) # should probably choose from the actually valid indices...
-            # print(grad_indexes)
             # error
             state_eval = Variable(rollouts.state_queue[grad_indexes])
             next_state_eval = Variable(rollouts.state_queue[grad_indexes+1])
@@ -274,13 +276,13 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
             deltas, actions, states = loss
             states = model.transform_input(states)
             for delta, action, state in zip(deltas, actions, states):
-                new_network.model.weight[action,:] += self.lr * delta * state
+                model.weight[action,:] += self.lr * delta * state
         if RL == 2: # breaks abstraction, but the Tabular Q learning update is model dependent
             deltas, actions, states = loss
             for delta, action, state in zip(deltas, actions, states):
-                state = (int(v) for v in xv.squeeze())
-                action = int(pytorch_model.unzip(action))
-                new_network.model.Qtable[state][action] += self.lr * delta
+                state = tuple(int(v) for v in state)
+                action = int(pytorch_model.unwrap(action))
+                model.Qtable[state][action] += self.lr * delta
         else:
             raise NotImplementedError("Check that Optimization is appropriate")
 
@@ -288,15 +290,18 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
             # state_eval = Variable(torch.ones(state_eval.data.shape).cuda()) # why does turning this on help tremendously?
         state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval = self.get_rollouts_state(args, rollouts, self.models.option_index)    
         values, dist_entropy, action_probs, q_values = train_models.determine_action(current_state_eval) 
-        _, _, _, next_q_values = train_models.determine_action(next_current_state_eval)       
-        expected_qvals = (next_q_values.max(dim=2)[0] * args.gamma) + rollout_rewards
+        _, _, _, next_q_values = train_models.determine_action(next_current_state_eval)
+        expected_qvals = (next_q_values.max(dim=1)[0] * args.gamma) + rollout_rewards
         action_eval = sample_actions(q_values, deterministic=True) # action eval should be unchanged
-        delta = (expected_qvals.detach() - q_values.squeeze().gather(1, action_eval))
+        delta = (expected_qvals.detach() - q_values.gather(1, action_eval.unsqueeze(1)).squeeze())
         q_loss = delta.pow(2).mean()
         if args.optim == "base":
-            self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
+            self.step_optimizer(None, self.models.models[self.models.option_index],
                 (delta, action_eval, state_eval), RL=2)
         else:
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
                 q_loss, RL=0)
-        return q_loss, None, dist_entropy, None, None, action_log_probs
+        return q_loss, None, dist_entropy, None, None, None
+
+learning_algorithms = {"DQN": DQN_optimizer, "DDPG": DDPG_optimizer, "PPO": PPO_optimizer, 
+"A2C": A2C_optimizer, "SARSA": SARSA_optimizer, "TabQ":TabQ_optimizer}

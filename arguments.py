@@ -79,7 +79,15 @@ def get_args():
     # pretraining arguments
     parser.add_argument('--pretrain-iterations', type=int, default=-1,
                     help='number of time steps to run the pretrainer using PPO on optimal demonstration data, -1 means not used (default: -1)')
-
+    # Reinforcement model settings
+    parser.add_argument('--model-form', default="",
+                        help='choose the model form, which is defined in ReinforcementLearning.models')
+    parser.add_argument('--optimizer-form', default="",
+                        help='choose the optimizer form, which is defined in ReinforcementLearning.learning_algorithms')
+    parser.add_argument('--state-forms', default=[""], nargs='+',
+                    help='the different relational functions, which are defined in Environment.state_definition')
+    parser.add_argument('--state-names', default=[""], nargs='+',
+                    help='should match the number of elements in state-forms, contains the names of nodes used')
     # Learning settings
     parser.add_argument('--seed', type=int, default=1,
                         help='random seed (default: 1)')
@@ -111,19 +119,26 @@ def get_args():
     parser.add_argument('--save-past', type=int, default=-1,
                     help='save past, saves a new net at the interval, -1 disables, must be a multiple of save-interval (default: -1)')
     # changepoint parameters
-    parser.add_argument('--changepoint-dir', default=['./runs/'], nargs='+',
+    parser.add_argument('--changepoint-dir', default='./data/optgraph/',
                         help='directory to save changepoint related values, multiple paths for ')
     parser.add_argument('--option-dir', default=[], nargs='+',
                         help='directory to save options related to changepoint values, multiple paths for ')
-    parser.add_argument('--edges', default=[''], nargs='+',
-                        help='All edges currently in the graph, including the train-edge, of the form Object->Object')
+    parser.add_argument('--segment', action='store_true', default=False,
+                    help='if true, the reward function gives reward for a full segment, while if false, will apply a single sparse reward')
+    parser.add_argument('--transforms', default=[''], nargs='+',
+                    help='Different transforms to be used to reduce a segment or window to a single value. Options are in RewardFunctions.dataTransforms.py')
     parser.add_argument('--train-edge', default='',
                         help='the edge to be trained, of the form Object->Object, for changepoints, just Object')
+    parser.add_argument('--determiner', default='',
+                        help='defines the determiner to use, using strings as defined in RewardFunctions.changepointDeterminers')
+    parser.add_argument('--reward-form', default='',
+                        help='defines the kind of reward function to use, as defined in RewardFunctions.changepointReward')
     parser.add_argument('--changepoint-name', default='changepoint',
                         help='name to save changepoint related values')
     parser.add_argument('--champ-parameters', default=["Paddle"], nargs='+',
                     help='parameters for champ in the order len_mean, len_sigma, min_seg_len, max_particles, model_sigma, dynamics model enum (0 is position, 1 is velocity, 2 is displacement). Pre built Paddle and Ball can be input as "paddle", "ball"')
-    # TODO: add all of the CHAMP parameters, and the DP-GMM parameters
+    parser.add_argument('--window', type=int, default=3,
+                help='A window over which to compute changepoint statistics')
     # environmental variables
     parser.add_argument('--num-frames', type=int, default=10e4,
                         help='number of frames to use for the training set (default: 10e6)')
@@ -136,15 +151,21 @@ def get_args():
                         help='path to trained model, or to data if training by imitation')
     parser.add_argument('--load-networks', default=[], nargs='+',
                         help='path to networks folder')
+    # DP-GMM parameters
+    parser.add_argument('--dp-gmm', default=["default"], nargs='+',
+                    help='parameters for dirichlet process gaussian mixture model, in order number of components, maximum iteration number, prior, covariance type and covariance prior')
+            
+
 
     args = parser.parse_args()
-
+    if args.dp_gmm[0] == 'default':
+        args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
     if args.champ_parameters[0] == "Paddle":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-1, 0]
-    if args.champ_parameters[0] == "Ball": 
+    elif args.champ_parameters[0] == "Ball": 
         args.champ_parameters = [15, 10, 2, 100, 100, 2, 1, 0] 
     else:
-        args.champ_parameters = [int(p) for p in args.champ_parameters]
+        args.champ_parameters = [float(p) for p in args.champ_parameters]
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 
