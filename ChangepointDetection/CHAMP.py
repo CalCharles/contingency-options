@@ -10,7 +10,7 @@ from ChangepointDetection.DynamicsModels import *
 from file_management import get_edge, load_from_pickle, save_to_pickle
 # from changepointCorrelation import correlate_data
 from SelfBreakout.breakout_screen import read_obj_dumps, get_individual_data, hot_actions
-
+from ChangepointDetection.ChangepointDetectorBase import ChangepointDetector
 DEBUG = False
 
 class CHAMP_parameters():
@@ -284,15 +284,15 @@ def generate_changepoints(model_classes, params, data):
     return models, changepoints
 
 
-class CHAMPDetector():
+class CHAMPDetector(ChangepointDetector):
     def __init__(self, args):
+        super(CHAMPDetector, self).__init__(args)
         if args.champ_parameters[7] == 0:
             self.model_class = LinearDynamicalPositionFitter
         elif args.champ_parameters[7] == 1:
             self.model_class = LinearDynamicalVelocityFitter
         elif args.champ_parameters[7] == 2:
             self.model_class = LinearDynamicalDisplacementFitter
-        self.head,self.tail = get_edge(args.train_edge)
         print(args.champ_parameters)
         self.params = CHAMP_parameters(args.champ_parameters[0], args.champ_parameters[1], args.champ_parameters[2], args.champ_parameters[3], args.champ_parameters[4], args.champ_parameters[5], args.champ_parameters[6]) # paddle parameters (also change sigma in DynamicsModels)
 
@@ -320,18 +320,6 @@ class CHAMPDetector():
             #     pickle.dump(cp_dict, fid)
         return seg_models, changepoints
         
-    def load_obj_dumps(self, args):
-        obj_dumps = read_obj_dumps(args.record_rollouts, i=-1, rng=100000)
-        self.tail_data = [np.array(get_individual_data(tnode, obj_dumps, pos_val_hash=1)) for tnode in self.tail]
-        self.head_data = np.array(get_individual_data(self.head, obj_dumps, pos_val_hash=1))
-        return self.head_data
-        ### PADDLE DATA ### (don't know why this is necessary)
-        # if args.train_edge == "Paddle":
-        #     data = paddle_data[-args.num_frames-2:, :2] # paddle
-        # ### BALL DATA ###
-        # if args.train_edge == "Ball":
-        #     data = ball_data[-args.num_frames-2:, :2] # ball
-
 
 if __name__ == "__main__":
     # python ChangepointDetection/CHAMP.py --train-edge "Action->Paddle" --record-rollouts data/random/ --champ-parameters "Paddle"

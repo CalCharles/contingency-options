@@ -21,7 +21,7 @@ class RawEnvironment():
         '''
         pass
 
-class ChainMDP():
+class ChainMDP(RawEnvironment):
     def __init__(self, num_states):
         self.minmax = (0,num_states)
         self.num_states = num_states

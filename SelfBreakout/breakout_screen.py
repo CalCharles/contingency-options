@@ -5,9 +5,11 @@ import numpy as np
 from breakout_objects import *
 import imageio as imio
 import os, copy
+from Environments.environment_specification import RawEnvironment
 
-class Screen():
+class Screen(RawEnvironment):
 	def __init__(self):
+		super(Screen, self).__init__(args)
 		self.reset()
 		self.num_actions = 4
 		self.average_points_per_life = 0
