@@ -1,5 +1,5 @@
 #Changepoint Detector Base:
-
+import numpy as np
 from file_management import get_edge, load_from_pickle, save_to_pickle
 # from changepointCorrelation import correlate_data
 from SelfBreakout.breakout_screen import read_obj_dumps, get_individual_data, hot_actions

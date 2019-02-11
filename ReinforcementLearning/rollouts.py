@@ -1,7 +1,15 @@
+import os
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import collections
+from ReinforcementLearning.models import pytorch_model
+
 
 class RolloutOptionStorage(object):
     def __init__(self, num_processes, obs_shape, action_space,
-     extracted_shape, current_shape, buffer_steps, changepoint_queue_len, num_options):
+     extracted_shape, current_shape, buffer_steps, changepoint_queue_len, num_options, changepoint_shape):
         # TODO: storage does not currently support multiple processes, can be implemented
         self.num_processes = num_processes
         self.obs_shape = obs_shape
@@ -10,6 +18,7 @@ class RolloutOptionStorage(object):
         self.current_shape = current_shape
         self.buffer_steps = buffer_steps
         self.changepoint_queue_len = changepoint_queue_len
+        self.changepoint_shape = changepoint_shape
         self.buffer_filled = 0
         self.buffer_at = 0
         self.return_at = 0
@@ -23,24 +32,38 @@ class RolloutOptionStorage(object):
         self.values_queue = torch.zeros(num_options, buffer_steps, 1)
         self.action_queue = torch.zeros(buffer_steps, 1).long()
         self.option_queue = torch.zeros(buffer_steps, 1).long()
-        self.changepoint_queue = torch.zeros(changepoint_queue_len, *self.extracted_shape)
+        self.changepoint_queue = torch.zeros(changepoint_queue_len, *self.changepoint_shape)
+        self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long()
         self.num_options = num_options
         self.iscuda = False
         self.set_parameters(1)
         self.last_step = 0
+        self.cp_filled = False
 
     def set_parameters(self, num_steps):
-        self.last_step = num_steps - 1
+        self.last_step = num_steps
         self.extracted_state = torch.zeros(num_steps + 1, *self.extracted_shape)
         self.current_state = torch.zeros(num_steps + 1, *self.current_shape)
-        self.rewards = torch.zeros(self.num_options, num_steps, 1) # Pretend there are no other processes
+        self.rewards = torch.zeros(self.num_options, num_steps) # Pretend there are no other processes
         self.returns = torch.zeros(self.num_options, num_steps + 1, 1)
         self.action_probs = torch.zeros(self.num_options, num_steps + 1, self.action_space)
         self.Qvals = torch.zeros(self.num_options, num_steps + 1, self.action_space)
         self.value_preds = torch.zeros(self.num_options, num_steps + 1, 1)
-        self.actions = torch.zeros(num_steps + 1, 1) # no other processes
+        self.actions = torch.zeros(num_steps + 1, 1).long() # no other processes
         self.actions = self.actions.long()
         self.masks = torch.ones(num_steps + 1, *self.obs_shape) # no other processes
+
+    def cut_current(self, num_steps):
+        self.last_step = num_steps
+        self.extracted_state = self.extracted_state[:num_steps + 1]
+        self.current_state = self.current_state[:num_steps + 1]
+        self.rewards = self.rewards[:, :num_steps] # Pretend there are no other processes
+        self.returns = self.returns[:, :num_steps + 1]
+        self.action_probs = self.action_probs[:, :num_steps + 1]
+        self.Qvals = self.Qvals[:, :num_steps + 1]
+        self.value_preds = self.value_preds[:, :num_steps + 1]
+        self.actions = self.actions[:num_steps + 1] # no other processes
+        self.masks = self.masks[:num_steps + 1] # no other processes
 
     def cuda(self):
         # self.states = self.states.cuda()
@@ -54,8 +77,10 @@ class RolloutOptionStorage(object):
             self.action_queue = self.action_queue.cuda()
             self.values_queue = self.values_queue.cuda()
             self.option_queue = self.option_queue.cuda()
-            self.changepoint_queue = self.changepoint_queue.cuda()
             self.current_state_queue = self.current_state_queue.cuda()
+        if self.changepoint_queue_len > 0:
+            self.changepoint_queue = self.changepoint_queue.cuda()
+            self.changepoint_action_queue = self.changepoint_action_queue.cuda()
         self.current_state = self.current_state.cuda()
         self.extracted_state = self.extracted_state.cuda()
         self.action_probs = self.action_probs.cuda()
@@ -66,7 +91,33 @@ class RolloutOptionStorage(object):
         self.actions = self.actions.cuda()
         self.masks = self.masks.cuda()
 
-    def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no): # got rid of masks... might be useful though
+    def cpu(self):
+        # self.states = self.states.cuda()
+        self.iscuda = False
+        if self.buffer_steps > 0:
+            self.state_queue = self.state_queue.cpu()
+            self.Qvals_queue = self.Qvals_queue.cpu()
+            self.action_probs_queue = self.action_probs_queue.cpu()
+            self.return_queue = self.return_queue.cpu()
+            self.reward_queue = self.reward_queue.cpu()
+            self.action_queue = self.action_queue.cpu()
+            self.values_queue = self.values_queue.cpu()
+            self.option_queue = self.option_queue.cpu()
+            self.changepoint_queue = self.changepoint_queue.cpu()
+            self.changepoint_action_queue = self.changepoint_action_queue.cpu()
+            self.current_state_queue = self.current_state_queue.cpu()
+        self.current_state = self.current_state.cpu()
+        self.extracted_state = self.extracted_state.cpu()
+        self.action_probs = self.action_probs.cpu()
+        self.Qvals = self.Qvals.cpu()
+        self.rewards = self.rewards.cpu()
+        self.value_preds = self.value_preds.cpu()
+        self.returns = self.returns.cpu()
+        self.actions = self.actions.cpu()
+        self.masks = self.masks.cpu()
+
+
+    def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state): # got rid of masks... might be useful though
         if self.buffer_steps > 0 and self.last_step != step: # using buffer and not the first step, which is a duplicate of the last step
             self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
             self.state_queue[self.buffer_at].copy_(extracted_state.squeeze())
@@ -81,12 +132,15 @@ class RolloutOptionStorage(object):
                 self.buffer_at = 0
             else:
                 self.buffer_at += 1
-        if self.changepoint_queue_len > 0 and self.last_step != step:
-            if self.changepoint_at == self.changepoint_queue_len - 1:
-                self.changepoint_at = 0
-            else:
-                self.changepoint_at += 1
-            self.changepoint_queue[self.changepoint_at].copy_(extracted_state.squeeze())
+        if self.changepoint_queue_len > 0:
+            self.changepoint_action_queue[self.changepoint_at].copy_(action.squeeze())
+            self.changepoint_queue[self.changepoint_at].copy_(changepoint_state.squeeze())
+            if self.last_step != step:
+                if self.changepoint_at == self.changepoint_queue_len - 1:
+                    self.cp_filled = True
+                    self.changepoint_at = 0
+                else:
+                    self.changepoint_at += 1
         self.extracted_state[step].copy_(extracted_state.squeeze())
         self.actions[step].copy_(action.squeeze())
         self.current_state[step].copy_(current_state.squeeze())
@@ -101,6 +155,8 @@ class RolloutOptionStorage(object):
                 for i, reward in enumerate(rewards[oidx]):
                     self.reward_queue[oidx, (self.buffer_at + i - rewards.size(1)) % self.buffer_steps].copy_(reward)
         self.rewards = rewards
+        if self.iscuda:
+            self.rewards = self.rewards.cuda()
 
     def compute_returns(self, args, next_value, segmented_duration=-1):
         gamma = args.gamma

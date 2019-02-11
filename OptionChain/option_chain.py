@@ -1,5 +1,6 @@
 import os, glob
 from Environments.multioption import MultiOption
+from file_management import load_from_pickle
 
 
 class OptionNode():
@@ -7,24 +8,25 @@ class OptionNode():
         self.name = name
         self.edges = edges
 
-    def add_edge(edge):
+    def add_edge(self, edge):
         self.edges.append(edge)
 
 class OptionChain():
-    def __init__(self, base_environment, save_path, train_edge):
+    def __init__(self, base_environment, save_path, train_edge, args):
         '''
         OptionChain should contain all of the requisite information, which is a sequence of proxy environments
         edges are stored in 
         TODO: proxy environments depend on the path to reach a proxy environment, which would have overlap.
             replace redundant overlap
         '''
-        # self.nodes = nodes #{"Action": true_environment}
+        # self.nodes = nodesargs.base_nodeon": true_environment}
         # self.edges = edges #[]
         self.environments = dict()
         self.save_path = save_path
         self.base_environment = base_environment
-        self.edges = []
+        self.edges = set()
         self.nodes = dict()
+        self.test = not args.train
         try:
             os.makedirs(save_path)
         except OSError:
@@ -33,15 +35,27 @@ class OptionChain():
             # TODO: currently loads all edges, though this has the potential to be unwieldy
             print(dirs)
             for d in dirs:
+                # TODO: only single tail edges currently
                 edge = (d.split("->")[0], d.split("->")[1])
                 self.add_edge(edge)
-                if d != train_edge: # the train edge does not need to load
+                if d != train_edge or self.test: # the train edge does not need to load, unless testing, in which case train-edge is the test edge
+                    print("loading", edge)
                     model_path = os.path.join(save_path, d)
                     models = MultiOption()
-                    models.load(model_path)
+                    models.load(args, model_path)
                     proxy_env = load_from_pickle(os.path.join(save_path, d, "env.pkl"))
                     proxy_env.set_models(models)
+                    proxy_env.set_test() # changes behavior policy to testing mode (no random actions)
                     self.environments[edge] = proxy_env
+                else:
+                    self.environments[edge] = None
+        # in the case that the train edge does not have directories set up
+        tedge = (train_edge.split("->")[0], train_edge.split("->")[1])
+        if tedge not in self.edges:
+            os.makedirs(os.path.join(save_path, train_edge))
+            self.add_edge(tedge)
+            self.environments[tedge] = None
+        self.save_dir = os.path.join(save_path, train_edge) +"/"
 
     def initialize(self, args):
         '''
@@ -54,9 +68,9 @@ class OptionChain():
         print(self.nodes)
         object_distances = {obj.name: 9999999 for obj in self.nodes.values()} # set to a big number
         object_backpointers = {obj.name: None for obj in self.nodes.values()} # only one backpointer
-        frontier = {'Action': 0}
+        frontier = {args.base_node: 0}
         visited = set()
-        object_distances['Action'] = 0
+        object_distances[args.base_node] = 0
         while len(frontier) > 0:
             lowest_kv = (None, 9999999)
             for (key, value) in frontier.items():
@@ -77,18 +91,22 @@ class OptionChain():
         env_order = []
         n_edge = (args.train_edge.split('->')[0], args.train_edge.split('->')[1])
         object_order = [n_edge[1]]
-        object_at = n_edge[0]
+        object_at = n_edge[1]
         env_order = []
-        while object_at != 'Action':
+        while True:
+            print(n_edge, env_order)
             env_order = [self.environments[n_edge]] + env_order
-            n_edge = object_backpointers[object_at]
-            object_order = [n_edge[0]] + object_order
             object_at = n_edge[0]
+            if object_backpointers[object_at] is None:
+                break
+            n_edge = object_backpointers[object_at]
+            object_order = [n_edge[1]] + object_order
         env_order = [self.base_environment] + env_order
+        print(env_order)
         return env_order
 
     def add_edge(self, edge):
-        self.edges.append(edge)
+        self.edges.add(edge)
         for tailnode in edge[0].split("_"):
             if tailnode in self.nodes:
                 self.nodes[tailnode].add_edge(edge)

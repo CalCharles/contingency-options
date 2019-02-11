@@ -16,6 +16,8 @@ class Object():
 	def getMidpoint(self):
 		return [self.pos[0] + (self.height / 2), self.pos[1]  + (self.width/2)]
 
+	def getAttribute(self):
+		return self.attribute
 
 	def getState(self):
 		return self.getMidpoint() + [self.attribute]
@@ -64,7 +66,7 @@ class Ball(animateObject):
 			if other.name == "Paddle":
 				rel_x = self.pos[1] - other.pos[1]
 				if rel_x == -2:
-					self.vel = np.array([-1, -2])
+					self.vel = np.array([-1, -1])
 				elif rel_x == -1:
 					self.vel = np.array([-1, -1])
 				elif rel_x == 0:
@@ -82,7 +84,7 @@ class Ball(animateObject):
 				elif rel_x == 6:
 					self.vel = np.array([-1, 1])
 				elif rel_x == 7:
-					self.vel = np.array([-1, 2])
+					self.vel = np.array([-1, 1])
 				self.apply_move = False
 				self.paddlehits += 1
 			elif other.name.find("SideWall") != -1:

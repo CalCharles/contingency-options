@@ -5,11 +5,11 @@ import torch
 
 def get_args():
     parser = argparse.ArgumentParser(description='RL')
-    parser.add_argument('--algo', default='a2c',
-                        help='algorithm to use: a2c, ppo, evo')
-    # algorithm hyperparameters
-    parser.add_argument('--optim', default="RMSprop",
-                        help='optimizer to use: Adam, RMSprop, Evol')
+    # parser.add_argument('--algo', default='a2c',
+    #                     help='algorithm to use: a2c, ppo, evo')
+    # # algorithm hyperparameters
+    parser.add_argument('--optim', default="base",
+                        help='optimizer to use: base, Adam, RMSprop, Evol')
     parser.add_argument('--lr', type=float, default=7e-4,
                         help='learning rate (default: 1e-6)')
     parser.add_argument('--eps', type=float, default=1e-5,
@@ -53,7 +53,7 @@ def get_args():
     parser.add_argument('--clip-param', type=float, default=0.2,
                     help='ppo clip parameter (default: 0.2)')
 
-    # Evolution parameters
+    # Evolution parameters TODO: evolution not implemented at the moment
     parser.add_argument('--select-ratio', type=float, default=0.25,
                     help='percentage of population selected in evolution(default: 0.25)')
     parser.add_argument('--num-population', type=int, default=20,
@@ -71,12 +71,18 @@ def get_args():
                     help='number of time steps to run to run ppo gradient on best performer (default: 2000)')
     parser.add_argument('--grad-lr', type=float, default=.0007,
                         help='the learning rate for the PPO steps (default -1, not used)')
+    # SARSA parameters
+    parser.add_argument('--period', type=float, default=1,
+                help='length of period over which fourier basis is applied')
+
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,
                     help='percentage of random actions in epsilon greedy')
+    parser.add_argument('--behavior-policy', default='',
+                        help='defines the behavior policy, as defined in BehaviorPolicies.behavior_policies')
 
 
-    # pretraining arguments
+    # pretraining arguments TODO: not implemented
     parser.add_argument('--pretrain-iterations', type=int, default=-1,
                     help='number of time steps to run the pretrainer using PPO on optimal demonstration data, -1 means not used (default: -1)')
     # Reinforcement model settings
@@ -95,12 +101,14 @@ def get_args():
                         help='how many training CPU processes to use (default: 16)')
     parser.add_argument('--num-steps', type=int, default=5,
                         help='number of forward steps in A2C (default: 5)')
+    parser.add_argument('--num-update-model', type=int, default=10,
+                        help='number of gradient steps before switching options (default: 10)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
                         help='number of forward steps used to compute gradient, -1 for not used (default: -1)')
     parser.add_argument('--buffer-steps', type=int, default=-1,
                         help='number of buffered steps in the record buffer, -1 implies it is not used (default: -1)')
-    parser.add_argument('--changepoint-queue-len', type=int, default=-1,
-                        help='number of steps in the queue for computing the changepoints, -1 for not used (default: -1)')
+    parser.add_argument('--changepoint-queue-len', type=int, default=30,
+                        help='number of steps in the queue for computing the changepoints')
     parser.add_argument('--num-iters', type=int, default=int(2e3),
                         help='number of iterations for training (default: 2e3)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -111,18 +119,23 @@ def get_args():
     parser.add_argument('--save-interval', type=int, default=100,
                         help='save interval, one save per n updates (default: 10)')
     parser.add_argument('--save-dir', default='./trained_models/',
-                        help='directory to save agent logs (default: ./trained_models/)')
+                        help='directory to save data when adding edges')
     parser.add_argument('--record-rollouts', default="",
-                        help='path to where rollouts are recorded for this run')
+                        help='path to where rollouts are recorded (when adding edges, where data was recorded to compute min/max)')
+    parser.add_argument('--changepoint-dir', default='./data/optgraph/',
+                        help='directory to save/load option chain')
     parser.add_argument('--unique-id', default="0",
                         help='a differentiator for the save path for this network')
     parser.add_argument('--save-past', type=int, default=-1,
                     help='save past, saves a new net at the interval, -1 disables, must be a multiple of save-interval (default: -1)')
+    parser.add_argument('--save-models', action ='store_true', default=False,
+                        help='Saves environment and models to option chain directory if true')
+    # Option Chain Parameters
+    parser.add_argument('--base-node', default="Action",
+                        help='The name of the lowest node in the option chain (generally should be Action)')
     # changepoint parameters
-    parser.add_argument('--changepoint-dir', default='./data/optgraph/',
-                        help='directory to save changepoint related values, multiple paths for ')
-    parser.add_argument('--option-dir', default=[], nargs='+',
-                        help='directory to save options related to changepoint values, multiple paths for ')
+    parser.add_argument('--past-data-dir', default='',
+                        help='directory to load data for computing minmax')
     parser.add_argument('--segment', action='store_true', default=False,
                     help='if true, the reward function gives reward for a full segment, while if false, will apply a single sparse reward')
     parser.add_argument('--transforms', default=[''], nargs='+',
@@ -147,10 +160,10 @@ def get_args():
     parser.add_argument('--train', action ='store_true', default=False,
                         help='trains the algorithm if set to true')
     # load variables
-    parser.add_argument('--load-weights', default="",
-                        help='path to trained model, or to data if training by imitation')
-    parser.add_argument('--load-networks', default=[], nargs='+',
-                        help='path to networks folder')
+    # parser.add_argument('--load-weights', default="",
+    #                     help='path to trained model, or to data if training by imitation')
+    # parser.add_argument('--load-networks', default=[], nargs='+',
+    #                     help='path to networks folder')
     # DP-GMM parameters
     parser.add_argument('--dp-gmm', default=["default"], nargs='+',
                     help='parameters for dirichlet process gaussian mixture model, in order number of components, maximum iteration number, prior, covariance type and covariance prior')

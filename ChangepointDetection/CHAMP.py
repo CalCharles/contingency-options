@@ -279,7 +279,7 @@ def generate_changepoints(model_classes, params, data):
         cpts = cpts[::-1]
         changepoints.append(cpts)
         models += seg_models
-    print(changepoints)
+    # print(changepoints)
     changepoints = np.concatenate(changepoints) 
     return models, changepoints
 

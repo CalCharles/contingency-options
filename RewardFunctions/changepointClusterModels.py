@@ -36,7 +36,7 @@ class MultipleCluster(ClusterModel):
         for data in datas:
             model = self.base_model(self.args)
             model.fit(data)
-            print(model.mean())
+            # print(model.mean())
             self.cluster_models.append(model)
 
     def predict(self, datas):

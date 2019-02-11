@@ -101,13 +101,15 @@ class ProximityDeterminer(ChangepointDeterminer):
         # TODO: Fix it so that proximal distance is only used when relevant
         # if a cluster has a mean within a certain distance, then create a narrowed cluster
         self.key_mapping = dict()
-        k = 1
-        for i, mean in enumerate(mode_model.mean()):
-            if np.sum(np.abs(mean[0])) < self.prox_distance and i in self.used_clusters:
+        k = 0
+        for i, mean in enumerate(mode_models.mean()[0]):
+            # print(mean)
+            if np.sum(np.abs(mean)) < self.prox_distance and i in self.used_clusters:
                 self.key_mapping[i] = k
                 k += 1
             elif i in self.used_clusters:
-                self.key_mapping[i] = 0
+                self.key_mapping[i] = -1
+        # print(self.key_mapping)
         self.num_mappings = k
 
     def collapse_assignments(self, assigned_modes):

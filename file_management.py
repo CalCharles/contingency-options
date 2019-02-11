@@ -75,9 +75,11 @@ def get_individual_data(name, obj_dumps, pos_val_hash=3):
     '''
     data = []
     for time_dict in obj_dumps:
+        # print("td1", time_dict[name][1])
         if pos_val_hash == 1:
             data.append(list(time_dict[name][0]))
         elif pos_val_hash == 2:
+            print("td2", list(time_dict[name][1]))
             data.append(list(time_dict[name][1]))
         elif pos_val_hash == 3:
             data.append(list(time_dict[name][0]) + list(time_dict[name][1]))

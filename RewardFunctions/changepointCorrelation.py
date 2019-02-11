@@ -19,6 +19,7 @@ class ChangepointModels():
         datas = []
         for transformer in self.transforms: # transformers must be ordered if multiple
             data = transformer.mode_statistics(models, changepoints, trajectory, correlate_trajectory, self.window)
+            # print(data.shape)
             datas.append(data)
         self.mode_model.fit(datas)
         assignments = self.mode_model.predict(datas)
@@ -39,7 +40,8 @@ class ChangepointModels():
         for transform in self.transforms:
             data = transform.mode_statistics(models, changepoints, trajectory, saliency_trajectory, window=self.window)
             datas.append(data)
-        mode_assignments = self.mode_model.predict(datas).squeeze()
+        mode_assignments = self.mode_model.predict(datas)
+        # print("datas", mode_assignments)
         mode_assignments = np.stack(mode_assignments, axis=0)
         assignments = self.determiner.collapse_assignments(mode_assignments)
         # for i in range(200):

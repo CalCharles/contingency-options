@@ -6,7 +6,7 @@ from Environments.multioption import MultiOption
 from ReinforcementLearning.learning_algorithms import learning_algorithms
 from OptionChain.option_chain import OptionChain
 from Environments.state_definition import GetState, compute_minmax
-from BehaviorPolicies.behavior_policies import behavior_policies
+from BehaviorPolicies.behavior_policies import EpsilonGreedyQ, EpsilonGreedyProbs
 from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
 
@@ -19,28 +19,20 @@ if __name__ == "__main__":
         # train-edge
         # state-forms
         # state-names
-    # Usage Example:
-        # add Action->Paddle: python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/random/" --train-edge "Action->Paddle" --num-stack 2 --train --num-iters 10000 --save-dir data/action --state-forms bounds --state-names Paddle
-        # Using tabular Action->Paddle:  python add_edge.py --model-form tab --optimizer-form TabQ --record-rollouts "data/random/" --train-edge "Action->Paddle" --num-stack 1 --train --num-iters 10000 --save-dir data/action --state-forms bounds --state-names Paddle --num-update-model 1
+
     args = get_args()
-    true_environment = Screen()
+    true_environment = Ball()
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)
-    reward_paths = glob.glob(os.path.join(option_chain.save_dir, "*rwd.pkl"))
-    print(reward_paths)
-    reward_paths.sort(key=lambda x: int(x.split("_")[2]))
 
     head, tail = get_edge(args.train_edge)
 
-    reward_classes = [load_from_pickle(pth) for pth in reward_paths]
-    # train_models = MultiOption(1, BasicModel)
+    reward_classes = [block_rewards()]
+    # reward_classes = [bounce_rewards(0), bounce_rewards(1), bounce_rewards(2), bounce_rewards(3)]
     train_models = MultiOption(len(reward_paths), models[args.model_form])
-    # learning_algorithm = DQN_optimizer()
     learning_algorithm = learning_algorithms[args.optimizer_form]()
-    # learning_algorithm = DDPG_optimizer()
     environments = option_chain.initialize(args)
-    print(environments)
     environments.pop(-1)
     proxy_chain = environments
     if len(environments) > 1: # there is a difference in the properties of a proxy environment and the true environment
@@ -48,9 +40,10 @@ if __name__ == "__main__":
     else:
         num_actions = environments[-1].num_actions
     print(args.state_names, args.state_forms)
-    state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
+    state_class = GetState(num_actions, tail, state_forms=list(zip(args.state_names, args.state_forms)))
     state_class.minmax = compute_minmax(state_class, dataset_path)
-    behavior_policy = behavior_policies[args.behavior_policy]()
+    print(state_class.minmax)
+    behavior_policy = EpsilonGreedyQ()
     # behavior_policy = EpsilonGreedyProbs()
     trainRL(args, option_chain.save_dir, true_environment, train_models, learning_algorithm, 
             proxy_chain, reward_classes, state_class, behavior_policy=behavior_policy)

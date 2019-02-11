@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 from ReinforcementLearning.models import pytorch_model
+from file_management import get_edge, get_individual_data
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,9 +14,10 @@ class ChangepointReward():
         model is a changepoint model
         '''
         self.name = args.train_edge
+        self.head, self.tail = get_edge(args.train_edge)
         self.model = model
         self.cuda = args.cuda
-        self.traj_dim = 2 #TODO: the dimension of the input trajectory should be determined by external factors
+        self.traj_dim = 2 #TODO: the dimension of the input trajectory is currently pre-set at 2, the dim of a location. Once we figure out dynamic setting, this can change
 
     def compute_reward(self, states, actions):
         '''
@@ -25,6 +27,21 @@ class ChangepointReward():
         '''
         pass
 
+    def get_trajectories(self, full_states):
+        obj_dumps = [s[1] for s in full_states]
+        trajectory = get_individual_data(self.head, obj_dumps, pos_val_hash=1)
+        # TODO: automatically determine if correlate pos_val_hash is 1 or 2
+        # TODO: multiple tail support
+        if self.tail[0] == "Action":
+            # print(obj_dumps, self.tail[0])
+            merged = trajectory
+            # correlate_trajectory = get_individual_data(self.tail[0], obj_dumps, pos_val_hash=2)
+        else:
+            correlate_trajectory = get_individual_data(self.tail[0], obj_dumps, pos_val_hash=1)
+            merged = np.concatenate([trajectory, correlate_trajectory], axis=1)
+        return pytorch_model.wrap(merged).cuda()
+
+
 class ChangepointDetectionReward(ChangepointReward):
     def __init__(self, model, args, desired_mode):
         super(ChangepointDetectionReward, self).__init__(model, args)
@@ -33,20 +50,32 @@ class ChangepointDetectionReward(ChangepointReward):
         self.seg_reward = args.segment
 
     def compute_reward(self, states, actions):
-        trajectory = states[:-1,:self.traj_dim]
-        saliency_trajectory = states[:-1,self.traj_dim:]
+        trajectory = pytorch_model.unwrap(states[:-1,:self.traj_dim])
+        saliency_trajectory = pytorch_model.unwrap(states[:-1,self.traj_dim:])
+        # print("states shape", trajectory.shape, saliency_trajectory.shape)
         assignments, cps = self.model.get_mode(trajectory, saliency_trajectory)
         rewards = []
         for asmt in assignments:
             if asmt == self.desired_mode:
                 rewards.append(1)
+            else:
+                rewards.append(0)
+        rewards.append(0) # match the number of changepoints
         full_rewards = []
         lcp = 0
-        for cp, r in zip(changepoints, rewards):
+        lr = 0
+        cps.append(len(trajectory))
+        # print(cps, rewards)
+        for cp, r in zip(cps, rewards):
             if self.seg_reward: # reward copied over all time steps
-                full_rewards += [r] * cp - lcp
+                full_rewards += [r] * (cp - lcp)
             else:
-                full_rewards += [r] + [0] * (cp-lcp-1)
+                if r == 1 and cp == 0:
+                    r = 0
+                full_rewards +=  [0] * (cp-lcp-1) + [r]
+            lcp = cp
+            lr = r
+        # print(rewards, cps, full_rewards)
         return pytorch_model.wrap(np.array(full_rewards), cuda=self.cuda)
 
 class ChangepointMarkovReward(ChangepointReward):
@@ -60,6 +89,7 @@ class ChangepointMarkovReward(ChangepointReward):
         self.eps = args.eps
         self.betas = args.betas
         self.weight_decay = args.weight_decay
+        self.max_dev = .2 # TODO: this doesn't need to be hardcoded
 
     def form_batch(self, data):
         ''' 
@@ -161,6 +191,7 @@ class ChangepointMarkovReward(ChangepointReward):
         var = torch.var(model.compute_error(self.pairs[m]), dim=0)
         var[var < .3] = .3
         model.variance = var
+        self.markovModel = model
 
     def compute_fit(self, traj):
         '''
@@ -172,18 +203,17 @@ class ChangepointMarkovReward(ChangepointReward):
         n_traj = self.markovModel(pairs[:,0])
         t_traj = pairs[:,1]
         probs = self.markovModel.compute_prob(n_traj, t_traj)
-        probs = torch.sum(probs, dim=2)
-        highprob = torch.argmin(probs, dim=0)
-        assignments = []
-        for i in highprob:
-            assignments.append(i.squeeze()) # not differentiable for now 
-        return torch.stack(assignments)
+        probs = torch.sum(probs, dim=2).squeeze()
+        # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-3:])
+        return probs
 
     def compute_reward(self, states, actions):
-        assignments = self.compute_fit(states)
-        reward = torch.zeros(assignments.size())
-        vals = (assignments - self.current_desired_mode).abs()
-        reward[vals == 0] = 1
+        probs = self.compute_fit(states)
+        reward = torch.ones(probs.size()) * -1
+        reward[probs <= self.max_dev] = 2
+        # print(states, probs, self.max_dev)
+        # print(reward)
+        # error
         return reward
 
 class LDSlearner(nn.Module):
@@ -223,21 +253,5 @@ class LDSlearner(nn.Module):
     def compute_error(self, inputs):
         # print ("err", self.forward(inputs[:, 0]) , inputs[:, 0], inputs[:, 1], inputs.shape)
         return self.forward(inputs[:, 0]) - inputs[:, 1]
-
-class RewardRight():
-    def compute_reward(self, states, actions):
-        '''
-
-        TODO: make support multiple processes
-        possibly make this not iterative?
-        '''
-        rewards = []
-        for state, action, nextstate in zip(states, actions, states[1:]):
-            # print(state)
-            if state - nextstate == -1:
-                rewards.append(2)
-            else:
-                rewards.append(-1)
-        return pytorch_model.wrap(rewards, cuda=True)
 
 reward_forms = {"changepoint": ChangepointDetectionReward, "markov": ChangepointMarkovReward}
