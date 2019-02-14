@@ -8,8 +8,8 @@ def get_args():
     # parser.add_argument('--algo', default='a2c',
     #                     help='algorithm to use: a2c, ppo, evo')
     # # algorithm hyperparameters
-    parser.add_argument('--optim', default="base",
-                        help='optimizer to use: base, Adam, RMSprop, Evol')
+    parser.add_argument('--optim', default="Adam",
+                        help='optimizer to use: Adam, RMSprop, Evol')
     parser.add_argument('--lr', type=float, default=7e-4,
                         help='learning rate (default: 1e-6)')
     parser.add_argument('--eps', type=float, default=1e-5,

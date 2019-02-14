@@ -69,4 +69,4 @@ class EpsilonStochasticProbs():
         self.epsilon = 0
 
 
-behavior_policies = {"egq": EpsilonGreedyQ, "esq": EpsilonStochasticQ, "egp": EpsilonGreedyProbs, "esp": EpsilonStochasticQ}
+behavior_policies = {"egq": EpsilonGreedyQ, "esq": EpsilonStochasticQ, "egp": EpsilonGreedyProbs, "esp": EpsilonStochasticProbs}

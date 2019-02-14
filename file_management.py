@@ -3,13 +3,15 @@ import numpy as np
 import ChangepointDetection.DynamicsModels as DynamicsModels
 
 def load_from_pickle(pth):
-	with open(pth, 'rb') as fid:
-		save_dict = pickle.load(fid)
-	return save_dict
+    fid = open(pth, 'rb')
+    save_dict = pickle.load(fid)
+    fid.close()
+    return save_dict
 
 def save_to_pickle(pth, val):
-	with open(pth, 'wb') as fid:
-		pickle.dump(val, fid)
+    fid = open(pth, 'wb')
+    pickle.dump(val, fid)
+    fid.close()
 
 def get_edge(train_edge):
     '''

@@ -28,6 +28,7 @@ class ChangepointReward():
         pass
 
     def get_trajectories(self, full_states):
+        # print(self.head)
         obj_dumps = [s[1] for s in full_states]
         trajectory = get_individual_data(self.head, obj_dumps, pos_val_hash=1)
         # TODO: automatically determine if correlate pos_val_hash is 1 or 2

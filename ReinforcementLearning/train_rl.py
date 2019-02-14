@@ -67,6 +67,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0))
             v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
             action = behavior_policy.take_action(ap, qv)
+            # print(ap, action)
             cp_state = proxy_environment.changepoint_state([raw_state])
             # print(state, action)
             rollouts.insert(step, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state[0])
@@ -116,7 +117,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
 
         #### logging
         if j % args.log_interval == 0:
-            print("Qvalue and state", Q_vals.squeeze(), current_state.squeeze())
+            # print("Qvalue and state", pytorch_model.unwrap(Q_vals.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
+            print("probs and state", pytorch_model.unwrap(action_probs.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
             for name in train_models.names():
                 if option_counter[name] > 0:
                     print(name, option_value[name] / option_counter[name], [option_actions[name][i]/option_counter[name] for i in range(len(option_actions[name]))])
@@ -126,14 +128,13 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                     for i in range(len(option_actions[name])):
                         option_actions[name][i] = 0
             end = time.time()
-            final_rewards = np.array(final_rewards)
-            print(entropy_loss, value_loss, action_loss)
+            final_rewards = torch.stack(final_rewards)
             el, vl, al = unwrap_or_none(entropy_loss), unwrap_or_none(value_loss), unwrap_or_none(action_loss)
             total_elapsed += total_duration
             log_stats = "Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {}, value loss {}, policy loss {}".format(j, total_elapsed,
                        int(total_elapsed / (end - start)),
                        final_rewards.mean(),
-                       np.median(final_rewards),
+                       np.median(final_rewards.cpu()),
                        final_rewards.min(),
                        final_rewards.max(), el,
                        vl, al)

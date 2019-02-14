@@ -10,19 +10,20 @@ from Environments.state_definition import GetState, compute_minmax
 from BehaviorPolicies.behavior_policies import behavior_policies
 from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
-from RewardFunctions.dummy_rewards import BounceReward
+from RewardFunctions.dummy_rewards import BounceReward, Xreward
 
 if __name__ == "__main__":
     # used arguments
-        # record-rollouts (where data is stored)
+        # record-rollouts (where data is stored for computing minmax)
         # changepoint-dir (where option chain is stored)
+        # save-dir (where saved data is stored)
         # model-form
         # optimizer-form
         # train-edge
         # state-forms
         # state-names
     # Example usage: 
-    # python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/random/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 10000 --save-dir data/paddleballtest --state-forms prox bounds --state-names Paddle Ball
+    # python paddle_bounce.py --model-form tab --optimizer-form TabQ --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 100000 --save-dir data/paddleballtest --state-forms prox --state-names Paddle --base-node Paddle --changepoint-dir data/paddlegraph --factor 8 --greedy-epsilon .2 --lr .01 --normalize --behavior-policy egq --gamma .99 > out.txt
 
     args = get_args()
     true_environment = Paddle()
@@ -30,10 +31,12 @@ if __name__ == "__main__":
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)
 
+
     head, tail = get_edge(args.train_edge)
 
     reward_classes = [BounceReward(-1, args)]
-    # reward_classes = [bounce_rewards(0), bounce_rewards(1), bounce_rewards(2), bounce_rewards(3)]
+    # reward_classes = [Xreward(args)]
+    # reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
     train_models = MultiOption(len(reward_classes), models[args.model_form])
     learning_algorithm = learning_algorithms[args.optimizer_form]()
     environments = option_chain.initialize(args)

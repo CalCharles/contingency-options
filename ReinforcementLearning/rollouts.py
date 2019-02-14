@@ -23,15 +23,16 @@ class RolloutOptionStorage(object):
         self.buffer_at = 0
         self.return_at = 0
         self.changepoint_at = 0
-        self.state_queue = torch.zeros(buffer_steps, *self.extracted_shape)
-        self.current_state_queue = torch.zeros(buffer_steps, *self.current_shape)
-        self.action_probs_queue = torch.zeros(num_options, buffer_steps, action_space)
-        self.Qvals_queue = torch.zeros(num_options, buffer_steps, action_space)
-        self.reward_queue = torch.zeros(num_options, buffer_steps)
-        self.return_queue = torch.zeros(num_options, buffer_steps, 1)
-        self.values_queue = torch.zeros(num_options, buffer_steps, 1)
-        self.action_queue = torch.zeros(buffer_steps, 1).long()
-        self.option_queue = torch.zeros(buffer_steps, 1).long()
+        if buffer_steps > 0:
+            self.state_queue = torch.zeros(buffer_steps, *self.extracted_shape)
+            self.current_state_queue = torch.zeros(buffer_steps, *self.current_shape)
+            self.action_probs_queue = torch.zeros(num_options, buffer_steps, action_space)
+            self.Qvals_queue = torch.zeros(num_options, buffer_steps, action_space)
+            self.reward_queue = torch.zeros(num_options, buffer_steps)
+            self.return_queue = torch.zeros(num_options, buffer_steps, 1)
+            self.values_queue = torch.zeros(num_options, buffer_steps, 1)
+            self.action_queue = torch.zeros(buffer_steps, 1).long()
+            self.option_queue = torch.zeros(buffer_steps, 1).long()
         self.changepoint_queue = torch.zeros(changepoint_queue_len, *self.changepoint_shape)
         self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long()
         self.num_options = num_options
@@ -171,22 +172,8 @@ class RolloutOptionStorage(object):
                     delta = self.rewards[idx, step] + gamma * self.value_preds[idx, step + 1] - self.value_preds[idx, step]
                     gae = delta + gamma * tau * gae
                     self.returns[idx, step] = gae + self.value_preds[idx, step]
-            elif return_format == 2: # compute next set of returns from buffer
-                self.returns[idx, -1] = 0
-                for step in reversed(range(self.rewards.size(1))):
-                    self.returns[idx, step] = self.returns[idx, step + 1] * gamma + self.rewards[idx, step] # compute most recent returns
-                for i, ret in enumerate(self.returns):
-                    # update the last ten returns
-                    if 11-i > 0:
-                        for j in range(i, 11-i): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
-                            # print(self.returns[0], self.return_queue[-6+j])
-                            self.return_queue[idx, (-11+j+self.return_at) % self.buffer_steps] += torch.tensor(np.power(gamma, 10-j)).cuda() * self.returns[idx, i]
-                for ret in self.returns:
-                    self.return_queue[idx, self.return_at].copy_(ret)
-                    # print(ret, self.return_queue[self.return_at])
-                    self.return_at = (self.return_at + 1) % self.buffer_steps
                 # print("return_queue", self.rewards)
-            elif return_format == 3: # segmented returns
+            elif return_format == 2: # segmented returns
                 for i in range(self.rewards.size(1) // segmented_duration):
                     # print(i)
                     self.returns[idx, (i+1) * segmented_duration] = 0 # last value
@@ -198,7 +185,21 @@ class RolloutOptionStorage(object):
                 self.returns[idx, -1] = 0 #next_value
                 for step in reversed(range(self.rewards.size(1))):
                     self.returns[idx, step] = self.returns[idx, step + 1] * gamma + self.rewards[idx, step]
-
+                # print(self.returns)
+                if self.buffer_steps > 0:
+                    for i, ret in enumerate(self.returns[idx]):
+                        # update the last ten returns
+                        print(i, 11-i)
+                        if 11-i > 0:
+                            for j in range(i, 11-i): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
+                                # print(self.returns[0], self.return_queue[-6+j])
+                                self.return_queue[idx, (-11+j+self.return_at) % self.buffer_steps] += torch.tensor(np.power(gamma, 10-j)).cuda() * self.returns[idx, i]
+                    
+                    for i, ret in enumerate(self.returns[idx]):
+                        print('copying', self.return_at + i)
+                        self.return_queue[idx, self.return_at + i].copy_(ret)
+        if self.buffer_steps > 0:
+            self.return_at = (self.return_at + self.returns.size(1)) % self.buffer_steps
     def compute_full_returns(self, next_value, gamma):
         self.returns = torch.zeros(self.num_options, self.rewards.size(1) + 1, 1).cuda()
         for idx in range(self.num_options):

@@ -59,6 +59,30 @@ class BounceReward(ChangepointReward):
                 rewards.append(-abs(proximity[0] / (proximity[1] + .05) * .05))
         return pytorch_model.wrap(rewards, cuda=True)
 
+class Xreward(ChangepointReward):
+    def __init__(self, args): 
+        self.traj_dim = 2 # SET THIS
+        self.head, self.tail = get_edge(args.train_edge)
+
+
+    def compute_reward(self, states, actions):
+        '''
+        states must have at least two in the stack: to keep size of rewards at num_states - 1
+        assumes ball is the last state
+        assuming input shape: [state_size = num_stack*traj_dim]
+        '''
+        rewards = []
+        # print(states.shape)
+        for last_state, state, action, nextstate in zip(states, states[1:], actions, states[2:]):
+            base = state.squeeze()[:2]
+            corr = state.squeeze()[-2:]
+            # print(base, corr)
+            state = base-corr
+            # print(state, -abs(int(state[1])))
+            rewards.append(-abs(int(state[1])))
+        return pytorch_model.wrap(rewards, cuda=True)
+
+
 
 class RewardRight(ChangepointReward):
     def compute_reward(self, states, actions):

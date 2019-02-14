@@ -39,6 +39,11 @@ class Bounds(): # bounds
 	def compute_comparison(self, state, target, correlate):
 		return list(state[1][correlate][0])
 
+class XProximity(): # bounds
+	def compute_comparison(self, state, target, correlate):
+		# print(midpoint_separation((np.array(state[1][target][0]), np.array(state[1][correlate][0])))[1])
+		return list([midpoint_separation((np.array(state[1][target][0]), np.array(state[1][correlate][0])))[1]])
+
 class Feature(): # feature
 	def compute_comparison(self, state, target, correlate):
 		return list(state[1][correlate][1])
@@ -154,10 +159,10 @@ def compute_minmax(state_function, pth):
 
 
 
-state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), 
+state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), "xprox": XProximity(),
 							"feature": Feature(), "raw": Raw(), "sub": Sub()}
 # TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ
-state_shapes = {"prox": [2], "full": [3], "bounds": [2], "feature": [1], "raw": [64, 64], "sub": [4,4]}
+state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "feature": [1], "raw": [64, 64], "sub": [4,4]}
 # class GetRaw(StateGet):
 # 	'''
 # 	Returns the raw_state

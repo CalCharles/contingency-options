@@ -24,8 +24,10 @@ def testRL(args, save_path, true_environment, proxy_chain, state_class, behavior
     train_models = proxy_environment.models
     state = pytorch_model.wrap(proxy_environment.getState(), cuda = args.cuda)
     print(state.shape)
+    raw_state = base_environment.getState()
     hist_state = pytorch_model.wrap(proxy_environment.getHistState(), cuda = args.cuda)
-    rollouts = RolloutOptionStorage(args.num_processes, state_class.shape, state_class.action_num, state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, len(train_models.models))
+    cp_state = proxy_environment.changepoint_state([raw_state])
+    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, len(train_models.models), cp_state.shape)
     option_actions = {option.name: collections.Counter() for option in train_models.models}
     total_duration = 0
     total_elapsed = 0
@@ -44,11 +46,12 @@ def testRL(args, save_path, true_environment, proxy_chain, state_class, behavior
             raw_actions = []
             rollouts.cuda()
             current_state = proxy_environment.getHistState()
-            values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state)
-            ap, qv = train_models.get_action(action_probs, Q_vals)
+            values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0))
+            v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
+            cp_state = proxy_environment.changepoint_state([raw_state])
             # print(ap, qv)
             action = behavior_policy.take_action(ap, qv)
-            rollouts.insert(j, state, current_state, action_probs, action, Q_vals, values, train_models.option_index)
+            rollouts.insert(j, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state[0])
             state, raw_state, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
             raw_states[train_models.currentName()].append(raw_state)
             option_actions[train_models.currentName()][int(pytorch_model.unwrap(action.squeeze()))] += 1
@@ -56,7 +59,7 @@ def testRL(args, save_path, true_environment, proxy_chain, state_class, behavior
                 pass
                 # print("reached end")
 
-        rewards = proxy_environment.computeReward(rollouts)
+        rewards = proxy_environment.computeReward(rollouts, args.num_iters)
         # print(rewards)
         rollouts.insert_rewards(rewards)
         rollouts.compute_returns(args, values)
