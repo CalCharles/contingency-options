@@ -1,7 +1,6 @@
 from __future__ import division, absolute_import, print_function
 import numpy as np
 
-import warnings
 import logging
 logging.basicConfig(format='%(levelname)s [%(asctime)s]: %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)

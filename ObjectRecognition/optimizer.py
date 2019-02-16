@@ -75,7 +75,7 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
         xinit = np.random.rand(self.dim)-0.5  # [-0.5, 0.5]^n
         if self.cheating:  # for testing filter generality
             xinit = util.cheat_init_center((10, 10), 3) 
-            cmaes_params['popsize'] = 2
+            self.cmaes_params['popsize'] = 2
         self.cmaes = cma.CMAEvolutionStrategy(xinit, 1.0, self.cmaes_params)
 
 

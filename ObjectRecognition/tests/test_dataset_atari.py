@@ -9,6 +9,7 @@ game = DatasetAtari(
     partial(RandomConsistentPolicy, change_prob=0.35),
     n_state=1000,
     save_path='results',
+    binarize=0.1,
 )
 
 # plt.imshow(game.get_frame(5)[0]); plt.show()

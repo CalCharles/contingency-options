@@ -114,6 +114,7 @@ elif args.game == 'atari':
         actor,  # mock actor
         n_state=2000,  # set max number of states
         save_path='results',  # save path for gym
+        binarize=0.1,
     )
 
 

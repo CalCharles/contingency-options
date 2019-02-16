@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import warnings
 
 
 # find masks of adjacently different entries
@@ -60,7 +61,7 @@ def match_diffs(cp1, cp2, mask_length):
 
 # create fake filter
 def cheat_init_center(dim, extra):
-    logger.warning('using cheating filter initialization')
+    warnings.warn('using cheating filter initialization')
     cx = (dim[0]-1)/2
     cy = (dim[1]-1)/2
     # c_filter = np.array([[np.sqrt((i-cx)**2 + (j-cy)**2)

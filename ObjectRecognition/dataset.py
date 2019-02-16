@@ -55,13 +55,13 @@ class Dataset(DatasetInterface):
 # breakout saved scene loading, handle block loading
 class DatasetSelfBreakout(Dataset):
 
-    def __init__(self, objdump_path, state_path, n_state=1000, block_size=10000):
+    def __init__(self, objdump_path, state_path, *args, **kwargs):
         super(DatasetSelfBreakout, self).__init__()
         obj_dumps = read_obj_dumps(objdump_path)
         self.state_path = state_path
         self.frame_shape = (84, 84)
-        self.n_state = n_state  # TODO: fix this
-        self.block_size = block_size
+        self.n_state = kwargs.get('n_state', 1000)
+        self.block_size = kwargs.get('block_size', 100000)
         self.frame_l, self.frame_r = 1, 0  # uninitialized frame interval
 
         self.actions = np.array(
@@ -131,7 +131,7 @@ class DatasetSelfBreakout(Dataset):
 # access to atari games
 class DatasetAtari(Dataset):
 
-    def __init__(self, game_name, Actor, n_state, save_path):
+    def __init__(self, game_name, Actor, n_state, save_path, *args, **kwargs):
 
         # create OpenAI Atari
         self.save_path = util.get_dir(save_path)
@@ -139,6 +139,7 @@ class DatasetAtari(Dataset):
                                                  1234, 0, self.save_path)])
         self.frame_shape = self.atari_env.observation_space.shape[-2:]
         self.n_state = n_state
+        self.binarize = kwargs.get('binarize', None)
 
         # actor for auto run
         self.action_space = self.atari_env.action_space.n
@@ -186,4 +187,12 @@ class DatasetAtari(Dataset):
             # record state
             self.acts[i] = act
             self.frames[i, ...] = state[0]
-        self.frames /= np.max(self.frames)
+
+        # feature scaling normalize
+        self.frames = (self.frames - np.min(self.frames)) / \
+                      (np.max(self.frames) - np.min(self.frames))
+
+        # binary to simplify image
+        if self.binarize:
+            self.frames[self.frames < self.binarize] = 0.0
+            self.frames[self.frames >= self.binarize] = 1.0
