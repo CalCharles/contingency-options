@@ -120,10 +120,6 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=None):
 def report_model(dataset, model, prefix, plot_flags, cpd):
     focus_img_dir = get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
     focus = model.forward_all(dataset, batch_size=400)
-    if plot_flags['plot_focus_live']:
-        N, PY = 1000, 10
-        for i in range(0, N-PY, PY):
-            plot_focus(dataset, range(i, i+PY), focus[i:i+PY])
     if plot_flags['plot_focus']:
         # compute changepoints if needed
         changepoints = None
@@ -159,8 +155,6 @@ if __name__ == '__main__':
                         help='plot model filter')
     parser.add_argument('--plot-focus', action='store_true', default=False,
                         help='plot focus neighborhood and save to directory')
-    parser.add_argument('--plot-focus-live', action='store_true', default=False,
-                        help='plot focus neighborhood every timestep')
     parser.add_argument('--plot-cp', action='store_true', default=False,
                         help='indicate changepoint frames (with --plot-focus)')
     args = parser.parse_args()
@@ -170,7 +164,6 @@ if __name__ == '__main__':
     plot_flags = {
         'plot_filter': args.plot_filter,
         'plot_focus': args.plot_focus,
-        'plot_focus_live': args.plot_focus_live,
         'plot_cp': args.plot_cp,
     }
 
@@ -249,8 +242,3 @@ if __name__ == '__main__':
     Do the report
     """
     report_model(dataset, model, prefix, plot_flags, cpd)
-
-    # prefix = 'results/cmaes_soln/transfer'
-    # for i in range(39, 559+1, 40):
-    #     model_id = '42394_%d'%i
-    #     report_model(prefix, model_id)
