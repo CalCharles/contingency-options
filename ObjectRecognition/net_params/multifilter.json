@@ -1,0 +1,8 @@
+{
+    "filter": 1,
+    "channel": [4],
+    "kernel_size": [5],
+    "stride": [1],
+    "padding": [4],
+    "activation_fn": ["Tanh"]
+}

@@ -125,8 +125,8 @@ class Screen(RawEnvironment):
         object_dumps = open(save_path + "object_dumps.txt", 'w')
         if render:
             self.render_frame()
-        for itr in range(iterations):
-            if itr % duplicate_actions == 0:
+        for self.itr in range(iterations):
+            if self.itr % duplicate_actions == 0:
                 action = policy.act(self)
                 last_action = action
             else:
@@ -145,7 +145,7 @@ class Screen(RawEnvironment):
                 ani_obj.move()
             if self.ball.losses == 5:
                 self.reset()
-            if itr % 100 == 0 and self.get_num_points() == len(self.blocks):
+            if self.itr % 100 == 0 and self.get_num_points() == len(self.blocks):
                 self.reset()
             if render:
                 self.render_frame()
@@ -161,6 +161,31 @@ class RandomPolicy(Policy):
 
     def act(self, screen):
         return np.random.randint(self.action_space)
+
+class RandomConsistentPolicy(Policy):
+    def __init__(self, action_space, change_prob):
+        self.action_space = action_space
+        self.change_prob = change_prob
+        self.current_action = np.random.randint(self.action_space)
+
+    def act(self, screen):
+        if np.random.rand() < self.change_prob:
+            self.current_action = np.random.randint(self.action_space)
+        return self.current_action
+
+class RotatePolicy(Policy):
+    def __init__(self, action_space, hold_count):
+        self.action_space = action_space
+        self.hold_count = hold_count
+        self.current_action = 0
+        self.current_count = 0
+
+    def act(self, screen):
+        self.current_count += 1
+        if self.current_count >= self.hold_count:
+            self.current_action = (self.current_action+1) % self.action_space
+            self.current_count = 0
+        return self.current_action
 
 class BouncePolicy(Policy):
     def __init__(self, action_space):
