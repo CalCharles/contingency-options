@@ -14,7 +14,7 @@ class MultiOption():
             else:
                 minmax = state_class.get_minmax()
             model = self.option_class(args, state_class.flat_state_size() * args.num_stack, 
-                state_class.action_num, name = args.unique_id + "_" + str(i) +"_", minmax = minmax)
+                state_class.action_num, factor=args.factor, name = args.unique_id + "_" + str(i) +"_", minmax = minmax)
             # since name is args.unique_id + str(i), this means that unique_id should be the edge, in form head_tail
             if args.cuda:
                 model = model.cuda()
@@ -36,6 +36,16 @@ class MultiOption():
             probs.append(p)
             Q_vals.append(Q)
         return torch.stack(values, dim=0), torch.stack(dist_entropy, dim=0), torch.stack(probs, dim=0), torch.stack(Q_vals, dim=0)
+
+    def layers(self, state):
+        '''
+        output: num_options x num layers x [batch, layer size]
+        '''
+        layers = []
+        for i in range(self.num_options):
+            layers.append(self.models[i].compute_layers(state))
+        return layers
+
 
     def get_action(self, values, probs, Q_vals, index=-1):
         '''

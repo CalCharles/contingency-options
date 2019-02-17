@@ -41,7 +41,6 @@ class Paddle(RawEnvironment):
 
     def getState(self):
         raw_state, factor_state = self.screen.getState()
-        print (raw_state, factor_state)
         if factor_state["Action"][1][0] < 2:
             factor_state["Action"] = (factor_state["Action"][0], 0)
         elif factor_state["Action"][1][0] == 2:

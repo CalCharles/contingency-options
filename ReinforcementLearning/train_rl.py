@@ -108,8 +108,11 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         #### logging
 
         value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = learning_algorithm.step(args, train_models, rollouts) 
+        if args.dist_interval != -1 and j % args.dist_interval == 0:
+            learning_algorithm.distibutional_sparcity_step(args, train_models, rollouts)
+
         learning_algorithm.updateModel()
-        
+
         if j % args.save_interval == 0 and args.save_models and args.train: # no point in saving if not training
             print("=========SAVING MODELS==========")
             train_models.save(save_path) # TODO: implement save_options
@@ -117,8 +120,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
 
         #### logging
         if j % args.log_interval == 0:
-            # print("Qvalue and state", pytorch_model.unwrap(Q_vals.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
-            print("probs and state", pytorch_model.unwrap(action_probs.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
+            print("Qvalue and state", pytorch_model.unwrap(Q_vals.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
+            # print("probs and state", pytorch_model.unwrap(action_probs.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
             for name in train_models.names():
                 if option_counter[name] > 0:
                     print(name, option_value[name] / option_counter[name], [option_actions[name][i]/option_counter[name] for i in range(len(option_actions[name]))])

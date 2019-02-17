@@ -56,7 +56,8 @@ class BounceReward(ChangepointReward):
                             rewards.append(10)
                             rewarded = True
             if not rewarded:
-                rewards.append(-abs(proximity[0] / (proximity[1] + .05) * .05))
+                # rewards.append(-abs(proximity[0] / (proximity[1] + .05) * .05))
+                rewards.append(0)
         return pytorch_model.wrap(rewards, cuda=True)
 
 class Xreward(ChangepointReward):

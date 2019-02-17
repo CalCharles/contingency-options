@@ -21,7 +21,7 @@ import collections
 
 if __name__ == "__main__":
     # Example Command Line
-    # python test_template.py --train-edge "Action->chain" --num-stack 1 --num-iters 1000 --save-dir data/testtest/ --record-rollouts data/testchain/ --greedy-epsilon 0
+    # python test_template.py --train-edge "Action->chain" --num-stack 1 --num-iters 1000 --changepoint-dir data/optgraph --save-dir data/testtest/ --record-rollouts data/testchain/ --greedy-epsilon 0
     args = get_args()
     true_environment = Paddle()
     dataset_path = args.record_rollouts

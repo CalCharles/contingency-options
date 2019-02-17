@@ -81,7 +81,7 @@ def get_individual_data(name, obj_dumps, pos_val_hash=3):
         if pos_val_hash == 1:
             data.append(list(time_dict[name][0]))
         elif pos_val_hash == 2:
-            print("td2", list(time_dict[name][1]))
+            # print("td2", list(time_dict[name][1]))
             data.append(list(time_dict[name][1]))
         elif pos_val_hash == 3:
             data.append(list(time_dict[name][0]) + list(time_dict[name][1]))

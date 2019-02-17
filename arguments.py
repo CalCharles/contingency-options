@@ -7,9 +7,7 @@ def get_args():
     parser = argparse.ArgumentParser(description='RL')
     # parser.add_argument('--algo', default='a2c',
     #                     help='algorithm to use: a2c, ppo, evo')
-    # # algorithm hyperparameters
-    parser.add_argument('--optim', default="Adam",
-                        help='optimizer to use: Adam, RMSprop, Evol')
+    # # optimization hyperparameters
     parser.add_argument('--lr', type=float, default=7e-4,
                         help='learning rate (default: 1e-6)')
     parser.add_argument('--eps', type=float, default=1e-5,
@@ -20,8 +18,9 @@ def get_args():
                         help='Adam optimizer betas (default: (0.9, 0.999))')
     parser.add_argument('--weight-decay', type=float, default=0.01,
                         help='Adam optimizer l2 norm constant (default: 0.01)')
-    parser.add_argument('--gamma', type=float, default=0.95,
+    parser.add_argument('--gamma', type=float, default=0.99,
                         help='discount factor for rewards (default: 0.99)')
+    # cost function hyperparameters
     parser.add_argument('--return-enum', type=int, default=0,
                         help='determines what return equation to use. Default is 0, which is default return, 0 is gae, 1 is buffer, 2 is segmented')
     parser.add_argument('--return-format', type=int, default=0,
@@ -36,14 +35,29 @@ def get_args():
                         help='value loss coefficient (default: 0.5)')
     parser.add_argument('--max-grad-norm', type=float, default=0.5,
                         help='value loss coefficient (default: 0.5)')
-    parser.add_argument('--num-stack', type=int, default=4,
-                        help='number of frames to stack (default: 4)')
+    # model hyperparameters
     parser.add_argument('--num-layers', type=int, default=1,
-                    help='number of layers for network')
+                    help='number of layers for network. When using basis functions, defines independence relations (see ReinforcementLearning.basis_models.py)')
     parser.add_argument('--factor', type=int, default=4,
                         help='decides width of the network')
+    parser.add_argument('--optim', default="Adam",
+                        help='optimizer to use: Adam, RMSprop, Evol')
+    parser.add_argument('--init-form', default="uni",
+                    help='initialization to use: uni, xnorm, xuni, eye')
+    # state hyperparameters
     parser.add_argument('--normalize', action='store_true', default=False,
                         help='Normalized inputs for the neural network/function approximator')
+    parser.add_argument('--num-stack', type=int, default=4,
+                        help='number of frames to stack (default: 4)')
+
+    # distributional regularization parameters
+    parser.add_argument('--dist-interval', type=int, default=-1,
+                        help='decides how often distributional interval is computed')
+    parser.add_argument('--exp-beta', type=float, default=0.1,
+                        help='beta value in exponential distribution')
+    parser.add_argument('--dist-coef', type=float, default=0.5,
+                        help='the coefficient used for determining the loss value of the distribution')
+
 
     # offline learning parameters
     parser.add_argument('--grad-epoch', type=int, default=1,
@@ -101,8 +115,8 @@ def get_args():
                         help='how many training CPU processes to use (default: 16)')
     parser.add_argument('--num-steps', type=int, default=5,
                         help='number of forward steps in A2C (default: 5)')
-    parser.add_argument('--num-update-model', type=int, default=10,
-                        help='number of gradient steps before switching options (default: 10)')
+    parser.add_argument('--num-update-model', type=int, default=3,
+                        help='number of gradient steps before switching options (default: 3)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
                         help='number of forward steps used to compute gradient, -1 for not used (default: -1)')
     parser.add_argument('--buffer-steps', type=int, default=-1,
