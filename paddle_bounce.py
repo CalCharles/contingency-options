@@ -34,8 +34,10 @@ if __name__ == "__main__":
 
     head, tail = get_edge(args.train_edge)
 
-    reward_classes = [BounceReward(-1, args)]
-    # reward_classes = [Xreward(args)]
+    if args.reward_form == 'x':
+        reward_classes = [Xreward(args)]
+    else:
+        reward_classes = [BounceReward(-1, args)]
     # reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
     train_models = MultiOption(len(reward_classes), models[args.model_form])
     learning_algorithm = learning_algorithms[args.optimizer_form]()

@@ -27,8 +27,8 @@ def get_args():
                         help='0 for default, 1 for gae, 2 for return queue')
     parser.add_argument('--tau', type=float, default=0.95,
                         help='gae parameter (default: 0.95)')
-    parser.add_argument('--entropy-coef', type=float, default=0.01,
-                        help='entropy loss term coefficient (default: 0.01)')
+    parser.add_argument('--entropy-coef', type=float, default=1e-7,
+                        help='entropy loss term coefficient (default: 1e-7)')
     parser.add_argument('--high-entropy', type=float, default=1,
                         help='high entropy (for low frequency) term coefficient (default: 1)')
     parser.add_argument('--value-loss-coef', type=float, default=0.5,
@@ -147,6 +147,7 @@ def get_args():
     # Option Chain Parameters
     parser.add_argument('--base-node', default="Action",
                         help='The name of the lowest node in the option chain (generally should be Action)')
+
     # changepoint parameters
     parser.add_argument('--past-data-dir', default='',
                         help='directory to load data for computing minmax')
@@ -159,7 +160,7 @@ def get_args():
     parser.add_argument('--determiner', default='',
                         help='defines the determiner to use, using strings as defined in RewardFunctions.changepointDeterminers')
     parser.add_argument('--reward-form', default='',
-                        help='defines the kind of reward function to use, as defined in RewardFunctions.changepointReward')
+                        help='defines the kind of reward function to use, as defined in RewardFunctions.changepointReward, also: dense, x, bounce')
     parser.add_argument('--changepoint-name', default='changepoint',
                         help='name to save changepoint related values')
     parser.add_argument('--champ-parameters', default=["Paddle"], nargs='+',

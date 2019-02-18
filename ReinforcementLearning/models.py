@@ -120,10 +120,15 @@ class BasicModel(Model):
         self.hidden_size = self.num_inputs*factor*factor
         print("Network Sizes: ", self.num_inputs, self.num_inputs*factor*factor, self.insize)
         # self.l1 = nn.Linear(self.num_inputs, self.num_inputs*factor*factor)
-        self.l1 = nn.Linear(self.num_inputs,self.insize)
-        self.l2 = nn.Linear(self.num_inputs*factor*factor, self.insize)
-        self.layers.append(self.l1)
-        self.layers.append(self.l2)
+        if args.num_layers == 1:
+            self.l1 = nn.Linear(self.num_inputs,self.insize)
+        elif args.num_layers == 2:
+            self.l1 = nn.Linear(self.num_inputs,self.hidden_size)
+            self.l2 = nn.Linear(self.hidden_size, self.insize)
+        if args.num_layers > 0:
+            self.layers.append(self.l1)
+        if args.num_layers > 1:
+            self.layers.append(self.l2)
         self.train()
         self.reset_parameters()
 

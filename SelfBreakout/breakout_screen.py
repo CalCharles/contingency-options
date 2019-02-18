@@ -42,15 +42,15 @@ class Screen(RawEnvironment):
         self.render_frame()
 
     def render_frame(self):
-        self.frame = np.zeros((84,84))
+        self.frame = np.zeros((84,84), dtype = 'uint8')
         for block in self.blocks:
             if block.attribute == 1:
-                self.frame[block.pos[0]:block.pos[0]+block.height, block.pos[1]:block.pos[1]+block.width] = .5
+                self.frame[block.pos[0]:block.pos[0]+block.height, block.pos[1]:block.pos[1]+block.width] = .5 * 255
         for wall in self.walls:
-            self.frame[wall.pos[0]:wall.pos[0]+wall.height, wall.pos[1]:wall.pos[1]+wall.width] = .3
+            self.frame[wall.pos[0]:wall.pos[0]+wall.height, wall.pos[1]:wall.pos[1]+wall.width] = .3 * 255
         ball, paddle = self.ball, self.paddle
-        self.frame[ball.pos[0]:ball.pos[0]+ball.height, ball.pos[1]:ball.pos[1]+ball.width] = 1
-        self.frame[paddle.pos[0]:paddle.pos[0]+paddle.height, paddle.pos[1]:paddle.pos[1]+paddle.width] = .75
+        self.frame[ball.pos[0]:ball.pos[0]+ball.height, ball.pos[1]:ball.pos[1]+ball.width] = 1 * 255
+        self.frame[paddle.pos[0]:paddle.pos[0]+paddle.height, paddle.pos[1]:paddle.pos[1]+paddle.width] = .75 * 255
 
     def extracted_state(self):
         return np.array([obj.getMidpoint() for obj in self.objects], dtype=np.float64)

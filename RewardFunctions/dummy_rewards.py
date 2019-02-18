@@ -22,6 +22,7 @@ class BounceReward(ChangepointReward):
             self.desired_vel = self.desired_vels[3]
         self.traj_dim = 2 # SET THIS
         self.head, self.tail = get_edge(args.train_edge)
+        self.form = args.reward_form
 
 
     def compute_reward(self, states, actions):
@@ -56,8 +57,10 @@ class BounceReward(ChangepointReward):
                             rewards.append(10)
                             rewarded = True
             if not rewarded:
-                # rewards.append(-abs(proximity[0] / (proximity[1] + .05) * .05))
-                rewards.append(0)
+                if self.form == 'dense':
+                    rewards.append(-abs(proximity[0] / (proximity[1] + .1) * .1))
+                else:
+                    rewards.append(0)
         return pytorch_model.wrap(rewards, cuda=True)
 
 class Xreward(ChangepointReward):
