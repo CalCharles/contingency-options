@@ -373,6 +373,23 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
             states = model.transform_input(states)
             for delta, action, state in zip(deltas, actions, states):
                 model.weight[action,:] += self.lr * delta * state
+        if RL == 2: # breaks abstraction, but the Tabular Q learning update is model dependent
+            deltas, actions, states = loss
+            for delta, action, state in zip(deltas, actions, states):
+                # if len(state.shape) > 1:
+                #     state = state[0]
+                # print(state)
+                state = model.hash_function(state)
+                action = int(pytorch_model.unwrap(action))
+                if state not in model.Qtable:
+                    Aprob = torch.Tensor([model.initial_aprob for _ in range(model.num_outputs)]).cuda()
+                    Qval = torch.Tensor([model.initial_value for _ in range(model.num_outputs)]).cuda()
+                    model.Qtable[state] = Qval
+                    model.action_prob_table[state] = Aprob
+                # print(model.Qtable)
+                # print(self.lr, delta, state, model.Qtable[state][action])
+                model.Qtable[state][action] += self.lr * delta
+            # print(model.name, states,actions, model.Qtable[state], deltas)
         else:
             raise NotImplementedError("Check that Optimization is appropriate")
 
