@@ -188,9 +188,9 @@ class GaussianBasisModel(BasisModel):
             order_vector = []
             for i in range (self.order):
                 if not self.normalize:
-                    order_vector.append((minv + i * (maxv - minv) / (self.order - 1))/np.sqrt(2*self.period))
+                    order_vector.append((minv + i * (maxv - minv) / (self.order - 1)))
                 else:
-                    order_vector.append((i / (self.order - 1))/np.sqrt(2*self.period))
+                    order_vector.append((i / (self.order - 1)))
             self.order_vectors.append(pytorch_model.wrap(np.array(order_vector)))
         self.train()
         self.reset_parameters()
@@ -207,7 +207,7 @@ class GaussianBasisModel(BasisModel):
             basis = []
             for order_vector, val in zip(self.order_vectors, datapt):
                 # print ("input single", val)
-                basis.append(torch.exp(-(val - order_vector).pow(2)))
+                basis.append(torch.exp(-(val - order_vector).pow(2)/(2*self.period)))
             # print(basis)
             basis = torch.cat(basis)
             bat.append(basis)
