@@ -121,7 +121,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         #### logging
         if j % args.log_interval == 0:
             print("Qvalue and state", pytorch_model.unwrap(Q_vals.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
-            # print("probs and state", pytorch_model.unwrap(action_probs.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
+            print("probs and state", pytorch_model.unwrap(action_probs.squeeze()), pytorch_model.unwrap(current_state.squeeze()))
             for name in train_models.names():
                 if option_counter[name] > 0:
                     print(name, option_value[name] / option_counter[name], [option_actions[name][i]/option_counter[name] for i in range(len(option_actions[name]))])
