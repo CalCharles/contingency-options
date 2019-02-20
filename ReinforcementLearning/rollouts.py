@@ -189,14 +189,14 @@ class RolloutOptionStorage(object):
                 if self.buffer_steps > 0:
                     for i, ret in enumerate(self.returns[idx]):
                         # update the last ten returns
-                        print(i, 11-i)
+                        # print(i, 11-i)
                         if 11-i > 0:
                             for j in range(i, 11-i): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
                                 # print(self.returns[0], self.return_queue[-6+j])
                                 self.return_queue[idx, (-11+j+self.return_at) % self.buffer_steps] += torch.tensor(np.power(gamma, 10-j)).cuda() * self.returns[idx, i]
                     
                     for i, ret in enumerate(self.returns[idx]):
-                        print('copying', self.return_at + i)
+                        # print('copying', self.return_at + i)
                         self.return_queue[idx, self.return_at + i].copy_(ret)
         if self.buffer_steps > 0:
             self.return_at = (self.return_at + self.returns.size(1)) % self.buffer_steps
