@@ -320,12 +320,14 @@ class SARSA_optimizer(LearningOptimizer):
                     param.grad.data.clamp_(-1, 1)
             optimizer.step()
         if RL == 1: # breaks abstraction, but the SARSA update is model dependent
-            deltas, actions, states = loss
-            states = model.basis_fn(states)
-            states = torch.mm(states, model.basis_matrix)
-            # print (states, deltas)
-            for delta, action, state in zip(deltas, actions, states):
-                model.QFunction.weight[action,:] += self.lr * delta * state
+            model.QFunction.requires_grad = False
+            with torch.no_grad():
+                deltas, actions, states = loss
+                states = model.basis_fn(states)
+                states = torch.mm(states, model.basis_matrix)
+                # print (states, deltas)
+                for delta, action, state in zip(deltas, actions, states):
+                    model.QFunction.weight[action,:] += (self.lr * delta * state)
         else:
             raise NotImplementedError("Check that Optimization is appropriate")
 

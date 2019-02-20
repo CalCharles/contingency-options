@@ -50,7 +50,7 @@ class BasisModel(Model):
                 basis_size1 = self.dim * (self.order) ** self.num_stack
                 self.basis_size = basis_size1 + (self.order * self.num_inputs)
                 self.QFunction = nn.Linear((self.order) ** (self.num_inputs), self.num_outputs, bias=False)
-                self.basis_matrix = pytorch_model.wrap(np.concatenate((basis_matrix1, id_matrix), axis = 1))
+                self.basis_matrix = pytorch_model.wrap(np.concatenate((basis_matrix1, id_matrix), axis = 1), cuda=args.cuda)
                 # print(self.basis_matrix.shape)
             if self.layering == 2 or self.layering == 0:
                 basis_matrix2 = np.zeros(((self.num_inputs) * (self.order), self.num_stack * (self.order) ** self.dim))
@@ -68,13 +68,13 @@ class BasisModel(Model):
                     basis_matrix2 = basis_matrix2.T
                 basis_size2 = self.num_stack * (self.order) ** self.dim
                 self.basis_size = basis_size2 + (self.order * self.num_inputs)
-                self.basis_matrix = pytorch_model.wrap(np.concatenate((basis_matrix2, id_matrix), axis = 1))
+                self.basis_matrix = pytorch_model.wrap(np.concatenate((basis_matrix2, id_matrix), axis = 1), cuda=args.cuda)
                 # print(self.basis_matrix.shape)
                 # np.set_printoptions(threshold=np.nan)
                 # print("bm", basis_matrix2.T)
             if self.layering == 0:
                 self.basis_size = basis_size1 + basis_size2 + (self.order * self.num_inputs)
-                self.basis_matrix = pytorch_model.wrap(np.concatenate((basis_matrix1, basis_matrix2, id_matrix), axis = 1))
+                self.basis_matrix = pytorch_model.wrap(np.concatenate((basis_matrix1, basis_matrix2, id_matrix), axis = 1), cuda=args.cuda)
                 # print(self.basis_matrix.shape)
                 print(basis_matrix1.shape, basis_matrix2.shape, id_matrix.shape)
         elif self.variate == 3:
@@ -97,7 +97,7 @@ class BasisModel(Model):
             self.QFunction = nn.Linear((self.order) ** (self.num_inputs), self.num_outputs, bias=False)
         self.QFunction = nn.Linear(self.basis_size, self.num_outputs, bias=False)
         self.action_probs = nn.Linear(self.basis_size, self.num_outputs, bias=False)
-
+        self.basis_matrix.requires_grad = False
     def num_to_base(self, val, base, num_digits):
         num = []
         for _ in range(num_digits):
