@@ -15,10 +15,13 @@ class pytorch_model():
     @staticmethod
     def wrap(data, dtype=torch.float, cuda=True):
         # print(Variable(torch.Tensor(data).cuda()))
-        if cuda:
-            return Variable(torch.tensor(data, dtype=dtype).cuda())
+        if type(data) == torch.Tensor:
+            return data.clone().detach() 
         else:
-            return Variable(torch.tensor(data, dtype=dtype))
+            if cuda:
+                return Variable(torch.tensor(data, dtype=dtype).cuda())
+            else:
+                return Variable(torch.tensor(data, dtype=dtype))
 
     @staticmethod
     def unwrap(data):
@@ -43,7 +46,6 @@ class Model(nn.Module):
             self.minmax = (torch.cat([pytorch_model.wrap(minmax[0]).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(minmax[1]).cuda() for _ in range(args.num_stack)], dim=0))
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
-        self.layers = []
         self.critic_linear = nn.Linear(self.insize, 1)
         self.time_estimator = nn.Linear(self.insize, 1)
         self.QFunction = nn.Linear(self.insize, num_outputs)
@@ -59,17 +61,22 @@ class Model(nn.Module):
         relu_gain = nn.init.calculate_gain('relu')
         for layer in self.layers:
             if self.init_form == "uni":
-                nn.init.uniform_(layer.weight.data, 0.0, 1 / (layer.weight.data.shape[0] * 100)) 
-                nn.init.uniform_(layer.bias.data, 0.0, .1)
+                # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
+                nn.init.uniform_(layer.weight.data, 0.0, 1 / (layer.weight.data.shape[1] * 10))
+                if layer.bias is not None:                
+                    nn.init.uniform_(layer.bias.data, 0.0, .1)
             elif self.init_form == "xnorm":
                 torch.nn.init.xavier_normal_(layer.weight.data)
-                torch.nn.init.xavier_normal_(layer.bias.data)
+                if layer.bias is not None:                
+                    torch.nn.init.xavier_normal_(layer.bias.data)
             elif self.init_form == "xuni":
                 torch.nn.init.xavier_uniform_(layer.weight.data)
-                torch.nn.init.xavier_uniform_(layer.bias.data)
+                if layer.bias is not None:                
+                    torch.nn.init.xavier_uniform_(layer.bias.data)
             elif self.init_form == "eye":
                 torch.nn.init.eye_(layer.weight.data)
-                torch.nn.init.eye_(layer.bias.data)
+                if layer.bias is not None:                
+                    torch.nn.init.eye_(layer.bias.data)
 
         # nn.init.uniform_(self.critic_linear.weight.data, .9 / self.insize, 1.1 / self.insize)
         # nn.init.uniform_(self.time_estimator.weight.data, .9 / self.insize, 1.1 / self.insize)

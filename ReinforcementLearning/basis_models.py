@@ -19,8 +19,7 @@ class BasisModel(Model):
         self.order = factor + 1 # include zero order
         self.variate = args.num_layers % 10 # decide the relatinship
         self.layering = args.num_layers // 10 # defines different kinds of relationships
-        self.layers= []
-        self.period = args.eps
+        self.period = args.period
         self.base_vals = [i for i in range(self.order+1)]
 
         if self.variate == 1:
@@ -97,6 +96,10 @@ class BasisModel(Model):
             self.QFunction = nn.Linear((self.order) ** (self.num_inputs), self.num_outputs, bias=False)
         self.QFunction = nn.Linear(self.basis_size, self.num_outputs, bias=False)
         self.action_probs = nn.Linear(self.basis_size, self.num_outputs, bias=False)
+        print(self.layers)
+        self.layers[2] = self.QFunction
+        self.layers[3] = self.action_probs
+        self.reset_parameters()
 
     def num_to_base(self, val, base, num_digits):
         num = []
@@ -107,10 +110,10 @@ class BasisModel(Model):
         # num.reverse() # currently least to greatest
         return num
 
-    def reset_parameters(self):
-        relu_gain = nn.init.calculate_gain('relu')
-        nn.init.uniform_(self.action_probs.weight.data, .9 / self.num_outputs * 2, 1.1 / self.num_outputs * 2)
-        nn.init.uniform_(self.QFunction.weight.data, .9 / self.basis_size, 1.1 / self.basis_size)
+    # def reset_parameters(self):
+    #     relu_gain = nn.init.calculate_gain('relu')
+    #     nn.init.uniform_(self.action_probs.weight.data, 0, .1 / self.num_outputs * 2)
+    #     nn.init.uniform_(self.QFunction.weight.data, 0, .1 / self.basis_size)
 
     def forward(self, inputs):
         x = self.basis_fn(inputs) # TODO: dimension
@@ -207,7 +210,9 @@ class GaussianBasisModel(BasisModel):
             basis = []
             for order_vector, val in zip(self.order_vectors, datapt):
                 # print ("input single", val)
+                # print(val - order_vector)
                 basis.append(torch.exp(-(val - order_vector).pow(2)/(2*self.period)))
+                # print(basis)
             # print(basis)
             basis = torch.cat(basis)
             bat.append(basis)
