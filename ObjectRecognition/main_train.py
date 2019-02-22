@@ -11,6 +11,8 @@ python ObjectRecognition/main_train.py \
     --saliency 1.0 0.2 0.02 \
     --action_micp 1.0 0.2 \
     --premise_micp 1.0 0.2 0.1 0.1 \
+    --premise_path results/cmaes_soln/focus_self/paddle.npy
+    --premise_net ObjectRecognition/net_params/two_layer.json
     --boost ObjectRecognition/net_params/two_layer.json \
         results/cmaes_soln/focus_atari_breakout/42080_16.npy \
     --verbose
@@ -76,7 +78,7 @@ parser.add_argument('--premise_net', type=str,
                     help='path to network params for premise recognition')
 parser.add_argument('--verbose', action='store_true', default=False,
                     help='number of training iterations')
-parser.add_argument('--cheating', action='store_true', default=False,
+parser.add_argument('--cheating', choices=['ball', 'paddle', 'gaussian'],
                     help='plot model filter')
 args = parser.parse_args()
 logger.info('arguments: %s', str(args))
@@ -104,11 +106,11 @@ Game Construction
 if args.game == 'self':
     dataset = DatasetSelfBreakout(
         'SelfBreakout/runs',  # object dump path
-        'SelfBreakout/runs/0',  # run states
+        'SelfBreakout/runs/0',  # run states2
     )  # 10.0, 0.1, 1.0, 0.0005
 elif args.game == 'atari':
     # actor = partial(RandomConsistentPolicy, change_prob=0.35)
-    actor = partial(RotatePolicy, hold_count=8)
+    actor = partial(RotatePolicy, hold_count=5)
     dataset = DatasetAtari(
         'BreakoutNoFrameskip-v4',  # atari game name
         actor,  # mock actor

@@ -36,7 +36,7 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
                                       os.path.join('cmaes_soln', self.id)))
         self.max_niter = kwargs.get('max_niter', 100)
         self.nproc = kwargs.get('nproc', 1)
-        self.cheating = kwargs.get('cheating', False)
+        self.cheating = kwargs.get('cheating', None)
         self.file_id = 0
 
         # initialize CMA-ES core
@@ -74,7 +74,7 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
         # initialize pycma class
         xinit = np.random.rand(self.dim)-0.5  # [-0.5, 0.5]^n
         if self.cheating:  # for testing filter generality
-            xinit = util.cheat_init_center((10, 10), 3) 
+            xinit = util.cheat_init_center((10, 10), 3, self.cheating) 
             self.cmaes_params['popsize'] = 2
         self.cmaes = cma.CMAEvolutionStrategy(xinit, 1.0, self.cmaes_params)
 

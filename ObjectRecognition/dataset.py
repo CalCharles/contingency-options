@@ -38,6 +38,11 @@ class DatasetInterface:
         raise NotImplementedError
 
 
+    # reset state
+    def reset(self):
+        raise NotImplementedError
+
+
 class Dataset(DatasetInterface):
 
     # extract change points from game actions at list of time indices
@@ -62,6 +67,7 @@ class DatasetSelfBreakout(Dataset):
         self.frame_shape = (84, 84)
         self.n_state = kwargs.get('n_state', 1000)
         self.block_size = kwargs.get('block_size', 100000)
+        self.binarize = kwargs.get('binarize', None)
         self.frame_l, self.frame_r = 1, 0  # uninitialized frame interval
 
         self.actions = np.array(
@@ -105,6 +111,11 @@ class DatasetSelfBreakout(Dataset):
         return (self.n_state, 1,) + self.frame_shape
 
 
+    # reset state (do nothing)
+    def reset(self):
+        pass
+
+
     # load batch
     def _load_range(self, l):
         self.frame_l = l
@@ -112,6 +123,12 @@ class DatasetSelfBreakout(Dataset):
         self.frame_buffer = np.zeros((self.frame_r-self.frame_l, 1) + self.frame_shape)
         for idx in range(self.frame_l, self.frame_r):
             self.frame_buffer[idx-self.frame_l, :] = self._load_image(idx)
+
+
+        # binary to simplify image
+        if self.binarize:
+            self.frame_buffer[self.frame_buffer < self.binarize] = 0.0
+            self.frame_buffer[self.frame_buffer >= self.binarize] = 1.0
 
 
     # load a scene
@@ -172,6 +189,11 @@ class DatasetAtari(Dataset):
     # get history of actions associated with the frame
     def retrieve_action(self, idxs):
         return self.acts[idxs]
+
+
+    # reset state, generate new states
+    def reset(self):
+        self._generate_all_states()
 
 
     # generate all states

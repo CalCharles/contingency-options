@@ -60,17 +60,31 @@ def match_diffs(cp1, cp2, mask_length):
 
 
 # create fake filter
-def cheat_init_center(dim, extra):
+def cheat_init_center(dim, extra, mode):
     warnings.warn('using cheating filter initialization')
     cx = (dim[0]-1)/2
     cy = (dim[1]-1)/2
-    # c_filter = np.array([[np.sqrt((i-cx)**2 + (j-cy)**2)
-    #                       for j in range(dim[0])] for i in range(dim[1])])
-    # c_filter /= np.max(c_filter)
-    # invc_filter = (0.5 - c_filter)*2
-    invc_filter = np.array([[10.0 if abs(cx-i) < 1 and abs(cy-j) < 1 else 
-                            -20.0 if abs(cx-i) < 2 and abs(cy-j) < 2 else 0
-                             for j in range(dim[0])] for i in range(dim[1])])
+
+    if mode == 'paddle':
+        invc_filter = np.array([[10.0 if abs(cx-i) < 1 and abs(cy-j) < cy-1 else 
+                                -20.0 if abs(cx-i) < 2 and abs(cy-j) < cy else 0
+                                 for j in range(dim[0])] for i in range(dim[1])])
+    elif mode == 'ball':
+        invc_filter = np.array([[10.0 if abs(cx-i) < 1 and abs(cy-j) < 1 else 
+                                -20.0 if abs(cx-i) < 2 and abs(cy-j) < 2 else 0
+                                 for j in range(dim[0])] for i in range(dim[1])])
+    elif mode == 'gaussian':
+        c_filter = np.array([[np.sqrt((i-cx)**2 + (j-cy)**2)
+                              for j in range(dim[0])] for i in range(dim[1])])
+        c_filter /= np.max(c_filter)
+        invc_filter = (0.5 - c_filter)*2
+
     cheated = np.append(invc_filter.flatten(), [0.1]*extra)
     import matplotlib.pyplot as plt; plt.imshow(invc_filter); plt.title('cheating'); plt.show()
     return cheated
+
+
+# feature normalization by min and max
+def feature_normalize(arr):
+    mi, mx = np.min(arr), np.max(arr)
+    return (arr - mi) / (mx - mi)

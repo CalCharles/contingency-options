@@ -241,7 +241,7 @@ class CollectionMICPLoss(FocusLoss):
 
     # evaluate focus loss w.r.t premises
     def forward(self, focus):
-        changepoints = self.cp_detector.generate_changepoints(focus)
+        _, changepoints = self.cp_detector.generate_changepoints(focus)
         return self.agg_fn([micp_loss.forward(focus, changepoints)
                            for micp_loss in self.micp_losses])
 
