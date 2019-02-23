@@ -93,7 +93,6 @@ args = parser.parse_args()
 logger.info('arguments: %s', str(args))
 
 
-# TODO: cleaner way? add into CHAMP?
 # CHAMP parameters
 if args.champ == 'ball':
     logger.info('using CHAMP ball parameters')
@@ -136,7 +135,7 @@ Changepoint Detector
     - specify changepoint detector which fits the dynamic of the object
 """
 if args.champ:
-    cpd = CHAMPDetector(CHAMP_params)
+    cpd = CHAMPDetector('premise->object', CHAMP_params)
 else:
     logger.info('using simple linear changepoint detector')
     cpd = LinearCPD(np.pi/4.0)

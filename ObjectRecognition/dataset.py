@@ -133,7 +133,6 @@ class DatasetSelfBreakout(Dataset):
             low=0, 
             high=DatasetSelfBreakout.TOTAL_STATE-self.n_state)
         self._load_range(self.frame_l)
-        print('state %d to %d'%(self.frame_l + self.idx_offset, self.frame_r + self.idx_offset))
 
 
     # load batch

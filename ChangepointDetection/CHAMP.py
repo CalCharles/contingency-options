@@ -285,16 +285,16 @@ def generate_changepoints(model_classes, params, data):
 
 
 class CHAMPDetector(ChangepointDetector):
-    def __init__(self, args):
-        super(CHAMPDetector, self).__init__(args)
-        if args.champ_parameters[7] == 0:
+    def __init__(self, train_edge, champ_parameters):
+        super(CHAMPDetector, self).__init__(train_edge)
+        if champ_parameters[7] == 0:
             self.model_class = LinearDynamicalPositionFitter
-        elif args.champ_parameters[7] == 1:
+        elif champ_parameters[7] == 1:
             self.model_class = LinearDynamicalVelocityFitter
-        elif args.champ_parameters[7] == 2:
+        elif champ_parameters[7] == 2:
             self.model_class = LinearDynamicalDisplacementFitter
-        print(args.champ_parameters)
-        self.params = CHAMP_parameters(args.champ_parameters[0], args.champ_parameters[1], args.champ_parameters[2], args.champ_parameters[3], args.champ_parameters[4], args.champ_parameters[5], args.champ_parameters[6]) # paddle parameters (also change sigma in DynamicsModels)
+        print(champ_parameters)
+        self.params = CHAMP_parameters(champ_parameters[0], champ_parameters[1], champ_parameters[2], champ_parameters[3], champ_parameters[4], champ_parameters[5], champ_parameters[6]) # paddle parameters (also change sigma in DynamicsModels)
 
     def generate_changepoints(self, data, save_dict=False):
         seg_models, changepoints = generate_changepoints([self.model_class], self.params, data)
@@ -324,7 +324,7 @@ class CHAMPDetector(ChangepointDetector):
 if __name__ == "__main__":
     # python ChangepointDetection/CHAMP.py --train-edge "Action->Paddle" --record-rollouts data/random/ --champ-parameters "Paddle"
     args = get_args()
-    detector = CHAMPDetector(args)
+    detector = CHAMPDetector(args.train_edge, args.champ_parameters)
     data = detector.load_obj_dumps(args)
     models, changepoints = detector.generate_changepoints(data, save_dict=True)
     save_to_pickle(os.path.join(args.record_rollouts, 'detector-' + detector.head + '.pkl'), detector)
