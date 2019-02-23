@@ -66,7 +66,7 @@ class DatasetSelfBreakout(Dataset):
         self.state_path = state_path
         self.frame_shape = (84, 84)
         self.n_state = kwargs.get('n_state', 1000)
-        self.block_size = kwargs.get('block_size', 100000)
+        self.block_size = kwargs.get('block_size', 10000)
         self.binarize = kwargs.get('binarize', None)
         self.frame_l, self.frame_r = 1, 0  # uninitialized frame interval
 
@@ -74,6 +74,9 @@ class DatasetSelfBreakout(Dataset):
             get_individual_data('Action', obj_dumps, pos_val_hash=2))
         self.paddle_data = np.array(
             get_individual_data('Paddle', obj_dumps, pos_val_hash=1),
+            dtype=int)
+        self.ball_data = np.array(
+            get_individual_data('Ball', obj_dumps, pos_val_hash=1),
             dtype=int)
         
 
@@ -84,26 +87,33 @@ class DatasetSelfBreakout(Dataset):
 
     # get frame at index l to r
     def get_frame(self, l, r=None):
-        if r is None:
-            if not hasattr(l, '__iter__'): # get a frame
-                if l >= self.frame_r:  # move right
-                    self._load_range(l)
-                if l < self.frame_l:  # move left
-                    self._load_range(l-self.block_size+1)
-                return self.frame_buffer[l-self.frame_l]
-            else: # get many indexes
-                return np.array([self.get_frame(li) for li in l])
-        else:  # get frame in interval
-            frames = np.zeros((r-l, 1,) + self.frame_shape)
-            cur_idx = 0
-            while cur_idx+l < r:
-                self._load_range(cur_idx+l)
-                if self.frame_r > r:  # copy part of buffer
-                    frames[cur_idx:, ...] = self.frame_buffer[:r-l-cur_idx, ...]
-                else:  # copy everthing
-                    frames[cur_idx:self.frame_r-l, ...] = self.frame_buffer[:, ...]
-                cur_idx = self.frame_r-l
-            return frames
+        # get a frame
+        if r is None and not hasattr(l, '__iter__'):
+            if l >= self.frame_r:  # move right
+                self._load_range(l)
+            if l < self.frame_l:  # move left
+                self._load_range(l-self.block_size+1)
+            return self.frame_buffer[l-self.frame_l]
+
+        # get many indexes
+        elif r is None:
+            return np.array([self.get_frame(li) for li in l])
+
+        # if still in buffer
+        elif self.frame_l <= l and r <= self.frame_r:
+            return self.frame_buffer[l-self.frame_l:r-self.frame_l]
+
+        # if out of buffer
+        frames = np.zeros((r-l, 1,) + self.frame_shape)
+        cur_idx = 0
+        while cur_idx+l < r:
+            self._load_range(cur_idx+l)
+            if self.frame_r > r:  # copy part of buffer
+                frames[cur_idx:, ...] = self.frame_buffer[:r-l-cur_idx, ...]
+            else:  # copy everthing
+                frames[cur_idx:self.frame_r-l, ...] = self.frame_buffer[:, ...]
+            cur_idx = self.frame_r-l
+        return frames
 
 
     # get frame size
@@ -118,6 +128,10 @@ class DatasetSelfBreakout(Dataset):
 
     # load batch
     def _load_range(self, l):
+        if self.frame_l == l:
+            # already loaded, do nothing
+            return
+
         self.frame_l = l
         self.frame_r = l + self.block_size
         self.frame_buffer = np.zeros((self.frame_r-self.frame_l, 1) + self.frame_shape)

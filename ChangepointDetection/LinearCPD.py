@@ -1,6 +1,7 @@
 import numpy as np
 
 from ChangepointDetection.ChangepointDetectorBase import ChangepointDetector
+from ChangepointDetection.DynamicsModels import LinearDynamicalParams
 
 
 EPS = 1e-8

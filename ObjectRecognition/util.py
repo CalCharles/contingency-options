@@ -37,9 +37,9 @@ def mean_square_deviation(xs, ys):
 
 
 # hinged mean deviation
-def hinged_mean_square_deviation(xs, ys):
-    ALPHA = (0.1)**2
-    return np.max([np.mean((xs-ys)**2) - ALPHA, 0])
+def hinged_mean_square_deviation(xs, ys, alpha_d):
+    ALPHA = (alpha_d)**2
+    return np.max([np.sum((xs-ys)**2) - ALPHA, 0])
 
 
 # turn list of event numbers to boolean mask

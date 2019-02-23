@@ -195,6 +195,7 @@ if __name__ == '__main__':
         dataset = DatasetSelfBreakout(
             'SelfBreakout/runs',  # object dump path
             'SelfBreakout/runs/0',  # run states
+            binarize=0.1,
         )  # 10.0, 0.1, 1.0, 0.0005
     elif args.game == 'atari':
         actor = partial(RotatePolicy, hold_count=7)

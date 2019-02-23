@@ -25,7 +25,11 @@ class OptimizerInterface:
         raise NotImplementedError
 
 
-# wrapper for pycma
+"""
+wrapper for pycma
+cmaes_params details:
+    http://cma.gforge.inria.fr/apidocs-pycma/cma.evolution_strategy.CMAEvolutionStrategy.html
+"""
 class CMAEvolutionStrategyWrapper(OptimizerInterface):
 
     def __init__(self, dim, *args, **kwargs):
