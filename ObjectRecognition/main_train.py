@@ -50,6 +50,8 @@ parser.add_argument('game', choices=['self', 'atari'],
                     help='game name to train with')
 parser.add_argument('net',
                     help='network params JSON file')
+parser.add_argument('--n_state', type=int, default=1000,
+                    help='number of states in an episode')
 parser.add_argument('--binarize', type=float, default=None,
                     help='game binarize threshold')
 parser.add_argument('--niter', type=int, default=40,
@@ -114,6 +116,7 @@ if args.game == 'self':
     dataset = DatasetSelfBreakout(
         'SelfBreakout/runs',  # object dump path
         'SelfBreakout/runs/0',  # run states2
+        n_state=args.n_state,  # set max number of states
         binarize=args.binarize,  # binarize image to 0 and 1
     )  # 10.0, 0.1, 1.0, 0.0005
 elif args.game == 'atari':
@@ -122,7 +125,7 @@ elif args.game == 'atari':
     dataset = DatasetAtari(
         'BreakoutNoFrameskip-v4',  # atari game name
         actor,  # mock actor
-        n_state=2000,  # set max number of states
+        n_state=args.n_state,  # set max number of states
         save_path='results',  # save path for gym
         binarize=args.binarize,  # binarize image to 0 and 1
     )

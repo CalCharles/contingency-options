@@ -6,7 +6,7 @@ logging.basicConfig(format='%(levelname)s [%(asctime)s]: %(message)s', level=log
 logger = logging.getLogger(__name__)
 
 
-# picklable placeholder for recognition_train
+# placeholder for recognition_train
 class Trainer():
     def __init__(self, dataset, model, loss_fn, verbose=False):
         self.dataset = dataset
@@ -22,6 +22,9 @@ class Trainer():
             logger.info('loss evaluated= %f\n', loss)
         return loss
 
+    def reset(self):
+        self.dataset.reset()
+
 
 def recognition_train(dataset, model, loss_fn, optimizer, verbose=False):
     """
@@ -32,4 +35,4 @@ def recognition_train(dataset, model, loss_fn, optimizer, verbose=False):
     :param optimizer:   optimizer with method optimize(callback)
     """
     trainer = Trainer(dataset, model, loss_fn, verbose=verbose)
-    return optimizer.optimize(trainer.evaluate_model)
+    return optimizer.optimize(trainer.evaluate_model, clear_fn=trainer.reset)

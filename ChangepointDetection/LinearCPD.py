@@ -27,13 +27,3 @@ class LinearCPD(ChangepointDetector):
 			np.linalg.norm(d_diff, axis=1)[1:] > EPS)
 		changepoints = np.where(cp_mask)[0] + 1  # shift forward
 		return dummy_model(), changepoints
-
-
-		"""
-		TODO: add this
-		self.A = None
-        self.sigma = sigma # initialize sigma to 1 for now (.01 for paddle)
-        self.logLikelihood = 0
-        self.data = None
-        """
-        
