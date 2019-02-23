@@ -153,7 +153,7 @@ class ModelFocusCNN(ModelFocus):
 
 
     # push input forward
-    def forward(self, img, prev_out=None):
+    def forward(self, img, prev_out=None, ret_extra=False):
         out = img
         for layer in self.layers:
             out = layer(out)
@@ -161,8 +161,11 @@ class ModelFocusCNN(ModelFocus):
             pfilter = prior_filter(prev_out, out.size())
             pfilter = torch.from_numpy(pfilter).float()
             out = torch.mul(out, pfilter)
-        out = self.argmax_xy(out)
-        return out
+        focus_out = self.argmax_xy(out)
+
+        if ret_extra:
+            return focus_out, out.detach().numpy()
+        return focus_out
 
 
     # pick max coordinate
@@ -204,21 +207,36 @@ class ModelFocusCNN(ModelFocus):
 
 
     # Run forward on model with full dataset from game environment
-    def forward_all(self, game_env, batch_size=100):
+    def forward_all(self, game_env, batch_size=100, ret_extra=False):
         outputs = np.zeros((game_env.n_state,)+self.output_size(), dtype=float)
+        extra = np.array([])
         if self.use_prior:
             prev_out = None
             for i in range(game_env.n_state):
                 frames = game_env.get_frame(i, i+1)  # batch format
                 frames = torch.from_numpy(frames).float()
-                prev_out = self.forward(frames, prev_out=prev_out)
-                outputs[i, ...] = prev_out
+                forward_out = self.forward(frames, prev_out=prev_out, 
+                                        ret_extra=ret_extra)
+                if ret_extra:
+                    extra = np.vstack([extra, forward_out[1]]) \
+                            if extra.size else forward_out[1]
+                    forward_out = forward_out[0]
+                prev_out = forward_out
+                outputs[i, ...] = forward_out
         else:
             for l in range(0, game_env.n_state, batch_size):
                 r = min(l + batch_size, game_env.n_state)
                 frames = game_env.get_frame(l, r)
                 frames = torch.from_numpy(frames).float()
-                outputs[l:r, ...] = self.forward(frames)
+                forward_out = self.forward(frames, ret_extra=ret_extra)
+                if ret_extra:
+                    extra = np.vstack([extra, forward_out[1]]) \
+                            if extra.size else forward_out[1]
+                    forward_out = forward_out[0]
+                outputs[l:r, ...] = forward_out
+
+        if ret_extra:
+            return outputs, extra
         return outputs
 
 
@@ -293,7 +311,8 @@ class ModelFocusBoost(ModelFocus):
     def forward_all(self, game_env, batch_size=100):
         # TODO: proper game_env get frames interface
         all_frames = game_env.get_frame(0, game_env.n_state)
-        out = self.forward(torch.from_numpy(all_frames).float(), batch_size=100)
+        out = self.forward(torch.from_numpy(all_frames).float(),
+                           batch_size=100)
         return out
 
 

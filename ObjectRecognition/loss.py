@@ -41,6 +41,7 @@ class SaliencyLoss(FocusLoss):
         self.frame_dev_coeff = kwargs.get('frame_dev_coeff', 1.0)
         self.focus_dev_coeff = kwargs.get('focus_dev_coeff', 1.0)
         self.frame_var_coeff = kwargs.get('frame_var_coeff', 1.0)
+        self.belief_dev_coeff = kwargs.get('belief_dev_coeff', 1.0)
         self.verbose = kwargs.get('verbose', False)
 
 
@@ -55,12 +56,14 @@ class SaliencyLoss(FocusLoss):
         frame_dev = self._deviation_1(frames)
         focus_dev = self._deviation_2(focus)
         frame_var = self._variance(frames)
+        belief_dev = self._belief_deviation(frames)
         if self.verbose:
             logger.info('frame_dev= %f, focus_dev= %f, frame_var= %f'%(
                         frame_dev, focus_dev, frame_var))
         return  self.frame_dev_coeff*frame_dev \
             + self.focus_dev_coeff*focus_dev \
-            - self.frame_var_coeff*frame_var
+            - self.frame_var_coeff*frame_var \
+            - self.belief_dev_coeff*belief_dev
 
 
     # feature deviation from consecutive elements
@@ -94,6 +97,22 @@ class SaliencyLoss(FocusLoss):
         """
         return np.mean(np.var(features.reshape((features.shape[0], -1)), axis=1))
 
+
+    # belief change by frame deviation
+    def _belief_deviation(self, features):
+        r"""
+        metric to penalize changing focus to 
+        """
+        return 0 # np.mean(np.var(features.reshape((features.shape[0], -1)), axis=1))
+
+
+
+    # frame non-uniformity to filter out blank frame
+    def _variance(self, features):
+        r"""
+        metric for non-uniformity, variance
+        """
+        return np.mean(np.var(features.reshape((features.shape[0], -1)), axis=1))
 
     def __str__(self, prefix=''):
         return prefix + 'SaliencyLoss: frame_dev= %g, focus_dev= %g, frame_var= %g'%(
@@ -241,7 +260,7 @@ class CollectionMICPLoss(FocusLoss):
 
     # evaluate focus loss w.r.t premises
     def forward(self, focus):
-        changepoints = self.cp_detector.generate_changepoints(focus)
+        _, changepoints = self.cp_detector.generate_changepoints(focus)
         return self.agg_fn([micp_loss.forward(focus, changepoints)
                            for micp_loss in self.micp_losses])
 
