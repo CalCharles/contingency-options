@@ -11,6 +11,8 @@ python ObjectRecognition/main_train.py \
     --saliency 1.0 0.2 0.02 \
     --action_micp 1.0 0.2 \
     --premise_micp 1.0 0.2 0.1 0.1 \
+    --premise_path results/cmaes_soln/focus_self/paddle.npy
+    --premise_net ObjectRecognition/net_params/two_layer.json
     --boost ObjectRecognition/net_params/two_layer.json \
         results/cmaes_soln/focus_atari_breakout/42080_16.npy \
     --verbose
@@ -48,8 +50,12 @@ parser.add_argument('game', choices=['self', 'atari'],
                     help='game name to train with')
 parser.add_argument('net',
                     help='network params JSON file')
+parser.add_argument('--binarize', type=float, default=None,
+                    help='game binarize threshold')
 parser.add_argument('--niter', type=int, default=40,
                     help='number of training iterations')
+parser.add_argument('--popsize', type=int, default=20,
+                    help='CMA-ES population size')
 parser.add_argument('--nproc', type=int, default=1,
                     help='number of processors')
 parser.add_argument('--champ', choices=['ball', 'paddle'],
@@ -59,9 +65,12 @@ parser.add_argument('--boost', type=str, nargs=2, default=None,
                     help='train boost on top')
 parser.add_argument('--prior', action='store_true', default=False,
                     help='use focus prior filter')  # move into net_params?
-parser.add_argument('--saliency', type=float, nargs=3, default=None,
-                    metavar=('FRAME-DEV', 'FOCUS-DEV', 'FRAME-VAR'),
+parser.add_argument('--saliency', type=float, nargs=4, default=None,
+                    metavar=('FRAME-DEV', 'FOCUS-DEV', 'FRAME-VAR', 
+                             'BELIEF-DEV'),
                     help='coefficients for saliency loss (3)')
+parser.add_argument('--hinge_dist', type=float, default=0.2,
+                    help='hinge distance for focus deviation')
 parser.add_argument('--action_micp', type=float, nargs=2, default=None,
                     metavar=('MATCH', 'DIFFS'),
                     help='coefficients for action MICP loss (2)')
@@ -76,7 +85,7 @@ parser.add_argument('--premise_net', type=str,
                     help='path to network params for premise recognition')
 parser.add_argument('--verbose', action='store_true', default=False,
                     help='number of training iterations')
-parser.add_argument('--cheating', action='store_true', default=False,
+parser.add_argument('--cheating', choices=['ball', 'paddle', 'gaussian'],
                     help='plot model filter')
 args = parser.parse_args()
 logger.info('arguments: %s', str(args))
@@ -104,17 +113,18 @@ Game Construction
 if args.game == 'self':
     dataset = DatasetSelfBreakout(
         'SelfBreakout/runs',  # object dump path
-        'SelfBreakout/runs/0',  # run states
+        'SelfBreakout/runs/0',  # run states2
+        binarize=args.binarize,  # binarize image to 0 and 1
     )  # 10.0, 0.1, 1.0, 0.0005
 elif args.game == 'atari':
     # actor = partial(RandomConsistentPolicy, change_prob=0.35)
-    actor = partial(RotatePolicy, hold_count=8)
+    actor = partial(RotatePolicy, hold_count=5)
     dataset = DatasetAtari(
         'BreakoutNoFrameskip-v4',  # atari game name
         actor,  # mock actor
         n_state=2000,  # set max number of states
         save_path='results',  # save path for gym
-        binarize=0.1,
+        binarize=args.binarize,  # binarize image to 0 and 1
     )
 
 
@@ -186,10 +196,13 @@ seq_loss = []
 if args.saliency:
     saliencyloss = SaliencyLoss(
         dataset,
-        c_fn_2=util.hinged_mean_square_deviation,
-        frame_dev_coeff=args.saliency[0],  # 1.0,
-        focus_dev_coeff=args.saliency[1],  # 0.2,
-        frame_var_coeff=args.saliency[2],  # 0.02,
+        c_fn_2=partial(util.hinged_mean_square_deviation, 
+                       alpha_d=args.hinge_dist),  # 0.2
+        frame_dev_coeff=args.saliency[0],  # 1.0
+        focus_dev_coeff=args.saliency[1],  # 0.2
+        frame_var_coeff=args.saliency[2],  # 0.02
+        belief_dev_coeff=args.saliency[3],  # ???
+        nb_size= (10, 10),  # TODO: auto-parameter?
         verbose=args.verbose,
     )
     seq_loss.append(saliencyloss)
@@ -234,6 +247,9 @@ cmaes_opt = CMAEvolutionStrategyWrapper(
     max_niter=args.niter,
     nproc=args.nproc,
     cheating=args.cheating,
+    cmaes_params={
+        'popsize': args.popsize,
+    },
 )
 
 

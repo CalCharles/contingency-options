@@ -86,6 +86,15 @@ def plot_focus(dataset, indices, all_focus):
     plt.show()
 
 
+def save_imgs(imgs, save_path):
+    save_subpath = get_dir(os.path.join(save_path, 'intensity'))
+    for i, img in enumerate(imgs):
+        file_name = 'intensity_%d.png'%(i)
+        file_path = os.path.join(save_subpath, file_name)
+        imsave(file_path, util.feature_normalize(img[0]))
+    print('focus intensity saved under', save_subpath)
+
+
 def save_focus_img(dataset, all_focus, save_path, changepoints=None):
     focus_img = util.extract_neighbor(
         dataset,
@@ -116,19 +125,19 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=None):
     print('focus by marker saved under', save_subpath)
 
 
-
 def report_model(dataset, model, prefix, plot_flags, cpd):
     focus_img_dir = get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
-    focus = model.forward_all(dataset, batch_size=400)
+    focus = model.forward_all(dataset, batch_size=400, 
+                              ret_extra=plot_flags['plot_intensity'])
+    if plot_flags['plot_intensity']:
+        save_imgs(focus[1], focus_img_dir)
+        focus = focus[0]
+
     if plot_flags['plot_focus']:
         # compute changepoints if needed
         changepoints = None
         if plot_flags['plot_cp']:
-            changepoints = cpd.generate_changepoints(focus)
-            # _, changepoints = CHAMP.generate_changepoints(
-            #     [LinearDynamicalDisplacementFitter],
-            #     CHAMP.CHAMP_parameters(15, 10, 2, 100, 100, 2, 1),  # ball
-            #     focus)
+            _, changepoints = cpd.generate_changepoints(focus)
 
         # plot and save into directories
         save_focus_img(dataset, focus, focus_img_dir, changepoints)
@@ -157,6 +166,8 @@ if __name__ == '__main__':
                         help='plot focus neighborhood and save to directory')
     parser.add_argument('--plot-cp', action='store_true', default=False,
                         help='indicate changepoint frames (with --plot-focus)')
+    parser.add_argument('--plot-intensity', action='store_true', default=False,
+                        help='plot focus intensity (output before argmax)')
     args = parser.parse_args()
 
     prefix = args.dir
@@ -165,6 +176,7 @@ if __name__ == '__main__':
         'plot_filter': args.plot_filter,
         'plot_focus': args.plot_focus,
         'plot_cp': args.plot_cp,
+        'plot_intensity': args.plot_intensity,
     }
 
     # CHAMP parameters
@@ -183,14 +195,16 @@ if __name__ == '__main__':
         dataset = DatasetSelfBreakout(
             'SelfBreakout/runs',  # object dump path
             'SelfBreakout/runs/0',  # run states
+            binarize=0.1,
         )  # 10.0, 0.1, 1.0, 0.0005
     elif args.game == 'atari':
-        actor = partial(RotatePolicy, hold_count=8)
+        actor = partial(RotatePolicy, hold_count=7)
         dataset = DatasetAtari(
             'BreakoutNoFrameskip-v4',  # atari game name
             actor,  # mock actor
             n_state=1000,  # set max number of states
             save_path='results',  # save path for gym
+            binarize=0.1,
         )
 
     """
