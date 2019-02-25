@@ -1,5 +1,6 @@
 import os
 from SelfBreakout.breakout_screen import Screen
+from SelfBreakout.paddle import Paddle
 from Environments.environment_specification import RawEnvironment
 from file_management import get_edge
 
