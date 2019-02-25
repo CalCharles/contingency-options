@@ -49,7 +49,6 @@ class BasisModel(Model):
                     basis_matrix1 = basis_matrix1.T
                 basis_size1 = self.dim * (self.order) ** self.num_stack
                 self.basis_size = basis_size1 + (self.order * self.num_inputs)
-                self.QFunction = nn.Linear((self.order) ** (self.num_inputs), self.num_outputs, bias=False)
                 self.basis_matrix = pytorch_model.wrap(np.concatenate((basis_matrix1, id_matrix), axis = 1), cuda=args.cuda)
                 # print(self.basis_matrix.shape)
             if (self.layering == 2 or self.layering == 0) and self.num_stack > 1:

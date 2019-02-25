@@ -92,7 +92,7 @@ class LearningOptimizer():
             next_rollout_returns = rollouts.returns[reward_index, 1:]
             rollout_rewards = rollouts.rewards[reward_index,:]
             epsilon_eval = rollouts.epsilon[:-1]
-        print(epsilon_eval)
+        # print(epsilon_eval)
         # print(state_eval.shape, current_state_eval.shape, next_current_state_eval.shape, action_eval.shape, rollout_returns.shape, rollout_rewards.shape, next_state_eval.shape, next_rollout_returns.shape, q_eval.shape, next_q_eval.shape)
         return state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval
 
