@@ -59,6 +59,7 @@ class Dataset(DatasetInterface):
 
 # breakout saved scene loading, handle block loading
 class DatasetSelfBreakout(Dataset):
+    TOTAL_STATE = 10000  # TODO: realize this?
 
     def __init__(self, objdump_path, state_path, *args, **kwargs):
         super(DatasetSelfBreakout, self).__init__()
@@ -68,7 +69,9 @@ class DatasetSelfBreakout(Dataset):
         self.n_state = kwargs.get('n_state', 1000)
         self.block_size = kwargs.get('block_size', 10000)
         self.binarize = kwargs.get('binarize', None)
-        self.frame_l, self.frame_r = 1, 0  # uninitialized frame interval
+        self.frame_l, self.frame_r = 0, -1  # uninitialized frame interval
+
+        self.block_size = min(self.block_size, self.n_state)
 
         self.actions = np.array(
             get_individual_data('Action', obj_dumps, pos_val_hash=2))
@@ -78,6 +81,8 @@ class DatasetSelfBreakout(Dataset):
         self.ball_data = np.array(
             get_individual_data('Ball', obj_dumps, pos_val_hash=1),
             dtype=int)
+
+        self.reset()
         
 
     # retrieve selected actions associated with frames
@@ -123,21 +128,20 @@ class DatasetSelfBreakout(Dataset):
 
     # reset state (do nothing)
     def reset(self):
-        pass
+        # to simulate generating new episode
+        self.idx_offset = np.random.randint(
+            low=0, 
+            high=DatasetSelfBreakout.TOTAL_STATE-self.n_state)
+        self._load_range(self.frame_l)
 
 
     # load batch
     def _load_range(self, l):
-        if self.frame_l == l:
-            # already loaded, do nothing
-            return
-
         self.frame_l = l
         self.frame_r = l + self.block_size
         self.frame_buffer = np.zeros((self.frame_r-self.frame_l, 1) + self.frame_shape)
         for idx in range(self.frame_l, self.frame_r):
             self.frame_buffer[idx-self.frame_l, :] = self._load_image(idx)
-
 
         # binary to simplify image
         if self.binarize:
@@ -156,7 +160,9 @@ class DatasetSelfBreakout(Dataset):
 
     # image path
     def _get_image_path(self, idx):
-        return os.path.join(self.state_path, 'state%d.png'%(idx))
+        # to simulate generating new episode
+        real_idx = idx + self.idx_offset
+        return os.path.join(self.state_path, 'state%d.png'%(real_idx))
 
 
 # access to atari games
