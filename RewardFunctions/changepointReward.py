@@ -40,6 +40,7 @@ class ChangepointReward():
         else:
             correlate_trajectory = get_individual_data(self.tail[0], obj_dumps, pos_val_hash=1)
             merged = np.concatenate([trajectory, correlate_trajectory], axis=1)
+            # print(pytorch_model.wrap(merged))
         return pytorch_model.wrap(merged).cuda()
 
 

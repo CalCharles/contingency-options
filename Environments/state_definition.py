@@ -27,6 +27,33 @@ class Relationship():
 		'''
 		pass
 
+class Velocity(): # prox
+	def __init__(self):
+		self.lastpos = None
+
+	def compute_comparison(self, state, target, correlate):
+		if self.lastpos is None:
+			self.lastpos = np.array(state[1][correlate][0])
+		rval= (np.array(state[1][correlate][0]) - self.lastpos).tolist()
+		self.lastpos = np.array(state[1][correlate][0])
+		return rval
+
+class Acceleration(): # prox
+	def __init__(self):
+		self.llpos = None
+		self.lastpos = None
+
+	def compute_comparison(self, state, target, correlate):
+		if self.lastpos is None:
+			self.lastpos = np.array(state[1][correlate][0])
+			self.llpos = np.array(state[1][correlate][0])
+		rval= ((np.array(state[1][correlate][0]) - self.lastpos) - (self.lastpos - self.llpos)).tolist()
+		self.llpos = self.lastpos
+		self.lastpos = np.array(state[1][correlate][0])
+		return rval
+
+
+
 class Proximity(): # prox
 	def compute_comparison(self, state, target, correlate):
 		return midpoint_separation((np.array(state[1][target][0]), np.array(state[1][correlate][0])))
@@ -159,10 +186,10 @@ def compute_minmax(state_function, pth):
 
 
 
-state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), "xprox": XProximity(),
+state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), "vel": Velocity(), "acc": Acceleration(), "xprox": XProximity(),
 							"feature": Feature(), "raw": Raw(), "sub": Sub()}
 # TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ
-state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "feature": [1], "raw": [64, 64], "sub": [4,4]}
+state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "acc": [2], "feature": [1], "raw": [64, 64], "sub": [4,4]}
 # class GetRaw(StateGet):
 # 	'''
 # 	Returns the raw_state

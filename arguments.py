@@ -16,7 +16,7 @@ def get_args():
                         help='RMSprop optimizer apha (default: 0.99)')
     parser.add_argument('--betas', type=float, nargs=2, default=(0.9, 0.999),
                         help='Adam optimizer betas (default: (0.9, 0.999))')
-    parser.add_argument('--weight-decay', type=float, default=0.01,
+    parser.add_argument('--weight-decay', type=float, default=0.00,
                         help='Adam optimizer l2 norm constant (default: 0.01)')
     parser.add_argument('--gamma', type=float, default=0.99,
                         help='discount factor for rewards (default: 0.99)')
@@ -44,6 +44,8 @@ def get_args():
                         help='optimizer to use: Adam, RMSprop, Evol')
     parser.add_argument('--init-form', default="uni",
                     help='initialization to use: uni, xnorm, xuni, eye')
+    parser.add_argument('--model-form', default="",
+                        help='choose the model form, which is defined in ReinforcementLearning.models')
     # state hyperparameters
     parser.add_argument('--normalize', action='store_true', default=False,
                         help='Normalized inputs for the neural network/function approximator')
@@ -55,7 +57,7 @@ def get_args():
                         help='decides how often distributional interval is computed')
     parser.add_argument('--exp-beta', type=float, default=0.1,
                         help='beta value in exponential distribution')
-    parser.add_argument('--dist-coef', type=float, default=0.5,
+    parser.add_argument('--dist-coef', type=float, default=1e-5,
                         help='the coefficient used for determining the loss value of the distribution')
 
 
@@ -92,6 +94,8 @@ def get_args():
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,
                     help='percentage of random actions in epsilon greedy')
+    parser.add_argument('--greedy-epsilon-decay', type=float, default=-1,
+                    help='greedy epsilon decays by half every n updates (-1 is for no use)')
     parser.add_argument('--behavior-policy', default='',
                         help='defines the behavior policy, as defined in BehaviorPolicies.behavior_policies')
 
@@ -100,8 +104,6 @@ def get_args():
     parser.add_argument('--pretrain-iterations', type=int, default=-1,
                     help='number of time steps to run the pretrainer using PPO on optimal demonstration data, -1 means not used (default: -1)')
     # Reinforcement model settings
-    parser.add_argument('--model-form', default="",
-                        help='choose the model form, which is defined in ReinforcementLearning.models')
     parser.add_argument('--optimizer-form', default="",
                         help='choose the optimizer form, which is defined in ReinforcementLearning.learning_algorithms')
     parser.add_argument('--state-forms', default=[""], nargs='+',
@@ -134,6 +136,8 @@ def get_args():
                         help='save interval, one save per n updates (default: 10)')
     parser.add_argument('--save-dir', default='./trained_models/',
                         help='directory to save data when adding edges')
+    parser.add_argument('--save-recycle', type=int, default=10000,
+                        help='only saves the last n timesteps (-1 if not used)')
     parser.add_argument('--record-rollouts', default="",
                         help='path to where rollouts are recorded (when adding edges, where data was recorded to compute min/max)')
     parser.add_argument('--changepoint-dir', default='./data/optgraph/',

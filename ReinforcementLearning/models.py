@@ -32,18 +32,20 @@ class pytorch_model():
         return torch.cat(data, dim=axis)
 
 class Model(nn.Module):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None):
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
         super(Model, self).__init__()
         num_inputs = int(num_inputs)
         num_outputs = int(num_outputs)
         self.num_layers = args.num_layers
         if args.num_layers == 0:
             self.insize = num_inputs
-        else:
+        elif args.num_layers == 1:
             self.insize = max(num_inputs * num_outputs * factor * factor, num_inputs * num_outputs)
+        else:
+            self.insize = max(num_inputs * num_outputs * factor, num_inputs * num_outputs)
         self.minmax = minmax
         if minmax is not None:
-            self.minmax = (torch.cat([pytorch_model.wrap(minmax[0]).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(minmax[1]).cuda() for _ in range(args.num_stack)], dim=0))
+            self.minmax = (torch.cat([pytorch_model.wrap(minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
         self.critic_linear = nn.Linear(self.insize, 1)
@@ -63,20 +65,14 @@ class Model(nn.Module):
             if self.init_form == "uni":
                 # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
                 nn.init.uniform_(layer.weight.data, 0.0, 1 / (layer.weight.data.shape[1] * 10))
-                if layer.bias is not None:                
-                    nn.init.uniform_(layer.bias.data, 0.0, .1)
             elif self.init_form == "xnorm":
                 torch.nn.init.xavier_normal_(layer.weight.data)
-                if layer.bias is not None:                
-                    torch.nn.init.xavier_normal_(layer.bias.data)
             elif self.init_form == "xuni":
                 torch.nn.init.xavier_uniform_(layer.weight.data)
-                if layer.bias is not None:                
-                    torch.nn.init.xavier_uniform_(layer.bias.data)
             elif self.init_form == "eye":
                 torch.nn.init.eye_(layer.weight.data)
-                if layer.bias is not None:                
-                    torch.nn.init.eye_(layer.bias.data)
+            if layer.bias is not None:                
+                nn.init.uniform_(layer.bias.data, 0.0, 1e-6)
 
         # nn.init.uniform_(self.critic_linear.weight.data, .9 / self.insize, 1.1 / self.insize)
         # nn.init.uniform_(self.time_estimator.weight.data, .9 / self.insize, 1.1 / self.insize)
@@ -120,11 +116,11 @@ class Model(nn.Module):
     def save(self, pth):
         torch.save(self, pth + self.name + ".pt")
 
-class BasicModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None):
-        super(BasicModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax)
+class BasicModel(Model):    
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
+        super(BasicModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
         factor = int(args.factor)
-        self.hidden_size = self.num_inputs*factor*factor
+        self.hidden_size = self.num_inputs*factor*factor // min(2,factor)
         print("Network Sizes: ", self.num_inputs, self.num_inputs*factor*factor, self.insize)
         # self.l1 = nn.Linear(self.num_inputs, self.num_inputs*factor*factor)
         if args.num_layers == 1:
@@ -132,10 +128,16 @@ class BasicModel(Model):
         elif args.num_layers == 2:
             self.l1 = nn.Linear(self.num_inputs,self.hidden_size)
             self.l2 = nn.Linear(self.hidden_size, self.insize)
+        elif args.num_layers == 3:
+            self.l1 = nn.Linear(self.num_inputs,self.hidden_size)
+            self.l2 = nn.Linear(self.hidden_size,self.hidden_size//factor)
+            self.l3 = nn.Linear(self.hidden_size, self.insize)
         if args.num_layers > 0:
             self.layers.append(self.l1)
         if args.num_layers > 1:
             self.layers.append(self.l2)
+        if args.num_layers > 2:
+            self.layers.append(self.l3)
         self.train()
         self.reset_parameters()
 
@@ -159,6 +161,7 @@ class BasicModel(Model):
         # print(x.shape)
         if self.minmax is not None and self.use_normalize:
             x = self.normalize(x)
+        # print("normin", x)
         if self.num_layers > 0:
             x = self.l1(x)
             x = F.relu(x)
@@ -168,6 +171,7 @@ class BasicModel(Model):
         # print(self.l2.weight)
         # print(x.shape)
         action_probs = self.action_probs(x)
+        # print(action_probs)
         Q_vals = self.QFunction(x)
         # print(self.action_probs.weight)
         values = self.critic_linear(x)
@@ -194,7 +198,7 @@ class BasicModel(Model):
 
         return layer_outputs
 
-from ReinforcementLearning.basis_models import FourierBasisModel, GaussianBasisModel
+from ReinforcementLearning.basis_models import FourierBasisModel, GaussianBasisModel, GaussianMultilayerModel
 from ReinforcementLearning.tabular_models import TabularQ, TileCoding
 
-models = {"basic": BasicModel, "tab": TabularQ, "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel}
+models = {"basic": BasicModel, "tab": TabularQ, "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel}

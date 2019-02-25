@@ -40,7 +40,7 @@ class LearningOptimizer():
 
     def interUpdateModel(self, step):
         # see evolutionary methods for how this is used
-        # basically, updates the model at each time step if necessary (switches between policies in evo methods)
+        # basically, updates the model at each time step if necessary (switches between population in evo methods)
         pass
 
     def updateModel(self):
@@ -77,6 +77,7 @@ class LearningOptimizer():
             rollout_returns = rollouts.return_queue[reward_index, grad_indexes+1]
             next_rollout_returns = rollouts.return_queue[reward_index, grad_indexes]
             rollout_rewards = rollouts.reward_queue[reward_index, grad_indexes]
+            epsilon_eval = rollouts.epsilon_queue[grad_indexes]
         else:
             state_eval = rollouts.extracted_state[:-1]
             next_state_eval = rollouts.extracted_state[1:]
@@ -90,8 +91,10 @@ class LearningOptimizer():
             rollout_returns = rollouts.returns[reward_index, :-1]
             next_rollout_returns = rollouts.returns[reward_index, 1:]
             rollout_rewards = rollouts.rewards[reward_index,:]
+            epsilon_eval = rollouts.epsilon[:-1]
+        print(epsilon_eval)
         # print(state_eval.shape, current_state_eval.shape, next_current_state_eval.shape, action_eval.shape, rollout_returns.shape, rollout_rewards.shape, next_state_eval.shape, next_rollout_returns.shape, q_eval.shape, next_q_eval.shape)
-        return state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval
+        return state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval
 
     def step_optimizer(self, optimizer, model, loss, RL=-1):
         '''
@@ -102,6 +105,8 @@ class LearningOptimizer():
         if RL == 0:
             optimizer.zero_grad()
             (loss).backward()
+            # print("gradients", model.QFunction.weight.grad)
+            # print("gradients", model.action_probs.weight.grad)
             for param in model.parameters():
                 if param.grad is not None: # some parts of the network may not be used
                     param.grad.data.clamp_(-1, 1)
@@ -124,7 +129,7 @@ class LearningOptimizer():
     def distibutional_sparcity_step(self, args, train_models, rollouts):
         layer_values = []
         num_dist_states = args.num_grad_states * 10
-        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval = self.get_rollouts_state(num_dist_states, rollouts, self.models.option_index)    
+        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(num_dist_states, rollouts, self.models.option_index)    
         layers = train_models.layers(current_state_eval)
         for optimizer, model, option_layer in zip(self.optimizers, train_models.models, layers):
             # for layer in option_layer:
@@ -133,8 +138,8 @@ class LearningOptimizer():
             beta = layer.mean(dim=0)
             dkls = []
             rbeta = 1/torch.reciprocal(beta)
-            dkl = ((rbeta - args.exp_beta * rbeta.pow(2)) * torch.clamp(torch.sign(beta - args.exp_beta), min=0.0,max=0.99)).detach()
-            # print(torch.clamp(torch.sign(beta - args.exp_beta), min=0.0,max=1.0), torch.sign(beta - args.exp_beta), beta, args.exp_beta)
+            dkl = ((rbeta - args.exp_beta * rbeta.pow(2)) * torch.clamp(torch.sign(beta - args.exp_beta), min=0.0,max=1.0)).detach()
+            # print(sum(torch.clamp(torch.sign(beta - args.exp_beta), min=0.0,max=1.0)), beta, args.exp_beta)
             # print("dkl", dkl)
             optimizer.zero_grad()
             (args.dist_coef * dkl * beta).mean().backward()
@@ -142,6 +147,12 @@ class LearningOptimizer():
                 if param.grad is not None: # some parts of the network may not be used
                     param.grad.data.clamp_(-1, 1)
             optimizer.step()
+
+def correct_epsilon(action_probs, epsilons):
+    '''
+    assumes action_probs of shape [batch, num_actions]
+    '''
+    return action_probs * (1-epsilons) + (1/action_probs.shape[1]) * epsilons
 
 class DQN_optimizer(LearningOptimizer):
 
@@ -157,21 +168,26 @@ class DQN_optimizer(LearningOptimizer):
         total_loss = 0
         self.step_counter += 1
         for _ in range(args.grad_epoch):
-            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
+            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
             values, _, action_probs, q_values = train_models.determine_action(current_state_eval)
             _, _, anp, next_q_values = train_models.determine_action(next_current_state_eval)
             _, action_probs, q_values = train_models.get_action(values, action_probs, q_values)
             _, _, next_q_values = train_models.get_action(values, anp, next_q_values)
             # q_values, next_q_values = q_values.squeeze(), next_q_values.squeeze() # TODO: current getting rid of process number, could be added in
-            expected_qvals = (next_q_values.max(dim=1)[0] * args.gamma) + rollout_rewards
+            # print("optimization eval (cse, nse)", current_state_eval, next_current_state_eval)
+            expected_qvals = (next_q_values.max(dim=1)[0].detach() * args.gamma) + rollout_rewards
+            # print("q values (q, nq, eq, nmaxq, acts)", q_values, next_q_values, expected_qvals, next_q_values.max(dim=1)[0], action_eval)
             # Compute Huber loss
-            action_eval = sample_actions(q_values, deterministic=True)
-            value_loss = (q_values[list(range(len(q_values))), action_eval] - expected_qvals).abs().mean()
+            # action_eval = sample_actions(q_values, deterministic=True)
+            value_loss = (q_values.gather(1, action_eval) - expected_qvals).pow(2).mean()
+            # print ("loss computation vl, qvs, il", value_loss, q_values.gather(1, action_eval), (q_values[list(range(len(q_values))), action_eval] - expected_qvals).pow(2))
             # print("eq, qv, vl", expected_qvals, q_values[list(range(len(q_values))), action_eval], value_loss)
             # value_loss = F.smooth_l1_loss(q_values.gather(1, action_eval).squeeze(), expected_qvals.detach())
             total_loss += value_loss
             # Optimize the model
+            # print("weight update pre tm, sm", train_models.models[train_models.option_index].QFunction.weight)
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index], value_loss, RL=0)
+            # print("weight update post", train_models.models[train_models.option_index].QFunction.weight)
         return total_loss/args.grad_epoch, None, None, None, None, torch.log(action_probs)
 
 class DDPG_optimizer(LearningOptimizer):
@@ -189,7 +205,7 @@ class DDPG_optimizer(LearningOptimizer):
         total_loss = 0
         tpl = 0
         for _ in range(args.grad_epoch):
-            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
+            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
             _, dist_entropy, action_probs, q_values = train_models.determine_action(current_state_eval)
             _, _, anp, next_q_values = train_models.determine_action(next_current_state_eval)
             _, action_probs, qvs = train_models.get_action(values, action_probs, q_values)
@@ -220,15 +236,18 @@ class PPO_optimizer(LearningOptimizer):
         # self.old_models.models[train_models.option_index].load_state_dict(train_models.currentModel().state_dict())
         # self.old_models.option_index = train_models.option_index
         for _ in range(args.grad_epoch):
-            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
+            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
             values, dist_entropy, action_probs, qvs = train_models.determine_action(current_state_eval)
             # _, _, old_action_probs, qvs = self.old_models.determine_action(current_state_eval)
             _, action_probs, qvs = train_models.get_action(values, action_probs, qvs)
+            
             # print("aps", action_probs.shape, qvs.shape)
             # values, old_action_probs, _ = train_models.get_action(values, old_action_probs, qvs)
-            old_action_probs = action_probs_eval
+            old_action_probs = correct_epsilon(action_probs_eval, epsilon_eval)
+            # print("optimization eval (cse, nse, ap, lap, acts)", current_state_eval, next_current_state_eval, action_probs, old_action_probs, action_eval)
             action_log_probs, old_action_log_probs = torch.log(action_probs).gather(1, action_eval), torch.log(old_action_probs).gather(1, action_eval)
             advantages = rollout_returns.view(-1, 1) - values
+            # print("returns", rollout_returns.view(-1,1), values, (advantages.std() + 1e-5))
             # print(advantages.shape)
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
             ratio = torch.exp(action_log_probs - old_action_log_probs.detach()).squeeze()
@@ -239,14 +258,18 @@ class PPO_optimizer(LearningOptimizer):
             # print(ratio.shape, advantages.shape, -torch.min(surr1, surr2))
             action_loss = -torch.min(surr1, surr2).mean() # PPO's pessimistic surrogate (L^CLIP)
 
+            # print("values (alp, oalp, advantages, log ratio, ratio, surr1, surr2)", action_log_probs, old_action_log_probs, advantages, action_log_probs - old_action_log_probs.detach(), ratio, surr1, surr2)
             value_loss = (Variable(rollout_returns) - values).pow(2).mean()
             log_output_probs = torch.log(torch.sum(action_probs, dim=0) / action_probs.size(0))
-            # output_probs = torch.sum(action_probs, dim=0) / action_probs.size(0)
-            # output_entropy = -torch.sum(log_output_probs * output_probs) * args.high_entropy
+            output_probs = torch.sum(action_probs, dim=0) / action_probs.size(0)
+            output_entropy = -torch.sum(log_output_probs * output_probs) * args.high_entropy
+            # print ("loss computation al, vl, oe", action_loss, value_loss, output_entropy)
             # output_entropy = compute_output_entropy(args, action_probs, log_output_probs)
-            entropy_loss = dist_entropy#(dist_entropy - output_entropy) #we can have two parameters
+            entropy_loss = (dist_entropy - output_entropy) #we can have two parameters
+            # print("weight update pre tm, sm", train_models.models[train_models.option_index].action_probs.weight)
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
                             value_loss * args.value_loss_coef + action_loss + entropy_loss * args.entropy_coef, RL=0)
+            # print("weight update post", train_models.models[train_models.option_index].action_probs.weight)
         return value_loss, action_loss, dist_entropy, None, entropy_loss, action_log_probs
 
 class A2C_optimizer(LearningOptimizer):
@@ -257,7 +280,7 @@ class A2C_optimizer(LearningOptimizer):
 
     def step(self, args, train_models, rollouts):
         self.step_counter += 1
-        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
+        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
         values, dist_entropy, action_probs, qv = train_models.determine_action(current_state_eval)
         values, action_probs, _ = train_models.get_action(values, action_probs, qv)
         log_output_probs = torch.log(action_probs).gather(1, action_eval)
@@ -282,7 +305,7 @@ class PolicyGradient_optimizer(LearningOptimizer):
 
     def step(self, args, train_models, rollouts):
         self.step_counter += 1
-        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
+        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
         values, dist_entropy, action_probs, qv = train_models.determine_action(current_state_eval)
         values, action_probs, _ = train_models.get_action(values, action_probs, qv)
         # print(state_eval, next_state_eval, rollout_rewards)
@@ -319,35 +342,44 @@ class SARSA_optimizer(LearningOptimizer):
                 if param.grad is not None: # some parts of the network may not be used
                     param.grad.data.clamp_(-1, 1)
             optimizer.step()
-        if RL == 1: # breaks abstraction, but the SARSA update is model dependent
-            deltas, actions, states = loss
-            states = model.basis_fn(states)
-            states = torch.mm(states, model.basis_matrix)
-            # print (states, deltas)
-            for delta, action, state in zip(deltas, actions, states):
-                model.QFunction.weight[action,:] += self.lr * delta * state
+        elif RL == 1: # breaks abstraction, but the SARSA update is model dependent
+            model.QFunction.requires_grad = False
+            with torch.no_grad():
+                deltas, actions, states = loss
+                states = model.basis_fn(states)
+                states = torch.mm(states, model.basis_matrix)
+                # print (states, deltas)
+                for delta, action, state in zip(deltas, actions, states):
+                    model.QFunction.weight[action,:] += (self.lr * delta * state)
         else:
             raise NotImplementedError("Check that Optimization is appropriate")
 
     def step(self, args, train_models, rollouts):
         self.step_counter += 1
             # state_eval = Variable(torch.ones(state_eval.data.shape).cuda()) # why does turning this on help tremendously?
-        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
-        values, dist_entropy, action_probs, q_values = train_models.determine_action(current_state_eval) 
-        _, _, _, next_q_values = train_models.determine_action(next_current_state_eval)
-        _, ap, q_values = train_models.get_action(values, action_probs, q_values)
-        _, ap, next_q_values = train_models.get_action(values, action_probs, next_q_values)
-        # print("rewards", rollout_rewards.shape, next_action_eval.shape, next_q_values.shape)
-        expected_qvals = (next_q_values.gather(1, next_action_eval) * args.gamma).squeeze() + rollout_rewards
-        # print(q_values.shape, expected_qvals.shape, action_eval.shape, expected_qvals.shape)
-        delta = (expected_qvals - q_values.gather(1, action_eval).squeeze())
-        q_loss = delta.pow(2).mean()
-        if args.optim == "base":
-            self.step_optimizer(None, self.models.models[self.models.option_index],
-                (delta, action_eval, current_state_eval), RL=1)
-        else:
-            self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
-                q_loss, RL=0)
+        for _ in range(args.grad_epoch):
+            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
+            values, dist_entropy, action_probs, q_values = train_models.determine_action(current_state_eval) 
+            _, _, _, next_q_values = train_models.determine_action(next_current_state_eval)
+            _, ap, q_values = train_models.get_action(values, action_probs, q_values)
+            _, ap, next_q_values = train_models.get_action(values, action_probs, next_q_values)
+            # print(q_values)
+            # print("rewards", rollout_rewards.shape, next_action_eval.shape, next_q_values.shape)
+            expected_qvals = (next_q_values.gather(1, next_action_eval) * args.gamma).squeeze() + rollout_rewards
+            # print(q_values.shape, expected_qvals.shape, action_eval.shape, expected_qvals.shape)
+            delta = (expected_qvals - q_values.gather(1, action_eval).squeeze())
+            q_loss = delta.pow(2).mean()
+            # print("optimization eval (cse, nse)", current_state_eval, next_current_state_eval)
+            # print("q values (q, nq, eq, nmaxq, acts)", q_values, next_q_values, expected_qvals, next_q_values.max(dim=1)[0], action_eval)
+            # print ("loss computation vl, qvs, il", q_loss, q_values.gather(1, action_eval).squeeze(), (q_values.gather(1, action_eval).squeeze() - expected_qvals).pow(2))
+            # print("weight update pre tm, sm", train_models.models[train_models.option_index].QFunction.weight)
+            if args.optim == "base":
+                self.step_optimizer(None, self.models.models[self.models.option_index],
+                    (delta, action_eval, current_state_eval), RL=1)
+            else:
+                self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
+                    q_loss, RL=0)
+            # print("weight update post", train_models.models[train_models.option_index].QFunction.weight)
         return q_loss, None, dist_entropy, None, None, None
 
 class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probably be combined
@@ -368,12 +400,12 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
                 if param.grad is not None: # some parts of the network may not be used
                     param.grad.data.clamp_(-1, 1)
             optimizer.step()
-        if RL == 1: # breaks abstraction, but the SARSA update is model dependent
+        elif RL == 1: # breaks abstraction, but the SARSA update is model dependent
             deltas, actions, states = loss
             states = model.transform_input(states)
             for delta, action, state in zip(deltas, actions, states):
                 model.weight[action,:] += self.lr * delta * state
-        if RL == 2: # breaks abstraction, but the Tabular Q learning update is model dependent
+        elif RL == 2: # breaks abstraction, but the Tabular Q learning update is model dependent
             deltas, actions, states = loss
             for delta, action, state in zip(deltas, actions, states):
                 # if len(state.shape) > 1:
@@ -395,24 +427,25 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
 
     def step(self, args, train_models, rollouts):
         self.step_counter += 1
-        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)
-        # print(state_eval, rollout_rewards.squeeze())
-        values, dist_entropy, action_probs, q_values = train_models.determine_action(current_state_eval) 
-        values, _, _, next_q_values = train_models.determine_action(next_current_state_eval)
-        _,  ap, q_values = train_models.get_action(values, action_probs, q_values)
-        _, ap, next_q_values = train_models.get_action(values, action_probs, next_q_values)
-        # print(state_eval, rollout_rewards.squeeze())
-        expected_qvals = (next_q_values.max(dim=1)[0] * args.gamma) + rollout_rewards.squeeze()
-        # faction_eval = sample_actions(q_values, deterministic=True) # action eval should be unchanged
-        # print(faction_eval.shape, action_eval.shape)
-        delta = (expected_qvals.detach() - q_values.gather(1, action_eval).squeeze())
-        q_loss = delta.pow(2).mean()
-        if args.optim == "base":
-            self.step_optimizer(None, self.models.models[self.models.option_index],
-                (delta, action_eval, current_state_eval), RL=2)
-        else:
-            self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
-                q_loss, RL=0)
+        for _ in range(args.grad_epoch):
+            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)
+            # print(state_eval, rollout_rewards.squeeze())
+            values, dist_entropy, action_probs, q_values = train_models.determine_action(current_state_eval) 
+            values, _, _, next_q_values = train_models.determine_action(next_current_state_eval)
+            _,  ap, q_values = train_models.get_action(values, action_probs, q_values)
+            _, ap, next_q_values = train_models.get_action(values, action_probs, next_q_values)
+            # print(state_eval, rollout_rewards.squeeze())
+            expected_qvals = (next_q_values.max(dim=1)[0] * args.gamma) + rollout_rewards.squeeze()
+            # faction_eval = sample_actions(q_values, deterministic=True) # action eval should be unchanged
+            # print(faction_eval.shape, action_eval.shape)
+            delta = (expected_qvals.detach() - q_values.gather(1, action_eval).squeeze())
+            q_loss = delta.pow(2).mean()
+            if args.optim == "base":
+                self.step_optimizer(None, self.models.models[self.models.option_index],
+                    (delta, action_eval, current_state_eval), RL=2)
+            else:
+                self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
+                    q_loss, RL=0)
         return q_loss, None, dist_entropy, None, None, None
 
 learning_algorithms = {"DQN": DQN_optimizer, "DDPG": DDPG_optimizer, "PPO": PPO_optimizer, 

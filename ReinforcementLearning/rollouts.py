@@ -33,6 +33,7 @@ class RolloutOptionStorage(object):
             self.values_queue = torch.zeros(num_options, buffer_steps, 1)
             self.action_queue = torch.zeros(buffer_steps, 1).long()
             self.option_queue = torch.zeros(buffer_steps, 1).long()
+            self.epsilon_queue = torch.zeros(buffer_steps, 1)
         self.changepoint_queue = torch.zeros(changepoint_queue_len, *self.changepoint_shape)
         self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long()
         self.num_options = num_options
@@ -43,6 +44,7 @@ class RolloutOptionStorage(object):
 
     def set_parameters(self, num_steps):
         self.last_step = num_steps
+        self.epsilon = torch.zeros(num_steps + 1, 1)
         self.extracted_state = torch.zeros(num_steps + 1, *self.extracted_shape)
         self.current_state = torch.zeros(num_steps + 1, *self.current_shape)
         self.rewards = torch.zeros(self.num_options, num_steps) # Pretend there are no other processes
@@ -79,6 +81,7 @@ class RolloutOptionStorage(object):
             self.values_queue = self.values_queue.cuda()
             self.option_queue = self.option_queue.cuda()
             self.current_state_queue = self.current_state_queue.cuda()
+            self.epsilon_queue = self.epsilon_queue.cuda()
         if self.changepoint_queue_len > 0:
             self.changepoint_queue = self.changepoint_queue.cuda()
             self.changepoint_action_queue = self.changepoint_action_queue.cuda()
@@ -91,6 +94,7 @@ class RolloutOptionStorage(object):
         self.returns = self.returns.cuda()
         self.actions = self.actions.cuda()
         self.masks = self.masks.cuda()
+        self.epsilon = self.epsilon.cuda()
 
     def cpu(self):
         # self.states = self.states.cuda()
@@ -104,9 +108,12 @@ class RolloutOptionStorage(object):
             self.action_queue = self.action_queue.cpu()
             self.values_queue = self.values_queue.cpu()
             self.option_queue = self.option_queue.cpu()
+            self.current_state_queue = self.current_state_queue.cpu()
+            self.epsilon_queue = self.epsilon_queue.cpu()
+        if self.changepoint_queue_len > 0:
             self.changepoint_queue = self.changepoint_queue.cpu()
             self.changepoint_action_queue = self.changepoint_action_queue.cpu()
-            self.current_state_queue = self.current_state_queue.cpu()
+        self.epsilon = self.epsilon.cpu()
         self.current_state = self.current_state.cpu()
         self.extracted_state = self.extracted_state.cpu()
         self.action_probs = self.action_probs.cpu()
@@ -118,13 +125,14 @@ class RolloutOptionStorage(object):
         self.masks = self.masks.cpu()
 
 
-    def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state): # got rid of masks... might be useful though
+    def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state, epsilon): # got rid of masks... might be useful though
         if self.buffer_steps > 0 and self.last_step != step: # using buffer and not the first step, which is a duplicate of the last step
             self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
             self.state_queue[self.buffer_at].copy_(extracted_state.squeeze())
             self.current_state_queue[self.buffer_at].copy_(current_state.squeeze())
             self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
             self.action_queue[self.buffer_at].copy_(action.squeeze())
+            self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze())
             for oidx in range(self.num_options):
                 self.values_queue[oidx, self.buffer_at].copy_(value_preds[oidx].squeeze())
                 self.Qvals_queue[oidx, self.buffer_at].copy_(q_vals[oidx].squeeze())
@@ -145,6 +153,7 @@ class RolloutOptionStorage(object):
         self.extracted_state[step].copy_(extracted_state.squeeze())
         self.actions[step].copy_(action.squeeze())
         self.current_state[step].copy_(current_state.squeeze())
+        self.epsilon[step].copy_(epsilon.squeeze())
         for oidx in range(self.num_options):
             self.value_preds[oidx, step].copy_(value_preds[oidx].squeeze())
             self.Qvals[oidx, step].copy_(q_vals[oidx].squeeze())
@@ -187,17 +196,20 @@ class RolloutOptionStorage(object):
                     self.returns[idx, step] = self.returns[idx, step + 1] * gamma + self.rewards[idx, step]
                 # print(self.returns)
                 if self.buffer_steps > 0:
-                    for i, ret in enumerate(self.returns[idx]):
+                    for i, rew in enumerate(self.rewards[idx]):
                         # update the last ten returns
                         # print(i, 11-i)
-                        if 11-i > 0:
-                            for j in range(i, 11-i): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
-                                # print(self.returns[0], self.return_queue[-6+j])
-                                self.return_queue[idx, (-11+j+self.return_at) % self.buffer_steps] += torch.tensor(np.power(gamma, 10-j)).cuda() * self.returns[idx, i]
+                        update_last = 20 # imposes an artificial limit on Gamma
+                        for j in range(update_last+1): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
+                            # print(self.returns.shape, self.rewards.shape)
+                            # print(self.returns[0], self.return_queue[-6+j])
+                            # print((self.return_at - j) % self.buffer_steps, self.state_queue[(self.return_at - j) % self.buffer_steps], self.return_queue[idx, (self.return_at - j) % self.buffer_steps], torch.tensor(np.power(gamma, j)).cuda() * rew)
+                            self.return_queue[idx, (self.return_at - j) % self.buffer_steps] += torch.tensor(np.power(gamma,j)).cuda() * rew
                     
-                    for i, ret in enumerate(self.returns[idx]):
-                        # print('copying', self.return_at + i)
-                        self.return_queue[idx, self.return_at + i].copy_(ret)
+                    # for i, ret in enumerate(self.returns[idx]):
+                    #     # print('copying', self.return_at + i)
+                    #     self.return_queue[idx, (self.return_at + i) % self.buffer_steps].copy_(ret)
+        # print(self.state_queue)
         if self.buffer_steps > 0:
             self.return_at = (self.return_at + self.returns.size(1)) % self.buffer_steps
     def compute_full_returns(self, next_value, gamma):

@@ -58,9 +58,14 @@ class BounceReward(ChangepointReward):
                             rewarded = True
             if not rewarded:
                 if self.form == 'dense':
-                    rewards.append(-abs(proximity[0] / (proximity[1] + .1) * .1))
+                    # rewards.append(-abs(proximity[1] / (proximity[0] + .1) * .1))
+                    rewards.append(-abs(proximity[0] + proximity[1]) * 0.001)
                 else:
-                    rewards.append(0)
+                    # print(proximity[0])
+                    if proximity[0] == 0 and self.form == 'neg':
+                        rewards.append(-1)
+                    else:
+                        rewards.append(0)
         return pytorch_model.wrap(rewards, cuda=True)
 
 class Xreward(ChangepointReward):

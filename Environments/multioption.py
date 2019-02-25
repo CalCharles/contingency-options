@@ -1,4 +1,6 @@
 import glob, os, torch
+from ReinforcementLearning.models import pytorch_model
+
 class MultiOption():
     def __init__(self, num_options=0, option_class=None): 
         self.option_index = 0
@@ -8,13 +10,17 @@ class MultiOption():
 
     def initialize(self, args, num_options, state_class):
         self.models = []
+        if args.model_form.find("dope") != -1:
+            self.sess= tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))
+        else:
+            self.sess = None
         for i in range(num_options):
             if not args.normalize:
                 minmax = None
             else:
                 minmax = state_class.get_minmax()
             model = self.option_class(args, state_class.flat_state_size() * args.num_stack, 
-                state_class.action_num, factor=args.factor, name = args.unique_id + "_" + str(i) +"_", minmax = minmax)
+                state_class.action_num, factor=args.factor, name = args.unique_id + "_" + str(i) +"_", minmax = minmax, sess=self.sess)
             # since name is args.unique_id + str(i), this means that unique_id should be the edge, in form head_tail
             if args.cuda:
                 model = model.cuda()
@@ -23,6 +29,17 @@ class MultiOption():
 
     def names(self):
         return [model.name for model in self.models]
+
+    def determine_step(self, state, reward):
+        '''
+        output: 
+        '''
+        actions = []
+        for i in range(self.num_options):
+            actions.append(self.models[i](state, reward))
+        pytorch_model.wrap(actions)
+        return actions
+
 
     def determine_action(self, state):
         '''

@@ -7,8 +7,8 @@ import torch.optim as optim
 from ReinforcementLearning.models import Model, pytorch_model
 
 class TabularModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
         self.Qtable = dict()
         self.action_prob_table = dict()
         self.initial_value = 1.0 # need to set this
@@ -51,8 +51,8 @@ class TabularModel(Model):
 
 
 class TabularQ(TabularModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None):
-        super(TabularQ, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
+        super(TabularQ, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
         self.Qtable = dict()
         self.action_prob_table = dict()
         self.initial_value = 1.0 # need to set this
@@ -74,8 +74,8 @@ class TabularQ(TabularModel):
         return tuple(int(v) for v in xv)
 
 class TileCoding(TabularModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None):
-        super(TileCoding, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
+        super(TileCoding, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
         self.factor = args.factor
         minvs, maxvs = self.minmax
         self.tile_vectors = []
