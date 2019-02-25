@@ -1,6 +1,28 @@
 import dopamine
+import tensorflow as tf
+import cv2
+slim = tf.contrib.slim
+from dopamine.discrete_domains import gym_lib
+
+
 
 from dopamine.dqn_agent import DQNAgent
+
+def create_dqn_network(minmax):
+	def fc_dqn_network(num_actions, network_type, state):
+		"""The convolutional network used to compute the agent's Q-values.
+		Args:
+		num_actions: int, number of actions.
+		network_type: namedtuple, collection of expected values to return.
+		state: `tf.Tensor`, contains the agent's current state.
+		Returns:
+		net: _network_type object containing the tensors output by the network.
+		"""
+		q_values = gym_lib._basic_discrete_domain_network(
+		  minmax[0], minmax[1], num_actions, state)
+		return network_type(q_values)
+	return fc_dqn_network
+
 
 class DQNWrapper(Model):
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
@@ -11,7 +33,7 @@ class DQNWrapper(Model):
                observation_shape=(num_inputs, ),
                observation_dtype=tf.uint8,
                stack_size=1,
-               network=gym_lib._basic_discrete_domain_network,
+               network=create_dqn_network(minmax),
                gamma=0.99,
                update_horizon=1,
                min_replay_history=10000,
@@ -25,10 +47,10 @@ class DQNWrapper(Model):
                use_staging=True,
                max_tf_checkpoints_to_keep=4,
                optimizer=tf.train.RMSPropOptimizer(
-                   learning_rate=0.00025,
+                   learning_rate=args.lr,
                    decay=0.95,
                    momentum=0.0,
-                   epsilon=0.00001,
+                   epsilon=args.eps,
                    centered=True),
                summary_writer=None,
                summary_writing_frequency=500)
@@ -40,6 +62,30 @@ class DQNWrapper(Model):
         '''
         x = pytorch_model.unwrap(x)
         return self.dope_dqn.step(reward, x)
+
+
+def create_rainbow_network(minmax):
+	def cartpole_rainbow_network(num_actions, num_atoms, support, network_type,
+	                             state):
+		"""Build the deep network used to compute the agent's Q-value distributions.
+		Args:
+		num_actions: int, number of actions.
+		num_atoms: int, the number of buckets of the value function distribution.
+		support: tf.linspace, the support of the Q-value distribution.
+		network_type: `namedtuple`, collection of expected values to return.
+		state: `tf.Tensor`, contains the agent's current state.
+		Returns:
+		net: _network_type object containing the tensors output by the network.
+		"""
+		net = _basic_discrete_domain_network(
+		  minmax[0], minmax[1], num_actions, state,
+		  num_atoms=num_atoms)
+		logits = tf.reshape(net, [-1, num_actions, num_atoms])
+		probabilities = tf.contrib.layers.softmax(logits)
+		q_values = tf.reduce_sum(support * probabilities, axis=2)
+		return network_type(q_values, logits, probabilities)
+	return cartpole_rainbow_network
+
 
 class RainbowWrapper(Model):
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
