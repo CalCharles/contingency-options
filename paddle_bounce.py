@@ -1,5 +1,6 @@
 from SelfBreakout.breakout_screen import Screen
 from SelfBreakout.paddle import Paddle
+from SelfBreakout.noblock import PaddleNoBlocks
 from file_management import load_from_pickle, get_edge
 import glob, os
 from ReinforcementLearning.models import models
@@ -27,6 +28,7 @@ if __name__ == "__main__":
     # python paddle_bounce.py --model-form fourier --optimizer-form SARSA --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 100000 --save-dir data/paddleballpg --state-forms xprox --state-names Paddle --base-node Paddle --changepoint-dir data/paddlegraphpg --factor 10 --num-layers 1 --greedy-epsilon .1 --lr .001 --normalize --behavior-policy egq --save-dir data/xstates/ --optim base > out.txt
     args = get_args()
     true_environment = Paddle()
+    # true_environment = PaddleNoBlocks()
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)

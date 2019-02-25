@@ -123,7 +123,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = learning_algorithm.step(args, train_models, rollouts) 
         if args.dist_interval != -1 and j % args.dist_interval == 0:
             learning_algorithm.distibutional_sparcity_step(args, train_models, rollouts)
-        if args.greedy_epsilon_decay > 0 and j % args.greedy_epsilon_decay == 0:
+        if args.greedy_epsilon_decay > 0 and j % args.greedy_epsilon_decay == 0 and j != 0:
             behavior_policy.epsilon *= 0.5 # TODO: more advanced greedy epsilon methods
         learning_algorithm.updateModel()
 
