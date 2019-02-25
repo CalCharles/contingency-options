@@ -50,13 +50,14 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
 
 
     # optimize objective function
-    def optimize(self, objective_fct):
+    def optimize(self, objective_fct, clear_fn=None):
         self.iter_id = 0
         while not self._stop():
             solutions = self.cmaes.ask()
             costs = self._evaluate(objective_fct, solutions)
             self.cmaes.tell(solutions, costs)
             self._report(solutions, costs)
+            if clear_fn: clear_fn()
             self.iter_id += 1
 
         dump_name = '%s_result_cmaes.pkl'%(self.id)

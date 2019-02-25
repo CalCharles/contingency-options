@@ -6,8 +6,8 @@ from SelfBreakout.breakout_screen import read_obj_dumps, get_individual_data, ho
 
 
 class ChangepointDetector():
-    def __init__(self, args):
-        self.head,self.tail = get_edge(args.train_edge)
+    def __init__(self, train_edge):
+        self.head,self.tail = get_edge(train_edge)
 
     def generate_changepoints(self, data, save_dict=False):
         '''

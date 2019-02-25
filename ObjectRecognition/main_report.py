@@ -181,11 +181,11 @@ if __name__ == '__main__':
 
     # CHAMP parameters
     if args.champ == 'ball':
-        print('using CHAMP ball parameters')
-        CHAMP_params = CHAMP_BALL_PARAMETERS
+        logger.info('using CHAMP ball parameters')
+        CHAMP_params = [15, 10, 2, 100, 100, 2, 1, 0]
     elif args.champ == 'paddle':
-        print('using CHAMP paddle parameters')
-        CHAMP_params = CHAMP_PADDLE_PARAMETERS
+        logger.info('using CHAMP paddle parameters')
+        CHAMP_params = [3, 5, 1, 100, 100, 2, 1e-1, 0]
 
     """
     Game Construction
@@ -212,7 +212,7 @@ if __name__ == '__main__':
         - specify changepoint detector which fits the dynamic of the object
     """
     if args.champ:
-        cpd = CHAMPDetector([LinearDynamicalDisplacementFitter], CHAMP_params)
+        cpd = CHAMPDetector('premise->object', CHAMP_params)
     else:
         print('using simple linear changepoint detector')
         cpd = LinearCPD(np.pi/4.0)
