@@ -297,6 +297,41 @@ class A2C_optimizer(LearningOptimizer):
                 value_loss * args.value_loss_coef + action_loss + entropy_loss, RL=0)
         return value_loss, action_loss, dist_entropy, None, entropy_loss, log_output_probs
 
+class Distributional_optimizer(LearningOptimizer):
+    def initialize(self, args, train_models):
+        super().initialize(args, train_models)
+        for model in train_models.models:
+            self.optimizers.append(initialize_optimizer(args, model))
+
+    def step(self, args, train_models, rollouts):
+        self.step_counter += 1
+        for _ in range(args.grad_epoch):
+            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index)    
+            nvalues, dist_entropy, action_probs, nQ_values = train_models.determine_action(next_current_state_eval)
+            nvalues, _, nQ_values = train_models.get_action(nvalues, action_probs, nQ_values)
+            # print(nQ_values)
+            abest = nQ_values.max(dim=1)[1]
+            # print(abest)
+            m = torch.zeros(current_state_eval.shape[0], args.num_value_atoms)#[0 for i in range(args.num_value_atoms)]
+            if args.cuda:
+                m = m.cuda()
+            p = train_models.currentModel().compute_value_distribution(next_current_state_eval)[list(range(current_state_eval.shape[0])),abest.long()]
+            # print(p.shape)
+            for j in range(args.num_value_atoms):
+                bj = (torch.clamp(rollout_rewards + args.gamma * train_models.currentModel().value_support[j], args.value_bounds[0], args.value_bounds[1]) - args.value_bounds[0]) / train_models.currentModel().dz
+                l,u = torch.floor(bj), torch.ceil(bj)
+                # print(j, l,u,bj,p[:,j] * (u-bj), p[:,j] * (bj-l), p[:,j], torch.clamp(rollout_rewards + args.gamma * train_models.currentModel().value_support[j], args.value_bounds[0], args.value_bounds[1]))
+                # print(m.shape, l.shape, p.shape, u.shape, bj.shape)
+                # print(m, m[list(range(state_eval.shape[0])),l.long()], l.long(), (p[:,j] * (u-bj)).shape)
+                m[list(range(state_eval.shape[0])),l.long()] += p[:,j] * (u-bj)
+                m[list(range(state_eval.shape[0])),u.long()] += p[:,j] * (bj-l)
+            p_current = train_models.currentModel().compute_value_distribution(current_state_eval)[list(range(current_state_eval.shape[0])),action_eval.squeeze().long()]
+            # print(m.shape, torch.log(p_current).shape, train_models.currentModel().compute_value_distribution(current_state_eval).shape)
+            value_loss = -(m * torch.log(p_current)).sum()
+            self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index], value_loss, RL=0)
+            # print (value_loss)
+        return value_loss, None, None, None, None, None
+
 class PolicyGradient_optimizer(LearningOptimizer):
     def initialize(self, args, train_models):
         super().initialize(args, train_models)
@@ -338,6 +373,7 @@ class SARSA_optimizer(LearningOptimizer):
         if RL == 0:
             optimizer.zero_grad()
             (loss).backward()
+            # print(model.basis_matrix.grad, [ov.grad for ov in model.order_vectors], model.minmax[0], model.minmax[1])
             for param in model.parameters():
                 if param.grad is not None: # some parts of the network may not be used
                     param.grad.data.clamp_(-1, 1)
@@ -406,21 +442,22 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
             for delta, action, state in zip(deltas, actions, states):
                 model.weight[action,:] += self.lr * delta * state
         elif RL == 2: # breaks abstraction, but the Tabular Q learning update is model dependent
-            deltas, actions, states = loss
-            for delta, action, state in zip(deltas, actions, states):
-                # if len(state.shape) > 1:
-                #     state = state[0]
-                # print(state)
-                state = model.hash_function(state)
-                action = int(pytorch_model.unwrap(action))
-                if state not in model.Qtable:
-                    Aprob = torch.Tensor([model.initial_aprob for _ in range(model.num_outputs)]).cuda()
-                    Qval = torch.Tensor([model.initial_value for _ in range(model.num_outputs)]).cuda()
-                    model.Qtable[state] = Qval
-                    model.action_prob_table[state] = Aprob
-                # print(model.Qtable)
-                # print(self.lr, delta, state, model.Qtable[state][action])
-                model.Qtable[state][action] += self.lr * delta
+            with torch.no_grad():
+                deltas, actions, states = loss
+                for delta, action, state in zip(deltas, actions, states):
+                    # if len(state.shape) > 1:
+                    #     state = state[0]
+                    # print(state)
+                    state = model.hash_function(state)
+                    action = int(pytorch_model.unwrap(action))
+                    if state not in model.Qtable:
+                        Aprob = torch.Tensor([model.initial_aprob for _ in range(model.num_outputs)]).cuda()
+                        Qval = torch.Tensor([model.initial_value for _ in range(model.num_outputs)]).cuda()
+                        model.Qtable[state] = Qval
+                        model.action_prob_table[state] = Aprob
+                    # print(model.Qtable)
+                    # print(self.lr, delta, state, model.Qtable[state][action])
+                    model.Qtable[state][action] += self.lr * delta
             # print(model.name, states,actions, model.Qtable[state], deltas)
         else:
             raise NotImplementedError("Check that Optimization is appropriate")
@@ -449,4 +486,5 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
         return q_loss, None, dist_entropy, None, None, None
 
 learning_algorithms = {"DQN": DQN_optimizer, "DDPG": DDPG_optimizer, "PPO": PPO_optimizer, 
-"A2C": A2C_optimizer, "SARSA": SARSA_optimizer, "TabQ":TabQ_optimizer, "PG": PolicyGradient_optimizer}
+"A2C": A2C_optimizer, "SARSA": SARSA_optimizer, "TabQ":TabQ_optimizer, "PG": PolicyGradient_optimizer,
+"Dist": Distributional_optimizer}

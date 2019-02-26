@@ -34,6 +34,7 @@ class RolloutOptionStorage(object):
             self.action_queue = torch.zeros(buffer_steps, 1).long()
             self.option_queue = torch.zeros(buffer_steps, 1).long()
             self.epsilon_queue = torch.zeros(buffer_steps, 1)
+            self.state_queue.requires_grad = self.current_state_queue.requires_grad = self.action_probs_queue.requires_grad = self.Qvals_queue.requires_grad = self.reward_queue.requires_grad = self.return_queue.requires_grad = self.values_queue.requires_grad = self.action_queue.requires_grad = self.option_queue.requires_grad = self.epsilon_queue.requires_grad = False
         self.changepoint_queue = torch.zeros(changepoint_queue_len, *self.changepoint_shape)
         self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long()
         self.num_options = num_options
@@ -128,22 +129,22 @@ class RolloutOptionStorage(object):
     def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state, epsilon): # got rid of masks... might be useful though
         if self.buffer_steps > 0 and self.last_step != step: # using buffer and not the first step, which is a duplicate of the last step
             self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
-            self.state_queue[self.buffer_at].copy_(extracted_state.squeeze())
-            self.current_state_queue[self.buffer_at].copy_(current_state.squeeze())
+            self.state_queue[self.buffer_at].copy_(extracted_state.squeeze().detach())
+            self.current_state_queue[self.buffer_at].copy_(current_state.squeeze().detach())
             self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
-            self.action_queue[self.buffer_at].copy_(action.squeeze())
-            self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze())
+            self.action_queue[self.buffer_at].copy_(action.squeeze().detach())
+            self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze().detach())
             for oidx in range(self.num_options):
-                self.values_queue[oidx, self.buffer_at].copy_(value_preds[oidx].squeeze())
-                self.Qvals_queue[oidx, self.buffer_at].copy_(q_vals[oidx].squeeze())
-                self.action_probs_queue[oidx, self.buffer_at].copy_(action_probs[oidx].squeeze())
+                self.values_queue[oidx, self.buffer_at].copy_(value_preds[oidx].squeeze().detach())
+                self.Qvals_queue[oidx, self.buffer_at].copy_(q_vals[oidx].squeeze().detach())
+                self.action_probs_queue[oidx, self.buffer_at].copy_(action_probs[oidx].squeeze().detach())
             if self.buffer_at == self.buffer_steps - 1:
                 self.buffer_at = 0
             else:
                 self.buffer_at += 1
         if self.changepoint_queue_len > 0:
-            self.changepoint_action_queue[self.changepoint_at].copy_(action.squeeze())
-            self.changepoint_queue[self.changepoint_at].copy_(changepoint_state.squeeze())
+            self.changepoint_action_queue[self.changepoint_at].copy_(action.squeeze().detach())
+            self.changepoint_queue[self.changepoint_at].copy_(changepoint_state.squeeze().detach())
             if self.last_step != step:
                 if self.changepoint_at == self.changepoint_queue_len - 1:
                     self.cp_filled = True
@@ -158,6 +159,32 @@ class RolloutOptionStorage(object):
             self.value_preds[oidx, step].copy_(value_preds[oidx].squeeze())
             self.Qvals[oidx, step].copy_(q_vals[oidx].squeeze())
             self.action_probs[oidx, step].copy_(action_probs[oidx].squeeze())
+
+    def insert_no_out(self, step, extracted_state, current_state, action, option_no, changepoint_state, epsilon): # got rid of masks... might be useful though
+        if self.buffer_steps > 0 and self.last_step != step: # using buffer and not the first step, which is a duplicate of the last step
+            self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
+            self.state_queue[self.buffer_at].copy_(extracted_state.squeeze().detach())
+            self.current_state_queue[self.buffer_at].copy_(current_state.squeeze().detach())
+            self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
+            self.action_queue[self.buffer_at].copy_(action.squeeze().detach())
+            self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze().detach())
+            if self.buffer_at == self.buffer_steps - 1:
+                self.buffer_at = 0
+            else:
+                self.buffer_at += 1
+        if self.changepoint_queue_len > 0:
+            self.changepoint_action_queue[self.changepoint_at].copy_(action.squeeze().detach())
+            self.changepoint_queue[self.changepoint_at].copy_(changepoint_state.squeeze().detach())
+            if self.last_step != step:
+                if self.changepoint_at == self.changepoint_queue_len - 1:
+                    self.cp_filled = True
+                    self.changepoint_at = 0
+                else:
+                    self.changepoint_at += 1
+        self.extracted_state[step].copy_(extracted_state.squeeze())
+        self.actions[step].copy_(action.squeeze())
+        self.current_state[step].copy_(current_state.squeeze())
+        self.epsilon[step].copy_(epsilon.squeeze())
 
     def insert_rewards(self, rewards):
         if self.buffer_steps > 0:

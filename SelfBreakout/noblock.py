@@ -3,6 +3,7 @@ from SelfBreakout.breakout_screen import Screen
 from SelfBreakout.paddle import Paddle
 from Environments.environment_specification import RawEnvironment
 from file_management import get_edge
+import numpy as np
 
 class PaddleNoBlocks(Paddle):
     '''
@@ -15,7 +16,7 @@ class PaddleNoBlocks(Paddle):
 
     def reset(self):
         self.screen.blocks = self.screen.blocks[:1]
-        self.screen.blocks[0].attribute = 0
+        self.screen.blocks[0].pos = np.array([12, 12])
         self.screen.walls[0].pos = np.array([28, 4])
         self.screen.render_frame()
 
@@ -23,5 +24,7 @@ class PaddleNoBlocks(Paddle):
         raw_state, factor_state, done = super().step(action)
         if done:
             self.reset()
+        raw_state, factor_state = super().getState()
+        return raw_state, factor_state, done
 
 

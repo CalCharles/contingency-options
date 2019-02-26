@@ -56,12 +56,12 @@ class DQNWrapper(Model):
                summary_writing_frequency=500)
 
     def forward(self, x, reward):
-        '''
-        TODO: make use of time_estimator, link up Q vals and action probs
-        TODO: clean up cuda = True to something that is actually true
-        '''
-        x = pytorch_model.unwrap(x)
-        return self.dope_dqn.step(reward, x)
+      '''
+      TODO: make use of time_estimator, link up Q vals and action probs
+      TODO: clean up cuda = True to something that is actually true
+      '''
+      x = pytorch_model.unwrap(x)
+      return self.dope_dqn.step(reward, x)
 
 
 def create_rainbow_network(minmax):
@@ -150,7 +150,7 @@ class ImplicitQuantileAgent(Model):
                tf_device='/cpu:*',
                use_staging=True,
                optimizer=tf.train.AdamOptimizer(
-                   learning_rate=0.00025, epsilon=0.0003125),
+                   learning_rate=args.lr, epsilon=args.eps),
                summary_writer=None,
                summary_writing_frequency=500,
                kappa=1.0,

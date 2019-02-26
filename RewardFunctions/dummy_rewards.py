@@ -48,13 +48,13 @@ class BounceReward(ChangepointReward):
             rewarded = False
             if v1[0] > 0 and state_second[0] > 65: # was moving down, below the blocks
                 if torch.norm(v2 - self.desired_vel) == 0:
-                    rewards.append(10)
+                    rewards.append(1)
                     rewarded = True
                 elif self.anybounce:
                     for v in self.desired_vels:
                         if torch.norm(v2 - v) == 0:
                             # print ("REWARD", v1, v2)
-                            rewards.append(10)
+                            rewards.append(1)
                             rewarded = True
             if not rewarded:
                 if self.form == 'dense':
@@ -63,7 +63,7 @@ class BounceReward(ChangepointReward):
                 else:
                     # print(proximity[0])
                     if proximity[0] == 0 and self.form == 'neg':
-                        rewards.append(-1)
+                        rewards.append(-.1)
                     else:
                         rewards.append(0)
         return pytorch_model.wrap(rewards, cuda=True)

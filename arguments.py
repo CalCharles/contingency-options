@@ -52,6 +52,11 @@ def get_args():
     parser.add_argument('--num-stack', type=int, default=4,
                         help='number of frames to stack (default: 4)')
 
+    # distributional RL parameters
+    parser.add_argument('--value-bounds', type=float, nargs=2, default=(0, 10),
+                        help='bounds for the possible value of a state (default: (0, 10))')
+    parser.add_argument('--num-value-atoms', type=int, default=51,
+                        help='number of atoms in distributional RL (default: 51)')
     # distributional regularization parameters
     parser.add_argument('--dist-interval', type=int, default=-1,
                         help='decides how often distributional interval is computed')
@@ -94,6 +99,8 @@ def get_args():
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,
                     help='percentage of random actions in epsilon greedy')
+    parser.add_argument('--min-greedy-epsilon', type=float, default=0.1,
+                    help='minimum percentage of random actions in epsilon greedy (if decaying)')
     parser.add_argument('--greedy-epsilon-decay', type=float, default=-1,
                     help='greedy epsilon decays by half every n updates (-1 is for no use)')
     parser.add_argument('--behavior-policy', default='',
@@ -136,7 +143,7 @@ def get_args():
                         help='save interval, one save per n updates (default: 10)')
     parser.add_argument('--save-dir', default='./trained_models/',
                         help='directory to save data when adding edges')
-    parser.add_argument('--save-recycle', type=int, default=10000,
+    parser.add_argument('--save-recycle', type=int, default=-1,
                         help='only saves the last n timesteps (-1 if not used)')
     parser.add_argument('--record-rollouts', default="",
                         help='path to where rollouts are recorded (when adding edges, where data was recorded to compute min/max)')

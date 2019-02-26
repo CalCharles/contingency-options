@@ -46,12 +46,15 @@ class Model(nn.Module):
         self.minmax = minmax
         if minmax is not None:
             self.minmax = (torch.cat([pytorch_model.wrap(minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
+        for mm in self.minmax:
+            mm.requires_grad = False
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
         self.critic_linear = nn.Linear(self.insize, 1)
         self.time_estimator = nn.Linear(self.insize, 1)
         self.QFunction = nn.Linear(self.insize, num_outputs)
         self.action_probs = nn.Linear(self.insize, num_outputs)
+        self.value_distribution = nn.Linear(self.insize, args.num_value_atoms * num_outputs)
         self.layers = [self.critic_linear, self.time_estimator, self.QFunction, self.action_probs]
         self.name = name
         self.iscuda = args.cuda # TODO: don't just set this to true
@@ -141,18 +144,6 @@ class BasicModel(Model):
         self.train()
         self.reset_parameters()
 
-
-    # def reset_parameters(self):
-    #     relu_gain = nn.init.calculate_gain('relu')
-    #     # nn.init.uniform_(self.l1.weight.data, .9 / self.?hidden_size, 1.1 / self.hidden_size)
-    #     # torch.nn.init.xavier_normal_
-    #     # torch.nn.init.xavier_uniform_
-    #     # torch.nn.init.eye_
-    #     nn.init.uniform_(self.l1.weight.data, 0.0, 1.1 / self.num_inputs / 10.0)
-    #     nn.init.uniform_(self.l2.weight.data, 0.0, 1.1 / self.hidden_size / 10.0)
-    #     nn.init.uniform_(self.l1.bias.data, 0.0,.1)
-    #     nn.init.uniform_(self.l2.bias.data, 0.0,.1)
-
     def forward(self, x):
         '''
         TODO: make use of time_estimator, link up Q vals and action probs
@@ -198,7 +189,71 @@ class BasicModel(Model):
 
         return layer_outputs
 
-from ReinforcementLearning.basis_models import FourierBasisModel, GaussianBasisModel, GaussianMultilayerModel
+class DistributionalModel(BasicModel):
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess)
+        self.value_bounds = args.value_bounds
+        self.num_value_atoms = args.num_value_atoms
+        self.dz = (self.value_bounds[1] - self.value_bounds[0]) / (self.num_value_atoms - 1)
+        self.value_support = pytorch_model.wrap([self.value_bounds[0] + (i * self.dz) for i in range(self.num_value_atoms)], cuda = args.cuda)
+        self.value_support.requires_grad = False
+
+    def forward(self, x):
+        if self.minmax is not None and self.use_normalize:
+            x = self.normalize(x)
+        # print("normin", x)
+        if self.num_layers > 0:
+            x = self.l1(x)
+            x = F.relu(x)
+        if self.num_layers > 1:
+            x = self.l2(x)
+            x = F.relu(x)
+        Q_vals = self.compute_Qval(x)
+        values = Q_vals.max(dim=1)[0]
+        action_probs = self.action_probs(x)
+        probs = F.softmax(action_probs, dim=1)
+        log_probs = F.log_softmax(action_probs, dim=1)
+        dist_entropy = -(log_probs * probs).sum(-1).mean()
+        return values, dist_entropy, probs, Q_vals
+
+    def compute_Qval(self, x):
+        # a = (a * torch.ones(x.shape[0])).long()
+        x = self.compute_value_distribution_mid(x)
+        return (self.value_support * x).sum(dim=2)
+        
+    def compute_value_distribution_mid(self, x):
+        '''
+        states as [batch size, final layer size]
+        actions as [batch, 1]
+        '''
+        # a = torch.zeros((actions.shape[0], self.num_outputs))
+        # if self.iscuda:
+        #     a = a.cuda()
+        # a[list(range(actions.shape[0])), actions.squeeze()] = 1.0
+        # x = torch.cat((x,a), dim=1)
+        x = self.value_distribution(x)
+        x = x.view(-1, self.num_outputs, self.num_value_atoms)
+        probs = F.softmax(x, dim=2)
+        return probs
+
+    def compute_value_distribution(self, x):
+        '''
+        states as [batch size, state size]
+        actions as [batch, 1]
+        '''
+        if self.minmax is not None and self.use_normalize:
+            x = self.normalize(x)
+        # print("normin", x)
+        if self.num_layers > 0:
+            x = self.l1(x)
+            x = F.relu(x)
+        if self.num_layers > 1:
+            x = self.l2(x)
+            x = F.relu(x)
+        return self.compute_value_distribution_mid(x)
+
+
+from ReinforcementLearning.basis_models import FourierBasisModel, GaussianBasisModel, GaussianMultilayerModel, GaussianDistributionModel
 from ReinforcementLearning.tabular_models import TabularQ, TileCoding
 
-models = {"basic": BasicModel, "tab": TabularQ, "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel}
+models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel}

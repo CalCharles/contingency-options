@@ -25,7 +25,6 @@ class BasisModel(Model):
         if self.variate == 1:
             self.basis_matrix = pytorch_model.wrap(np.identity(self.num_inputs * (self.order)))
             self.basis_size = (self.order) * self.num_inputs
-            self.QFunction = nn.Linear((self.order) * self.num_inputs, self.num_outputs, bias=False)
             print(self.basis_size)
         elif self.variate == 2:
             # TODO: use HIST LEN = num stack to get groupings
@@ -224,7 +223,7 @@ class GaussianBasisModel(BasisModel):
 
 class GaussianMultilayerModel(GaussianBasisModel):
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax,sess = None)
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax,sess = sess)
         '''
         num_population is used as the size of the last layer (don't mix evolutionary and gaussian basis for now)        
         '''
@@ -256,3 +255,65 @@ class GaussianMultilayerModel(GaussianBasisModel):
 
         # print("xval", x)
         return values, dist_entropy, aprobs, Qvals
+
+def GaussianDistributionModel(GaussianBasisModel):
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess)
+        self.l1 = nn.Linear(self.basis_size, args.num_population)
+        self.value_bounds = args.value_bounds
+        self.num_value_atoms = args.num_value_atoms
+        self.dz = (self.value_bounds[1] - self.value_bounds[0]) / (self.num_value_atoms - 1)
+        self.value_support = pytorch_model.wrap([self.value_bounds[0] + (i * self.dz) for i in range(self.num_value_atoms)], cuda = args.cuda)
+        self.value_support.requires_grad = False
+
+    def forward(self, x):
+        x = self.basis_fn(inputs) # TODO: dimension
+        # print(self.basis_matrix.shape, x.shape)
+        # print("xprebasis", x, self.basis_matrix)
+        # print(x.shape, self.basis_matrix.shape)
+        x = torch.mm(x, self.basis_matrix)
+        # print("xbasis", x.shape)
+        x = self.l1(x)
+        x = F.relu(x)
+        Q_vals = self.compute_Qval(x)
+        values = Q_vals.max(dim=1)[0]
+        action_probs = self.action_probs(x)
+        probs = F.softmax(action_probs, dim=1)
+        log_probs = F.log_softmax(action_probs, dim=1)
+        dist_entropy = -(log_probs * probs).sum(-1).mean()
+        return values, dist_entropy, probs, Q_vals
+
+    def compute_Qval(self, x):
+        # a = (a * torch.ones(x.shape[0])).long()
+        x = self.compute_value_distribution_mid(x)
+        return (self.value_support * x).sum(dim=2)
+        
+    def compute_value_distribution_mid(self, x):
+        '''
+        states as [batch size, final layer size]
+        actions as [batch, 1]
+        '''
+        # a = torch.zeros((actions.shape[0], self.num_outputs))
+        # if self.iscuda:
+        #     a = a.cuda()
+        # a[list(range(actions.shape[0])), actions.squeeze()] = 1.0
+        # x = torch.cat((x,a), dim=1)
+        x = self.value_distribution(x)
+        x = x.view(-1, self.num_outputs, self.num_value_atoms)
+        probs = F.softmax(x, dim=2)
+        return probs
+
+    def compute_value_distribution(self, x):
+        '''
+        states as [batch size, state size]
+        actions as [batch, 1]
+        '''
+        x = self.basis_fn(inputs) # TODO: dimension
+        # print(self.basis_matrix.shape, x.shape)
+        # print("xprebasis", x, self.basis_matrix)
+        # print(x.shape, self.basis_matrix.shape)
+        x = torch.mm(x, self.basis_matrix)
+        # print("xbasis", x.shape)
+        x = self.l1(x)
+        x = F.relu(x)
+        return self.compute_value_distribution_mid(x)

@@ -36,9 +36,10 @@ class RawEnvironment():
         '''
         pass
 
-    def set_save(self, itr, save_dir):
+    def set_save(self, itr, save_dir, recycle):
         self.save_path=save_dir
         self.itr = itr
+        self.recycle = recycle
         try:
             os.makedirs(save_dir)
         except OSError:
@@ -172,9 +173,34 @@ class ProxyEnvironment():
         self.insert_extracted()
         return self.extracted_state, self.raw_state, done, action_list
 
+    def step_dope(self, action, rollout, model=False, action_list=[]):
+        '''
+        steps the true environment, using dopamine models. The last environment in the proxy chain is the true environment,
+        and has a different step function. 
+        raw_state is the tuple (raw_state, factor_state)
+        model determines if action is a model 
+        extracted state is the proxy extracted state, raw state is the full raw state (raw_state, factored state),
+        done defines if a trajectory ends, action_list is all the actions taken by all the options in the chain
+        '''
+        if model:
+            reward = self.computeReward(rollout, 1)
+            action = self.models.currentModel().forward(self.current_state, reward[self.models.option_index])
+        if len(self.proxy_chain) > 1:
+            state, base_state, done, action_list = self.proxy_chain[-1].step(action, model=True, action_list = [action] + action_list)
+        else:
+            raw_state, factored_state, done = self.proxy_chain[-1].step(action)
+            action_list = [action] + action_list
+
+        if done:
+            self.reset_history()
+        self.raw_state = (raw_state, factored_state)
+        # TODO: implement multiprocessing support
+        self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(self.raw_state), cuda=self.args.cuda).unsqueeze(0)
+        self.insert_extracted()
+        return self.extracted_state, self.raw_state, done, action_list
+
     def computeReward(self, rollout, length):
         # TODO: probably doesn't have to be in here
-        # print(rollout.changepoint_queue)
         if rollout.cp_filled:
             states = torch.cat([rollout.changepoint_queue[rollout.changepoint_at+1:], rollout.changepoint_queue[:rollout.changepoint_at+1]], dim=0) # multiple policies training
             actions = torch.cat([rollout.changepoint_action_queue[rollout.changepoint_at+1:], rollout.changepoint_action_queue[:rollout.changepoint_at+1]], dim=0)

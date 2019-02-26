@@ -14,11 +14,13 @@ class Paddle(RawEnvironment):
         self.save_path = ""
         self.screen = Screen()
 
-    def set_save(self, itr, save_dir):
+    def set_save(self, itr, save_dir, recycle):
         self.save_path=save_dir
         self.itr = itr
+        self.recycle = recycle
         self.screen.save_path=save_dir
         self.screen.itr = itr
+        self.screen.recycle = recycle
 
         try:
             os.makedirs(save_dir)
