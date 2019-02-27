@@ -13,10 +13,12 @@ from ObjectRecognition.util import extract_neighbor
 
 
 # game instance
+n_state = 1000
 game = DatasetSelfBreakout(
     'SelfBreakout/runs',
     'SelfBreakout/runs/0',
     binarize=0.1,
+    n_state=n_state,
 )
 # game = DatasetAtari(
 #     'BreakoutNoFrameskip-v4',
@@ -30,7 +32,7 @@ game = DatasetSelfBreakout(
 dmiloss = SaliencyLoss(
     game,
     c_fn_2=partial(util.hinged_mean_square_deviation, 
-                   alpha_d=0.2),  # TODO: parameterize this
+                   alpha_d=0.3),  # TODO: parameterize this
     frame_dev_coeff= 0.0,
     focus_dev_coeff= 1.0,
     frame_var_coeff= 0.0,
@@ -68,8 +70,8 @@ premise_micploss = PremiseMICPLoss(
     game,
     paddle_model,
     mi_match_coeff= 1.0,
-    mi_diffs_coeff= 0.05,
-    mi_valid_coeff= 0.1,
+    mi_diffs_coeff= 0.1,
+    mi_valid_coeff= 0.2,
     prox_dist= 0.1,
     verbose=True,
 )
@@ -82,13 +84,15 @@ print(loss)
 loss_fn = loss.forward
 
 # get focus lists for comparison
-LIMIT = 1000
+LIMIT = n_state
+L = game.idx_offset
+R = L + LIMIT
 try:
-    ideal_paddle = game.paddle_data.astype(float)[:LIMIT, ...] / 84.0
+    ideal_paddle = game.paddle_data.astype(float)[L:R, ...] / 84.0
 except:
     ideal_paddle = np.random.rand(LIMIT, 2)
 try:
-    ideal_ball = game.ball_data.astype(float)[:LIMIT, ...] / 84.0
+    ideal_ball = game.ball_data.astype(float)[L:R, ...] / 84.0
 except:
     ideal_ball = np.random.rand(LIMIT, 2)
 random_focus = np.random.rand(LIMIT, 2)

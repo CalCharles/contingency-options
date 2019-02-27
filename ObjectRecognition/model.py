@@ -127,6 +127,7 @@ class ModelFocusCNN(ModelFocus):
         # network construction parameters
         self.net_params = net_params
         self.use_prior = kwargs.get('use_prior', False)
+        self.argmax_mode = kwargs.get('argmax_mode', 'first')  # 'first', 'rand'
 
         self.init_net()
 
@@ -173,12 +174,18 @@ class ModelFocusCNN(ModelFocus):
         batch_size = out.size(0)
         row_size = out.size(2)
         col_size = out.size(3)
-        """
-        # random argmax for tie-breaking
-        argmax = [np.random.choice(np.flatnonzero(line == line_max)) 
-                  for line, line_max in zip(flatten, flatten.max(1)[0])]
-        """
-        mx, argmax = out.reshape((batch_size, -1)).max(1)
+        
+        if self.argmax_mode == 'first':
+            # first argmax
+            mx, argmax = out.reshape((batch_size, -1)).max(1)
+        elif self.argmax_mode == 'rand':
+            # random argmax for tie-breaking
+            out = out.reshape((batch_size, -1))
+            argmax = np.array([np.random.choice(np.flatnonzero(line == line_max)) 
+                               for line, line_max in zip(out, out.max(1)[0])])
+        else:
+            raise ValueError('argmax_mode %s invalid'%(self.argmax_mode))
+        
         argmax %= row_size * col_size  # in case of multiple filters
         argmax_coor = np.array([np.unravel_index(argmax_i, (row_size, col_size)) 
                                 for argmax_i in argmax], dtype=float)

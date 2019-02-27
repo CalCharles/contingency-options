@@ -37,7 +37,7 @@ def get_dir(path):
     return path
 
 
-def plot_model_filter(model):
+def plot_model_filter(model, save_path=None):
     filters = [submodule[1].detach().numpy()
                for submodule in model.named_parameters() 
                if 'weight' in submodule[0] and len(submodule[1].shape) == 4]
@@ -50,19 +50,25 @@ def plot_model_filter(model):
     pidx = 0
     for f in filters:
         for subf in f:
-            axs_list[pidx].imshow(subf)
+            axs_list[pidx].imshow(subf, interpolation=None)
             pidx += 1
-    plt.show()
+
+    if save_path is not None:
+        file_path = os.path.join(save_path, 'filter.png')
+        plt.savefig(file_path)
+        print('saved weight at', save_path)
+    else:
+        plt.show()
 
 
-def load_model(prefix, model_id, net_params, cp_detector, use_prior=False):
+def load_model(prefix, model_id, net_params, *args, **kwargs):
     model_param_path = os.path.join(get_dir(prefix), '%s.npy'%model_id)
     params = np.load(model_param_path)
     model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
-        cp_detector=cp_detector,
-        use_prior=use_prior,
+        *args,
+        **kwargs,
     )
     model.set_parameters(params)
 
@@ -79,10 +85,10 @@ def plot_focus(dataset, indices, all_focus):
     )
     for i in range(PY):
         plt.subplot(PX, PY, i + 1)
-        plt.imshow(dataset.get_frame(indices[i])[0])
+        plt.imshow(dataset.get_frame(indices[i])[0], interpolation=None)
 
         plt.subplot(PX, PY, PY + i + 1)
-        plt.imshow(focus_img[i])
+        plt.imshow(focus_img[i], interpolation=None)
     plt.show()
 
 
@@ -95,7 +101,7 @@ def save_imgs(imgs, save_path):
     print('focus intensity saved under', save_subpath)
 
 
-def save_focus_img(dataset, all_focus, save_path, changepoints=None):
+def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
     focus_img = util.extract_neighbor(
         dataset,
         all_focus,
@@ -125,22 +131,21 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=None):
     print('focus by marker saved under', save_subpath)
 
 
-def report_model(dataset, model, prefix, plot_flags, cpd):
-    focus_img_dir = get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
+def report_model(save_path, dataset, model, prefix, plot_flags, cpd):
     focus = model.forward_all(dataset, batch_size=400, 
                               ret_extra=plot_flags['plot_intensity'])
     if plot_flags['plot_intensity']:
-        save_imgs(focus[1], focus_img_dir)
+        save_imgs(focus[1], save_path)
         focus = focus[0]
 
     if plot_flags['plot_focus']:
         # compute changepoints if needed
-        changepoints = None
+        changepoints = []
         if plot_flags['plot_cp']:
             _, changepoints = cpd.generate_changepoints(focus)
 
         # plot and save into directories
-        save_focus_img(dataset, focus, focus_img_dir, changepoints)
+        save_focus_img(dataset, focus, save_path, changepoints)
 
 if __name__ == '__main__':
     import argparse
@@ -154,12 +159,21 @@ if __name__ == '__main__':
                         help='network params JSON file')
     parser.add_argument('modelID',
                         help='model params file')
+    parser.add_argument('--n_state', type=int, default=1000,
+                        help='number of states in an episode')
+    parser.add_argument('--binarize', type=float, default=None,
+                        help='game binarize threshold')
+    parser.add_argument('--offset_fix', type=int, default=None,
+                        help='episode number (if dataset allow)')
     parser.add_argument('--champ', choices=['ball', 'paddle'],
                         help='parameters for CHAMP')
     parser.add_argument('--boost', action='store_true', default=False,
                         help='boost mode [in progress]')
     parser.add_argument('--prior', action='store_true', default=False,
                         help='use focus prior filter')
+    parser.add_argument('--argmax_mode',
+                        choices=['first', 'rand'], default='first',
+                        help='argmax mode to choose focus coordinate')
     parser.add_argument('--plot-filter', action='store_true', default=False,
                         help='plot model filter')
     parser.add_argument('--plot-focus', action='store_true', default=False,
@@ -169,6 +183,7 @@ if __name__ == '__main__':
     parser.add_argument('--plot-intensity', action='store_true', default=False,
                         help='plot focus intensity (output before argmax)')
     args = parser.parse_args()
+    print(args)
 
     prefix = args.dir
     model_id = args.modelID
@@ -195,16 +210,18 @@ if __name__ == '__main__':
         dataset = DatasetSelfBreakout(
             'SelfBreakout/runs',  # object dump path
             'SelfBreakout/runs/0',  # run states
-            binarize=0.1,
+            n_state=args.n_state,  # set max number of states
+            binarize=args.binarize,  # binarize image to 0 and 1
+            offset_fix=args.offset_fix
         )  # 10.0, 0.1, 1.0, 0.0005
     elif args.game == 'atari':
-        actor = partial(RotatePolicy, hold_count=7)
+        actor = partial(RotatePolicy, hold_count=5)
         dataset = DatasetAtari(
             'BreakoutNoFrameskip-v4',  # atari game name
             actor,  # mock actor
-            n_state=1000,  # set max number of states
+            n_state=args.n_state,  # set max number of states
             save_path='results',  # save path for gym
-            binarize=0.1,
+            binarize=args.binarize,  # binarize image to 0 and 1
         )
 
     """
@@ -224,12 +241,13 @@ if __name__ == '__main__':
     model = load_model(
         prefix,
         model_id,
-        net_params,
-        cpd,
+        net_params=net_params,
         use_prior=args.prior,
+        argmax_mode=args.argmax_mode,
     )
+    save_path = get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
     if plot_flags['plot_filter']:
-        plot_model_filter(model)
+        plot_model_filter(model, save_path)
 
     # boosting with trained models
     if args.boost:
@@ -255,4 +273,4 @@ if __name__ == '__main__':
     """
     Do the report
     """
-    report_model(dataset, model, prefix, plot_flags, cpd)
+    report_model(save_path, dataset, model, prefix, plot_flags, cpd)

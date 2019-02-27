@@ -48,18 +48,23 @@ class SaliencyLoss(FocusLoss):
     # evaluate focus, lesser = more salience
     def forward(self, focus):
         frames = util.extract_neighbor(
-        			self.frame_source,
-        			focus,
-                    np.arange(focus.shape[0]),
-                    nb_size=self.nb_size
-                )
+			self.frame_source,
+			focus,
+            np.arange(focus.shape[0]),
+            nb_size=self.nb_size)
+        preframes = util.extract_neighbor(
+            self.frame_source,
+            focus[1:],
+            np.arange(focus.shape[0] - 1),
+            nb_size=self.nb_size)
         frame_dev = self._deviation_1(frames)
         focus_dev = self._deviation_2(focus)
         frame_var = self._variance(frames)
-        belief_dev = self._belief_deviation(frames)
+        belief_dev = self._belief_deviation(focus, frames[1:], preframes)
         if self.verbose:
-            logger.info('frame_dev= %f, focus_dev= %f, frame_var= %f'%(
-                        frame_dev, focus_dev, frame_var))
+            logger.info(
+                'frame_dev= %f, focus_dev= %f, frame_var= %f, belief_dev= %f'%(
+                frame_dev, focus_dev, frame_var, belief_dev))
         return  self.frame_dev_coeff*frame_dev \
             + self.focus_dev_coeff*focus_dev \
             - self.frame_var_coeff*frame_var \
@@ -99,24 +104,24 @@ class SaliencyLoss(FocusLoss):
 
 
     # belief change by frame deviation
-    def _belief_deviation(self, features):
+    def _belief_deviation(self, focus, frames, preframes):
         r"""
-        metric to penalize changing focus to 
+        metric to reward changing to high deviation frame
         """
-        return 0 # np.mean(np.var(features.reshape((features.shape[0], -1)), axis=1))
+        n_frames = focus.shape[0]-1
+        assert n_frames == frames.shape[0] == preframes.shape[0]
 
+        focus_diff = np.sum((focus[1:] - focus[:-1])**2, axis=1)
+        frame_diff = np.sum((frames - preframes).reshape(n_frames, -1)**2, axis=1)
+        return np.mean(focus_diff * frame_diff)
 
-
-    # frame non-uniformity to filter out blank frame
-    def _variance(self, features):
-        r"""
-        metric for non-uniformity, variance
-        """
-        return np.mean(np.var(features.reshape((features.shape[0], -1)), axis=1))
 
     def __str__(self, prefix=''):
-        return prefix + 'SaliencyLoss: frame_dev= %g, focus_dev= %g, frame_var= %g'%(
-            self.frame_dev_coeff, self.focus_dev_coeff, self.frame_var_coeff)
+        return (prefix + \
+            'SaliencyLoss: frame_dev= %g, focus_dev= %g, ' + \
+            'frame_var= %g, belief_dev= %g')%(
+            self.frame_dev_coeff, self.focus_dev_coeff,
+            self.frame_var_coeff, self.belief_dev_coeff)
 
 
 # Mutual Information by Change Point Loss: consistancy from known premise
