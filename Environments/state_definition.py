@@ -154,11 +154,7 @@ class GetRaw(StateGet):
 	def get_state(self, state):
 		return state[0].flatten()
 
-def compute_minmax(state_function, pth):
-	'''
-	assumes pth leads to folder containing folders with raw images, and object_dumps file
-	uses the last 50000 data points, or less
-	'''
+def load_states(state_function, pth):
 	raw_files = []
 	for root, dirs, files in os.walk(pth, topdown=False):
 		dirs.sort(key=lambda x: int(x))
@@ -181,6 +177,15 @@ def compute_minmax(state_function, pth):
 	for state in zip(raw_files, dumps):
 		states.append(state_function.get_state(state))
 	states = np.stack(states, axis=0)
+	return states
+
+
+def compute_minmax(state_function, pth):
+	'''
+	assumes pth leads to folder containing folders with raw images, and object_dumps file
+	uses the last 50000 data points, or less
+	'''
+	states = load_states(state_function, pth)
 	return np.min(states, axis=0), np.max(states, axis=0)
 
 

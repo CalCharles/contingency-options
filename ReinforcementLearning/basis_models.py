@@ -20,6 +20,7 @@ class BasisModel(Model):
         self.variate = args.num_layers % 10 # decide the relatinship
         self.layering = args.num_layers // 10 # defines different kinds of relationships
         self.period = args.period
+        self.scale = args.scale
         self.base_vals = [i for i in range(self.order+1)]
 
         if self.variate == 1:
@@ -168,7 +169,7 @@ class FourierBasisModel(BasisModel):
             basis = []
             for val in datapt:
                 # print ("input single", val)
-                basis.append(torch.cos(val * self.order_vector))
+                basis.append(torch.cos(val * self.order_vector) * self.scale)
             # print(basis)
             basis = torch.cat(basis)
             bat.append(basis)
@@ -213,8 +214,8 @@ class GaussianBasisModel(BasisModel):
             for order_vector, val in zip(self.order_vectors, datapt):
                 # print ("input single", val)
                 # print(val - order_vector)
-                basis.append(torch.exp(-(val - order_vector).pow(2)/(2*(self.period ** 2))))
-                # print(basis)
+                basis.append(torch.exp(-(val - order_vector).pow(2)/(2*(self.period ** 2)))  * self.scale)
+                # print(torch.exp(-(val - order_vector).pow(2)/(2*(self.period ** 2)))  * self.scale)
                 # print("ov, val", order_vector, val, torch.exp(-(val - order_vector).pow(2)/(2*self.period)))
             # print(basis)
             basis = torch.cat(basis)
@@ -227,12 +228,16 @@ class GaussianMultilayerModel(GaussianBasisModel):
         '''
         num_population is used as the size of the last layer (don't mix evolutionary and gaussian basis for now)        
         '''
+        print("basis size", self.basis_size)
         self.l1 = nn.Linear(self.basis_size, args.num_population)
-        self.QFunction = nn.Linear(args.num_population, self.num_outputs, bias=False)
-        self.action_probs = nn.Linear(args.num_population, self.num_outputs, bias=False)
+        self.l2 = nn.Linear(args.num_population, args.num_population)
+        self.QFunction = nn.Linear(args.num_population, self.num_outputs, bias=True)
+        self.action_probs = nn.Linear(args.num_population, self.num_outputs, bias=True)
         self.layers[2] = self.QFunction
         self.layers[3] = self.action_probs
         self.layers.append(self.l1)
+        self.layers.append(self.l2)
+        self.reset_parameters()
         # print("done initializing")
 
     def forward(self, inputs):
@@ -240,21 +245,25 @@ class GaussianMultilayerModel(GaussianBasisModel):
         # print(self.basis_matrix.shape, x.shape)
         # print("xprebasis", x, self.basis_matrix)
         # print(x.shape, self.basis_matrix.shape)
-        x = torch.mm(x, self.basis_matrix)
+        x = torch.mm(x, self.basis_matrix) 
         # print("xbasis", x.shape)
+        # print("before", x)
         x = self.l1(x)
+        x = F.relu(x)
+        x = self.l2(x)
         x = F.relu(x)
         Qvals = self.QFunction(x)
         aprobs = self.action_probs(x)
+        # print("after", aprobs)
         values = Qvals.max(dim=1)[0]
         probs = F.softmax(aprobs, dim=1)
         # print("probs", probs)
         log_probs = F.log_softmax(aprobs, dim=1)
 
         dist_entropy = -(log_probs * probs).sum(-1).mean()
-
+        # print(probs)
         # print("xval", x)
-        return values, dist_entropy, aprobs, Qvals
+        return values, dist_entropy, probs, Qvals
 
 def GaussianDistributionModel(GaussianBasisModel):
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None):

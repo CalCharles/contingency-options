@@ -67,6 +67,7 @@ class RolloutOptionStorage(object):
         self.Qvals = self.Qvals[:, :num_steps + 1]
         self.value_preds = self.value_preds[:, :num_steps + 1]
         self.actions = self.actions[:num_steps + 1] # no other processes
+        self.epsilon = self.epsilon[:num_steps + 1]
         self.masks = self.masks[:num_steps + 1] # no other processes
 
     def cuda(self):

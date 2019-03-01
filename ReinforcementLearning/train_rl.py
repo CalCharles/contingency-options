@@ -27,7 +27,7 @@ def unwrap_or_none(val):
     else:
         return -1.0
 
-def trainRL(args, save_path, true_environment, train_models, learning_algorithm, 
+def trainRL(args, save_path, true_environment, train_models, learning_algorithm, proxy_environment,
             proxy_chain, reward_classes, state_class, behavior_policy):
     print("#######")
     print("Training Options")
@@ -35,7 +35,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     # if option_chain is not None: #TODO: implement this
     base_env = proxy_chain[0]
     base_env.set_save(0, args.save_dir, args.save_recycle)
-    proxy_environment = ProxyEnvironment(args, proxy_chain, reward_classes, state_class, behavior_policy)
+    proxy_environment.initialize(args, proxy_chain, reward_classes, state_class, behavior_policy)
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)
     behavior_policy.initialize(args, state_class.action_num)
@@ -46,7 +46,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     hist_state = pytorch_model.wrap(proxy_environment.getHistState(), cuda = args.cuda)
     raw_state = base_env.getState()
     cp_state = proxy_environment.changepoint_state([raw_state])
-    print("initial_state (s, hs, rs, cps)", state, hist_state, raw_state, cp_state)
+    # print("initial_state (s, hs, rs, cps)", state, hist_state, raw_state, cp_state)
     # print(cp_state.shape, state.shape, hist_state.shape, state_class.shape)
     rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, len(train_models.models), cp_state[0].shape)
     option_actions = {option.name: collections.Counter() for option in train_models.models}

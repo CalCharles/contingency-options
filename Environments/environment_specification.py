@@ -92,7 +92,12 @@ class ChainMDP(RawEnvironment):
 
 
 class ProxyEnvironment():
-    def __init__(self, args, proxy_chain, reward_fns, state_get, behavior_policy):
+    def __init__(self):
+        '''
+        create a dummy placeholder
+        '''
+
+    def initialize(self, args, proxy_chain, reward_fns, state_get, behavior_policy):
         '''
         an environment with (sub)states that are a subspace of the true states, actions that are options with a shared state space,
         and rewards which are based on the substates
@@ -104,7 +109,7 @@ class ProxyEnvironment():
         self.proxy_chain = proxy_chain
         self.reward_fns = reward_fns
         self.stateExtractor = state_get
-        self.args = args
+        self.iscuda = args.cuda
         self.name = args.unique_id # name should be of form: head_tail
 
         self.num_hist = args.num_stack
@@ -126,7 +131,7 @@ class ProxyEnvironment():
 
 
     def reset_history(self):
-        self.current_state = pytorch_model.wrap(np.zeros((self.num_hist * int(np.prod(self.state_size)), )), cuda = self.args.cuda)
+        self.current_state = pytorch_model.wrap(np.zeros((self.num_hist * int(np.prod(self.state_size)), )), cuda = self.iscuda)
         # TODO: add multi-process code someday
 
     def insert_extracted(self):
@@ -159,6 +164,9 @@ class ProxyEnvironment():
             values, dist_entropy, probs, Q_vals = self.models.determine_action(self.current_state)
             action_probs, Q_vs = models.get_action(probs, Q_vals, index = action)
             action = self.behavior_policy.take_action(probs, Q_vals)
+            # if issubclass(self.models.currentModel(), DopamineModel): 
+            #     reward = self.computeReward(rollout, 1)
+            #     action = self.models.currentModel().forward(self.current_state, reward[self.models.option_index])
         if len(self.proxy_chain) > 1:
             state, base_state, done, action_list = self.proxy_chain[-1].step(action, model=True, action_list = [action] + action_list)
         else:
@@ -169,7 +177,7 @@ class ProxyEnvironment():
             self.reset_history()
         self.raw_state = (raw_state, factored_state)
         # TODO: implement multiprocessing support
-        self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(self.raw_state), cuda=self.args.cuda).unsqueeze(0)
+        self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(self.raw_state), cuda=self.iscuda).unsqueeze(0)
         self.insert_extracted()
         return self.extracted_state, self.raw_state, done, action_list
 
@@ -195,7 +203,7 @@ class ProxyEnvironment():
             self.reset_history()
         self.raw_state = (raw_state, factored_state)
         # TODO: implement multiprocessing support
-        self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(self.raw_state), cuda=self.args.cuda).unsqueeze(0)
+        self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(self.raw_state), cuda=self.iscuda).unsqueeze(0)
         self.insert_extracted()
         return self.extracted_state, self.raw_state, done, action_list
 

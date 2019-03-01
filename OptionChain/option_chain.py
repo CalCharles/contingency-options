@@ -1,6 +1,7 @@
 import os, glob
 from Environments.multioption import MultiOption
 from file_management import load_from_pickle
+from Environments.environment_specification import ProxyEnvironment
 
 
 class OptionNode():
@@ -47,14 +48,19 @@ class OptionChain():
                     proxy_env.set_models(models)
                     proxy_env.set_test() # changes behavior policy to testing mode (no random actions)
                     self.environments[edge] = proxy_env
+                if d == train_edge and args.load_weights:
+                    models = MultiOption()
+                    models.load(args, model_path)
+                    self.environments[edge] = ProxyEnvironment()
+                    proxy_env.set_models(models)
                 else:
-                    self.environments[edge] = None
+                    self.environments[edge] = ProxyEnvironment()
         # in the case that the train edge does not have directories set up
         tedge = (train_edge.split("->")[0], train_edge.split("->")[1])
         if tedge not in self.edges:
             os.makedirs(os.path.join(save_path, train_edge))
             self.add_edge(tedge)
-            self.environments[tedge] = None
+            self.environments[tedge] = ProxyEnvironment()
         self.save_dir = os.path.join(save_path, train_edge) +"/"
 
     def initialize(self, args):

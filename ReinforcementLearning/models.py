@@ -25,7 +25,7 @@ class pytorch_model():
 
     @staticmethod
     def unwrap(data):
-        return data.data.cpu().numpy()
+        return data.clone().detach().cpu().numpy()
 
     @staticmethod
     def concat(data, axis=0):
@@ -46,10 +46,12 @@ class Model(nn.Module):
         self.minmax = minmax
         if minmax is not None:
             self.minmax = (torch.cat([pytorch_model.wrap(minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
-        for mm in self.minmax:
-            mm.requires_grad = False
+            for mm in self.minmax:
+                mm.requires_grad = False
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
+        if args.model_form in ["gaussian", "fourier", "gaumulti", "gaudist"]:
+            self.insize = args.factor # should get replaced in basis function section
         self.critic_linear = nn.Linear(self.insize, 1)
         self.time_estimator = nn.Linear(self.insize, 1)
         self.QFunction = nn.Linear(self.insize, num_outputs)
@@ -67,7 +69,7 @@ class Model(nn.Module):
         for layer in self.layers:
             if self.init_form == "uni":
                 # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
-                nn.init.uniform_(layer.weight.data, 0.0, 1 / (layer.weight.data.shape[1] * 10))
+                nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])
             elif self.init_form == "xnorm":
                 torch.nn.init.xavier_normal_(layer.weight.data)
             elif self.init_form == "xuni":

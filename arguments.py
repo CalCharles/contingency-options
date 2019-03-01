@@ -92,9 +92,11 @@ def get_args():
                     help='number of time steps to run to run ppo gradient on best performer (default: 2000)')
     parser.add_argument('--grad-lr', type=float, default=.0007,
                         help='the learning rate for the PPO steps (default -1, not used)')
-    # SARSA parameters
+    # basis function parameters
     parser.add_argument('--period', type=float, default=1,
                 help='length of period over which fourier basis is applied')
+    parser.add_argument('--scale', type=float, default=1,
+                help='scaling term for magnitudes, which can be useful in multilayer to exacerbate differences')
 
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,
@@ -123,7 +125,7 @@ def get_args():
     parser.add_argument('--num-processes', type=int, default=1,
                         help='how many training CPU processes to use (default: 16)')
     parser.add_argument('--num-steps', type=int, default=5,
-                        help='number of forward steps in A2C (default: 5)')
+                        help='number of forward steps before update (default: 5)')
     parser.add_argument('--num-update-model', type=int, default=3,
                         help='number of gradient steps before switching options (default: 3)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
@@ -186,10 +188,10 @@ def get_args():
     parser.add_argument('--train', action ='store_true', default=False,
                         help='trains the algorithm if set to true')
     # load variables
-    # parser.add_argument('--load-weights', default="",
-    #                     help='path to trained model, or to data if training by imitation')
+    parser.add_argument('--load-weights', action ='store_true', default=False,
+                        help='load the options for the existing network')
     # parser.add_argument('--load-networks', default=[], nargs='+',
-    #                     help='path to networks folder')
+    #                     help='load weights from the network')
     # DP-GMM parameters
     parser.add_argument('--dp-gmm', default=["default"], nargs='+',
                     help='parameters for dirichlet process gaussian mixture model, in order number of components, maximum iteration number, prior, covariance type and covariance prior')

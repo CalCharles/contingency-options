@@ -243,6 +243,7 @@ class PPO_optimizer(LearningOptimizer):
             
             # print("aps", action_probs.shape, qvs.shape)
             # values, old_action_probs, _ = train_models.get_action(values, old_action_probs, qvs)
+            # print(action_eval.shape, action_probs.shape, action_probs_eval.shape, epsilon_eval.shape)
             old_action_probs = correct_epsilon(action_probs_eval, epsilon_eval)
             # print("optimization eval (cse, nse, ap, lap, acts)", current_state_eval, next_current_state_eval, action_probs, old_action_probs, action_eval)
             action_log_probs, old_action_log_probs = torch.log(action_probs).gather(1, action_eval), torch.log(old_action_probs).gather(1, action_eval)
@@ -265,7 +266,7 @@ class PPO_optimizer(LearningOptimizer):
             output_entropy = -torch.sum(log_output_probs * output_probs) * args.high_entropy
             # print ("loss computation al, vl, oe", action_loss, value_loss, output_entropy)
             # output_entropy = compute_output_entropy(args, action_probs, log_output_probs)
-            entropy_loss = (dist_entropy - output_entropy) #we can have two parameters
+            entropy_loss = dist_entropy#(dist_entropy - output_entropy) #we can have two parameters
             # print("weight update pre tm, sm", train_models.models[train_models.option_index].action_probs.weight)
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
                             value_loss * args.value_loss_coef + action_loss + entropy_loss * args.entropy_coef, RL=0)
@@ -320,13 +321,14 @@ class Distributional_optimizer(LearningOptimizer):
             for j in range(args.num_value_atoms):
                 bj = (torch.clamp(rollout_rewards + args.gamma * train_models.currentModel().value_support[j], args.value_bounds[0], args.value_bounds[1]) - args.value_bounds[0]) / train_models.currentModel().dz
                 l,u = torch.floor(bj), torch.ceil(bj)
-                # print(j, l,u,bj,p[:,j] * (u-bj), p[:,j] * (bj-l), p[:,j], torch.clamp(rollout_rewards + args.gamma * train_models.currentModel().value_support[j], args.value_bounds[0], args.value_bounds[1]))
+                # print(j, l,u,bj,p[:,j] * (u-bj), p[:,j] * (bj-l), p[:,j], rollout_rewards, args.gamma, args.gamma * train_models.currentModel().value_support[j])
                 # print(m.shape, l.shape, p.shape, u.shape, bj.shape)
                 # print(m, m[list(range(state_eval.shape[0])),l.long()], l.long(), (p[:,j] * (u-bj)).shape)
                 m[list(range(state_eval.shape[0])),l.long()] += p[:,j] * (u-bj)
                 m[list(range(state_eval.shape[0])),u.long()] += p[:,j] * (bj-l)
             p_current = train_models.currentModel().compute_value_distribution(current_state_eval)[list(range(current_state_eval.shape[0])),action_eval.squeeze().long()]
-            # print(m.shape, torch.log(p_current).shape, train_models.currentModel().compute_value_distribution(current_state_eval).shape)
+            # print(m, torch.log(p_current), train_models.currentModel().value_support, train_models.currentModel().dz, args.value_bounds[0])
+            # print(train_models.currentModel().compute_value_distribution(current_state_eval))
             value_loss = -(m * torch.log(p_current)).sum()
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index], value_loss, RL=0)
             # print (value_loss)
