@@ -49,9 +49,11 @@ class OptionChain():
                     proxy_env.set_test() # changes behavior policy to testing mode (no random actions)
                     self.environments[edge] = proxy_env
                 if d == train_edge and args.load_weights:
+                    model_path = os.path.join(save_path, d)
                     models = MultiOption()
                     models.load(args, model_path)
-                    self.environments[edge] = ProxyEnvironment()
+                    proxy_env = ProxyEnvironment()
+                    self.environments[edge] = proxy_env
                     proxy_env.set_models(models)
                 else:
                     self.environments[edge] = ProxyEnvironment()

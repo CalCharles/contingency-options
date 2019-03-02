@@ -9,6 +9,9 @@ class MultiOption():
         self.models = []
 
     def initialize(self, args, num_options, state_class):
+        '''
+        Naming for models is based on double underscore __
+        '''
         self.models = []
         if args.model_form.find("dope") != -1:
             self.sess= tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))
@@ -20,7 +23,7 @@ class MultiOption():
             else:
                 minmax = state_class.get_minmax()
             model = self.option_class(args, state_class.flat_state_size() * args.num_stack, 
-                state_class.action_num, factor=args.factor, name = args.unique_id + "_" + str(i) +"_", minmax = minmax, sess=self.sess)
+                state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess)
             # since name is args.unique_id + str(i), this means that unique_id should be the edge, in form head_tail
             if args.cuda:
                 model = model.cuda()
@@ -84,7 +87,8 @@ class MultiOption():
 
     def load(self, args, pth):
         model_paths = glob.glob(os.path.join(pth, '*.pt'))
-        model_paths.sort(key=lambda x: int(x.split("_")[1]))
+        print(model_paths)
+        model_paths.sort(key=lambda x: int(x.split("__")[1]))
         for mpth in model_paths:
             self.models.append(torch.load(mpth))
             if args.cuda:
