@@ -57,10 +57,14 @@ def fit_actions(args, save_dir, true_environment, train_models, state_class, des
     print("train_models", len(train_models.models))
     desired_actions = np.stack([desired_actions[:] for i in range(len(train_models.models))], axis=1)
     optimizers = []
+    min_batch = 10
+    batch_size = 100
     for model in train_models.models:
         optimizers.append(optim.Adam(model.parameters(), args.lr, eps=args.eps, betas=args.betas, weight_decay=args.weight_decay))
     for i in range(args.num_iters):
-        idxes = np.random.choice(list(range(len(desired_actions))), (100,), replace=False)
+        # idxes = np.random.choice(list(range(len(desired_actions))), (batch_size,), replace=False)
+        start = np.random.randint(len(desired_actions))
+        idxes = [(idx + start) % len(desired_actions) for idx in range(batch_size)]
         values, dist_entropy, action_probs, Q_vals = train_models.determine_action(pytorch_model.wrap(states[idxes], cuda=args.cuda))
         # print(action_probs.transpose(1,0).shape, desired_actions[idxes].shape)
         # print(action_probs.squeeze().shape, desired_actions.shape)
@@ -69,7 +73,7 @@ def fit_actions(args, save_dir, true_environment, train_models, state_class, des
         dist_ent = -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean()
         batch_mean = action_probs.squeeze().mean(dim=0)
         batch_ent = -((batch_mean + 1e-10) * torch.log(batch_mean + 1e-10)).sum()
-        print(batch_ent, dist_ent, batch_mean)
+        print(batch_ent, dist_ent, batch_mean, action_probs[0][0])
         loss = dist_ent - batch_ent
         # loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(desired_actions[idxes], cuda=args.cuda).squeeze())
         for optimizer in optimizers:
@@ -78,7 +82,9 @@ def fit_actions(args, save_dir, true_environment, train_models, state_class, des
         for optimizer in optimizers:
             optimizer.step()
         print("iter ", i, " at loss: ", loss.detach().cpu())
+        if i % (args.num_iters // 10):
+            batch_size = max(batch_size //   2, min_batch)
         if i % args.save_interval == 0 and args.save_models: # no point in saving if not training
             print("=========SAVING MODELS==========")
-            train_models.save(save_path) # TODO: implement save_options
-    train_models.save(option_chain.save_dir) # TODO: implement save_options
+            train_models.save(save_dir) # TODO: implement save_options
+    train_models.save(save_dir) # TODO: implement save_options

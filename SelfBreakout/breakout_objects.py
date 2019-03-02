@@ -122,6 +122,7 @@ class Paddle(animateObject):
 		self.width = 7
 		self.height = 2
 		self.name = "Paddle"
+		self.nowall = False
 
 	def interact(self, other):
 		if other.name == "Action":
@@ -130,12 +131,16 @@ class Paddle(animateObject):
 				self.vel = np.array([0,0])
 			elif other.attribute == 2:
 				if self.pos[1] == 12:
+					if self.nowall:
+						self.pos = np.array([0,64])
 					self.vel = np.array([0,0])
 				else:
 					self.vel = np.array([0,-2])
 				# self.vel = np.array([0,-2])
 			elif other.attribute == 3:
 				if self.pos[1] >= 64:
+					if self.nowall:
+						self.pos = np.array([0,12])
 					self.vel = np.array([0,0])
 				else:
 					self.vel = np.array([0,2])

@@ -39,8 +39,10 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)
     behavior_policy.initialize(args, state_class.action_num)
-    train_models.initialize(args, len(reward_classes), state_class)
-    proxy_environment.set_models(train_models)
+    print("loading weights", args.load_weights)
+    if not args.load_weights:
+        train_models.initialize(args, len(reward_classes), state_class)
+        proxy_environment.set_models(train_models)
     learning_algorithm.initialize(args, train_models)
     state = pytorch_model.wrap(proxy_environment.getState(), cuda = args.cuda)
     hist_state = pytorch_model.wrap(proxy_environment.getHistState(), cuda = args.cuda)
@@ -119,8 +121,10 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         option_counter[name] += step + 1
         option_value[name] += reward_total.data  
         #### logging
-
-        value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = learning_algorithm.step(args, train_models, rollouts) 
+        if step != 0:
+            value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = learning_algorithm.step(args, train_models, rollouts)
+        else:
+            continue
         if args.dist_interval != -1 and j % args.dist_interval == 0:
             learning_algorithm.distibutional_sparcity_step(args, train_models, rollouts)
         if args.greedy_epsilon_decay > 0 and j % args.greedy_epsilon_decay == 0 and j != 0:

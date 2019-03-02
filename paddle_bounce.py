@@ -1,6 +1,7 @@
 from SelfBreakout.breakout_screen import Screen
 from SelfBreakout.paddle import Paddle
 from SelfBreakout.noblock import PaddleNoBlocks
+from SelfBreakout.unobstructpaddle import PaddleNoWalls
 from file_management import load_from_pickle, get_edge
 import glob, os
 from ReinforcementLearning.models import models
@@ -29,7 +30,8 @@ if __name__ == "__main__":
     # x values python paddle_bounce.py --model-form basic --optimizer-form PPO --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 10000 --state-forms xprox --state-names Paddle --base-node Paddle --changepoint-dir ../datasets/caleb_data/cotest/paddlegraph --factor 16 --num-layers 2 --lr 7e-4 --behavior-policy esp --optim RMSprop --period .05 --reward-form x --gamma .5 --save-dir data/doperl --init-form xnorm --entropy-coef 0.01 --grad-epoch 5
     # x values bounce 100k python paddle_bounce.py --model-form gaumulti --optimizer-form PPO --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 100000 --state-forms xprox --state-names Paddle --base-node Paddle --changepoint-dir ../datasets/caleb_data/cotest/paddlegraph --factor 40 --num-layers 1 --lr 7e-4 --behavior-policy esp --optim RMSprop --period .01 --scale 30 --num-population 50 --normalize --reward-form bounce --gamma .99 --save-dir data/doperl --init-form xnorm --entropy-coef 0.1 --grad-epoch 5 > outdope.txt
     args = get_args()
-    true_environment = Paddle()
+    # true_environment = Paddle()
+    true_environment = PaddleNoWalls()
     # true_environment = PaddleNoBlocks()
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
@@ -48,6 +50,8 @@ if __name__ == "__main__":
     environments = option_chain.initialize(args)
     proxy_environment = environments.pop(-1)
     proxy_chain = environments
+    if args.load_weights:
+        train_models = proxy_environment.models
     if len(environments) > 1: # there is a difference in the properties of a proxy environment and the true environment
         num_actions = len(environments[-1].reward_fns)
     else:

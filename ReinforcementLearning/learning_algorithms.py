@@ -9,6 +9,7 @@ from ReinforcementLearning.models import pytorch_model
 
 
 def initialize_optimizer(args, model):
+    print(args.lr)
     if args.optim == "RMSprop":
         return optim.RMSprop(model.parameters(), args.lr, eps=args.eps, alpha=args.alpha)
     elif args.optim == "Adam":
@@ -246,10 +247,13 @@ class PPO_optimizer(LearningOptimizer):
             # print(action_eval.shape, action_probs.shape, action_probs_eval.shape, epsilon_eval.shape)
             old_action_probs = correct_epsilon(action_probs_eval, epsilon_eval)
             # print("optimization eval (cse, nse, ap, lap, acts)", current_state_eval, next_current_state_eval, action_probs, old_action_probs, action_eval)
-            action_log_probs, old_action_log_probs = torch.log(action_probs).gather(1, action_eval), torch.log(old_action_probs).gather(1, action_eval)
+            action_log_probs, old_action_log_probs = torch.log(action_probs + 1e-10).gather(1, action_eval), torch.log(old_action_probs + 1e-10).gather(1, action_eval)
             advantages = rollout_returns.view(-1, 1) - values
             # print("returns", rollout_returns.view(-1,1), values, (advantages.std() + 1e-5))
             # print(advantages.shape)
+            oa = advantages
+            a = (advantages - advantages.mean())
+            astd = advantages.std()
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
             ratio = torch.exp(action_log_probs - old_action_log_probs.detach()).squeeze()
             # adv_targ = Variable(advantages)
@@ -258,7 +262,8 @@ class PPO_optimizer(LearningOptimizer):
             surr2 = torch.clamp(ratio, 1.0 - args.clip_param, 1.0 + args.clip_param) * advantages.squeeze()
             # print(ratio.shape, advantages.shape, -torch.min(surr1, surr2))
             action_loss = -torch.min(surr1, surr2).mean() # PPO's pessimistic surrogate (L^CLIP)
-
+            if torch.isnan(action_loss).sum() > 0:
+                print("NAN", rollout_returns, values, a, astd, oa)
             # print("values (alp, oalp, advantages, log ratio, ratio, surr1, surr2)", action_log_probs, old_action_log_probs, advantages, action_log_probs - old_action_log_probs.detach(), ratio, surr1, surr2)
             value_loss = (Variable(rollout_returns) - values).pow(2).mean()
             log_output_probs = torch.log(torch.sum(action_probs, dim=0) / action_probs.size(0))
