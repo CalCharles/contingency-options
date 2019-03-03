@@ -46,7 +46,7 @@ class DQNWrapper(Model):
            epsilon_train=args.greedy_epsilon,
            epsilon_eval=0.001,
            epsilon_decay_period=250000,
-           tf_device='/gpu:*',
+           tf_device='/cpu:*',
            use_staging=True,
            max_tf_checkpoints_to_keep=4,
            optimizer=tf.train.RMSPropOptimizer(
@@ -57,6 +57,9 @@ class DQNWrapper(Model):
                centered=True),
            summary_writer=None,
            summary_writing_frequency=500)
+    init = tf.global_variables_initializer()
+    self.sess.run(init)
+
 
   def forward(self, x, reward):
     '''
@@ -133,7 +136,6 @@ class RainbowWrapper(Model):
            summary_writer=None,
            summary_writing_frequency=500)
     self.sess.run(tf.global_variables_initializer())
-
 
   def forward(self, x, reward):
     x = pytorch_model.unwrap(x)

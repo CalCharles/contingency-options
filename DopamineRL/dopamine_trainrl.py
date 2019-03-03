@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import tensorflow as tf
 from torch.autograd import Variable
 import torch.optim as optim
 
@@ -27,7 +28,7 @@ def unwrap_or_none(val):
     else:
         return -1.0
 
-def train_dopamine(args, save_path, true_environment, train_models, 
+def train_dopamine(args, save_path, true_environment, train_models, proxy_environment,
             proxy_chain, reward_classes, state_class, behavior_policy):
     print("#######")
     print("Training Options")
@@ -35,7 +36,7 @@ def train_dopamine(args, save_path, true_environment, train_models,
     # if option_chain is not None: #TODO: implement this
     base_env = proxy_chain[0]
     base_env.set_save(0, args.save_dir, args.save_recycle)
-    proxy_environment = ProxyEnvironment(args, proxy_chain, reward_classes, state_class, behavior_policy)
+    proxy_environment.initialize(args, proxy_chain, reward_classes, state_class, behavior_policy)
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)
     behavior_policy.initialize(args, state_class.action_num)
@@ -57,6 +58,7 @@ def train_dopamine(args, save_path, true_environment, train_models,
     option_counter = collections.Counter()
     option_value = collections.Counter()
     print(hist_state)
+    val= None
     train_models.currentModel().begin_episode(pytorch_model.unwrap(hist_state))
     for j in range(args.num_iters):
         rollouts.set_parameters(args.num_steps)            
@@ -83,6 +85,7 @@ def train_dopamine(args, save_path, true_environment, train_models,
             #### logging
             option_actions[train_models.currentName()][int(pytorch_model.unwrap(action.squeeze()))] += 1
             #### logging
+            # print(train_models.currentModel().dope_rainbow)
 
             if done:
                 # print("reached end")
@@ -92,6 +95,11 @@ def train_dopamine(args, save_path, true_environment, train_models,
                 train_models.currentModel().begin_episode(pytorch_model.unwrap(proxy_environment.getHistState()))
                 # print(step)
                 break
+        # var = [v for v in tf.trainable_variables() if v.name == "Online/fully_connected/weights:0"][0]
+        # nval = train_models.currentModel().sess.run(var)
+        # if val is not None: 
+        #     print(var, np.sum(abs(nval - val)), train_models.currentModel().dope_rainbow.eval_mode)
+        # val = nval
         current_state = proxy_environment.getHistState()
         # print(state, action)
         # print("step states (cs, s, cps, act)", current_state, estate, cp_state, action) 

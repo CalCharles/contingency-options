@@ -44,7 +44,7 @@ if __name__ == "__main__":
     # reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
     train_models = MultiOption(len(reward_classes), models[args.model_form])
     environments = option_chain.initialize(args)
-    environments.pop(-1)
+    proxy_environment = environments.pop(-1)
     proxy_chain = environments
     if len(environments) > 1: # there is a difference in the properties of a proxy environment and the true environment
         num_actions = len(environments[-1].reward_fns)
@@ -58,5 +58,5 @@ if __name__ == "__main__":
     print(state_class.minmax)
     behavior_policy = behavior_policies[args.behavior_policy]()
     # behavior_policy = EpsilonGreedyProbs()
-    train_dopamine(args, option_chain.save_dir, true_environment, train_models, 
+    train_dopamine(args, option_chain.save_dir, true_environment, train_models, proxy_environment,
             proxy_chain, reward_classes, state_class, behavior_policy=behavior_policy)
