@@ -27,14 +27,8 @@ from ObjectRecognition.optimizer import CMAEvolutionStrategyWrapper
 from ObjectRecognition.loss import (
     SaliencyLoss, ActionMICPLoss, PremiseMICPLoss,
     CollectionMICPLoss, CombinedLoss)
+import ObjectRecognition.add_args as add_args
 import ObjectRecognition.util as util
-
-
-def get_dir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-        print('created directory', path)
-    return path
 
 
 def plot_model_filter(model, save_path=None):
@@ -62,7 +56,7 @@ def plot_model_filter(model, save_path=None):
 
 
 def load_model(prefix, model_id, net_params, *args, **kwargs):
-    model_param_path = os.path.join(get_dir(prefix), '%s.npy'%model_id)
+    model_param_path = os.path.join(util.get_dir(prefix), '%s.npy'%model_id)
     params = np.load(model_param_path)
     model = ModelFocusCNN(
         image_shape=(84, 84),
@@ -93,7 +87,7 @@ def plot_focus(dataset, indices, all_focus):
 
 
 def save_imgs(imgs, save_path):
-    save_subpath = get_dir(os.path.join(save_path, 'intensity'))
+    save_subpath = util.get_dir(os.path.join(save_path, 'intensity'))
     for i, img in enumerate(imgs):
         file_name = 'intensity_%d.png'%(i)
         file_path = os.path.join(save_subpath, file_name)
@@ -117,7 +111,7 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
 
     cp_mask = np.zeros(len(all_focus), dtype=bool)
     cp_mask[changepoints] = True
-    save_subpath = get_dir(os.path.join(save_path, 'marker'))
+    save_subpath = util.get_dir(os.path.join(save_path, 'marker'))
     for i, img in enumerate(dataset.get_frame(0, len(all_focus))):
         # marker
         file_name = 'marker_%d.png'%(i)
@@ -159,21 +153,6 @@ if __name__ == '__main__':
                         help='network params JSON file')
     parser.add_argument('modelID',
                         help='model params file')
-    parser.add_argument('--n_state', type=int, default=1000,
-                        help='number of states in an episode')
-    parser.add_argument('--binarize', type=float, default=None,
-                        help='game binarize threshold')
-    parser.add_argument('--offset_fix', type=int, default=None,
-                        help='episode number (if dataset allow)')
-    parser.add_argument('--champ', choices=['ball', 'paddle'],
-                        help='parameters for CHAMP')
-    parser.add_argument('--boost', action='store_true', default=False,
-                        help='boost mode [in progress]')
-    parser.add_argument('--prior', action='store_true', default=False,
-                        help='use focus prior filter')
-    parser.add_argument('--argmax_mode',
-                        choices=['first', 'rand'], default='first',
-                        help='argmax mode to choose focus coordinate')
     parser.add_argument('--plot-filter', action='store_true', default=False,
                         help='plot model filter')
     parser.add_argument('--plot-focus', action='store_true', default=False,
@@ -182,6 +161,9 @@ if __name__ == '__main__':
                         help='indicate changepoint frames (with --plot-focus)')
     parser.add_argument('--plot-intensity', action='store_true', default=False,
                         help='plot focus intensity (output before argmax)')
+    add_args.add_changepoint_argument(parser)
+    add_args.add_dataset_argument(parser)
+    add_args.add_model_argument(parser)
     args = parser.parse_args()
     print(args)
 
@@ -212,7 +194,7 @@ if __name__ == '__main__':
             'SelfBreakout/runs/0',  # run states
             n_state=args.n_state,  # set max number of states
             binarize=args.binarize,  # binarize image to 0 and 1
-            offset_fix=args.offset_fix
+            offset_fix=args.offset_fix,  # offset of episode number
         )  # 10.0, 0.1, 1.0, 0.0005
     elif args.game == 'atari':
         actor = partial(RotatePolicy, hold_count=5)
@@ -245,7 +227,7 @@ if __name__ == '__main__':
         use_prior=args.prior,
         argmax_mode=args.argmax_mode,
     )
-    save_path = get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
+    save_path = util.get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
     if plot_flags['plot_filter']:
         plot_model_filter(model, save_path)
 

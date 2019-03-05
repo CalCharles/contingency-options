@@ -52,15 +52,25 @@ class SaliencyLoss(FocusLoss):
 			focus,
             np.arange(focus.shape[0]),
             nb_size=self.nb_size)
-        preframes = util.extract_neighbor(
-            self.frame_source,
-            focus[1:],
-            np.arange(focus.shape[0] - 1),
-            nb_size=self.nb_size)
         frame_dev = self._deviation_1(frames)
         focus_dev = self._deviation_2(focus)
         frame_var = self._variance(frames)
-        belief_dev = self._belief_deviation(focus, frames[1:], preframes)
+
+        belief_dev = 0
+        if self.belief_dev_coeff != 0:
+            pre_frames = util.extract_neighbor(
+                self.frame_source,
+                focus[1:],
+                np.arange(focus.shape[0] - 1),
+                nb_size=self.nb_size)  # I_{t}(x_{t+1})
+            post_frames = util.extract_neighbor(
+                self.frame_source,
+                focus[:-1],
+                np.arange(focus.shape[0] - 1) + 1,
+                nb_size=self.nb_size)  # I_{t+1}(x_{t})
+            belief_dev = self._belief_deviation(focus, frames, 
+                                                pre_frames, post_frames)
+
         if self.verbose:
             logger.info(
                 'frame_dev= %f, focus_dev= %f, frame_var= %f, belief_dev= %f'%(
@@ -104,16 +114,23 @@ class SaliencyLoss(FocusLoss):
 
 
     # belief change by frame deviation
-    def _belief_deviation(self, focus, frames, preframes):
+    def _belief_deviation(self, focus, frames, pre_frames, post_frames):
         r"""
         metric to reward changing to high deviation frame
         """
-        n_frames = focus.shape[0]-1
-        assert n_frames == frames.shape[0] == preframes.shape[0]
+        n_frames = focus.shape[0] - 1
+        assert frames.shape[0] == n_frames + 1
+        assert pre_frames.shape[0] == n_frames
+        assert post_frames.shape[0] == n_frames
 
         focus_diff = np.sum((focus[1:] - focus[:-1])**2, axis=1)
-        frame_diff = np.sum((frames - preframes).reshape(n_frames, -1)**2, axis=1)
-        return np.mean(focus_diff * frame_diff)
+        pre_frame_diff = np.sum(
+            (frames[1:] - pre_frames).reshape(n_frames, -1)**2,
+            axis=1)
+        post_frame_diff = np.sum(
+            (frames[:-1] - post_frames).reshape(n_frames, -1)**2,
+            axis=1)
+        return np.mean(focus_diff * pre_frame_diff * post_frame_diff)
 
 
     def __str__(self, prefix=''):
@@ -197,7 +214,8 @@ class PremiseMICPLoss(FocusChangePointLoss):
                   - self.mi_match_coeff*mi_match \
                   + self.mi_valid_coeff*mi_valid
         if self.verbose:
-            logger.info('match= %f, diff= %f'%(mi_match, mi_diffs))
+            logger.info('match= %f, diff= %f, valid= %f'%(
+                        mi_match, mi_diffs, mi_valid))
         if ret_extra:
             return mi_loss, {'valid': mi_valid}
         return mi_loss
