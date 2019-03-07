@@ -129,6 +129,18 @@ class ProxyEnvironment():
     def set_test(self):
         self.behavior_policy.set_test()
 
+    def set_checkpoint(self):
+        '''
+        sets a save point that can be returned to later
+        '''
+        self.saved_current_state = self.current_state.clone().detach()
+        self.saved_extracted_state = self.extracted_state.clone().detach()
+        self.proxy_chain[-1].set_checkpoint()
+
+    def load_checkpoint(self):
+        self.current_state = self.saved_current_state
+        self.extracted_state = self.saved_extracted_state
+        self.proxy_chain[-1].set_checkpoint()
 
     def reset_history(self):
         self.current_state = pytorch_model.wrap(np.zeros((self.num_hist * int(np.prod(self.state_size)), )), cuda = self.iscuda)
@@ -184,11 +196,7 @@ class ProxyEnvironment():
     def step_dope(self, action, rollout, model=False, action_list=[]):
         '''
         steps the true environment, using dopamine models. The last environment in the proxy chain is the true environment,
-        and has a different step function. 
-        raw_state is the tuple (raw_state, factor_state)
-        model determines if action is a model 
-        extracted state is the proxy extracted state, raw state is the full raw state (raw_state, factored state),
-        done defines if a trajectory ends, action_list is all the actions taken by all the options in the chain
+        and has a different step function (performs model updates and most state saving inside dopamine)
         '''
         if model:
             reward = self.computeReward(rollout, 1)
