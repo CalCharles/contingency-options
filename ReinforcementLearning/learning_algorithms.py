@@ -38,6 +38,7 @@ class LearningOptimizer():
         self.lr = args.lr
         self.num_update_model = args.num_update_model
         self.step_counter = 0
+        self.last_selected_indexes = None
 
     def interUpdateModel(self, step):
         # see evolutionary methods for how this is used
@@ -79,6 +80,7 @@ class LearningOptimizer():
             next_rollout_returns = rollouts.return_queue[reward_index, grad_indexes]
             rollout_rewards = rollouts.reward_queue[reward_index, grad_indexes]
             epsilon_eval = rollouts.epsilon_queue[grad_indexes]
+            self.last_selected_indexes = grad_indexes
         else:
             state_eval = rollouts.extracted_state[:-1]
             next_state_eval = rollouts.extracted_state[1:]
@@ -93,6 +95,7 @@ class LearningOptimizer():
             next_rollout_returns = rollouts.returns[reward_index, 1:]
             rollout_rewards = rollouts.rewards[reward_index,:]
             epsilon_eval = rollouts.epsilon[:-1]
+            self.last_selected_indexes = list(range(len(state_eval)))
         # print(epsilon_eval)
         # print(state_eval.shape, current_state_eval.shape, next_current_state_eval.shape, action_eval.shape, rollout_returns.shape, rollout_rewards.shape, next_state_eval.shape, next_rollout_returns.shape, q_eval.shape, next_q_eval.shape)
         return state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval
@@ -200,6 +203,7 @@ class DDPG_optimizer(LearningOptimizer):
         super().initialize(args, train_models)
         for model in train_models.models:
             self.optimizers.append(initialize_optimizer(args, model))
+        self.old_models = copy.deepcopy(train_models)
 
     def step(self, args, train_models, rollouts):
         self.step_counter += 1
@@ -211,18 +215,22 @@ class DDPG_optimizer(LearningOptimizer):
             _, _, anp, next_q_values = train_models.determine_action(next_current_state_eval)
             _, action_probs, qvs = train_models.get_action(values, action_probs, q_values)
             _, _, next_q_values = train_models.get_action(values, anp, next_q_values)
-            expected_qvals = (next_q_values.max(dim=2)[0] * args.gamma) + rollout_rewards
-            action_eval = sample_actions(q_values, deterministic=True)
+            expected_qvals = (next_q_values.max(dim=1)[0] * args.gamma) + rollout_rewards
+            action_eval = sample_actions(action_probs, deterministic=True)
             # Compute Huber loss
             # TODO by squeezing q values we are assuming no process number
             # TODO not using smooth l1 loss because it doesn't seem to work...
             # TODO: Policy loss does not work for discrete (probably)
-            q_loss = (expected_qvals.detach() - q_values.squeeze().gather(1, action_eval)).norm() ** 2/action_eval.size(0)
-            policy_loss = q_values.gather(1, sample_actions(action_probs, deterministic=True).unsqueeze(1)).mean()
+            q_loss = (expected_qvals.detach() - q_values.squeeze().gather(1, action_eval)).norm().pow(2)/action_eval.size(0)
+            policy_loss = -q_values.gather(1, sample_actions(action_probs, deterministic=True).unsqueeze(1)).mean()
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
-                            q_loss + policy_loss, RL=0)
+                            q_loss * args.value_loss_coefe + policy_loss, RL=0)
             total_loss += q_loss
             tpl +=  policy_loss
+            for target_param, param in zip(self.old_models.models[train_models.option_index].parameters(), train_models.currentModel().parameters()):
+                    target_param.data.copy_(
+                        target_param.data * (1.0 - args.target_tau) + param.data * args.target_tau
+                    )
         return total_loss/args.grad_epoch, tpl/args.grad_epoch, dist_entropy, None, None, torch.log(action_probs)
 
 class PPO_optimizer(LearningOptimizer):

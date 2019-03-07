@@ -51,7 +51,9 @@ def get_args():
                         help='Normalized inputs for the neural network/function approximator')
     parser.add_argument('--num-stack', type=int, default=4,
                         help='number of frames to stack (default: 4)')
-
+    # target hypothesis
+    parser.add_argument('--target-tau', type=float, default=0.5,
+                        help='mixture value for target network (default: 0.5)')
     # distributional RL parameters
     parser.add_argument('--value-bounds', type=float, nargs=2, default=(0, 10),
                         help='bounds for the possible value of a state (default: (0, 10))')
