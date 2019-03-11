@@ -132,6 +132,7 @@ class GetState(StateGet):
 		# TODO: order of input matters/ must be fixed
 		self.shape = np.sum([self.state_shape[state_form[1]] for state_form in state_forms])
 		self.names = [state_form[0] for state_form in state_forms]
+		self.name = "-".join([s[0] for s in state_forms] + [s[1] for s in state_forms])
 		self.functions = [self.state_functions[state_form[1]] for state_form in state_forms]
 
 	def get_state(self, state):
@@ -175,7 +176,7 @@ def load_states(state_function, pth):
 		raw_files = list(range(len(dumps)))
 	states = []
 	for state in zip(raw_files, dumps):
-		states.append(state_function.get_state(state))
+		states.append(state_function(state))
 	states = np.stack(states, axis=0)
 	return states
 
@@ -185,8 +186,16 @@ def compute_minmax(state_function, pth):
 	assumes pth leads to folder containing folders with raw images, and object_dumps file
 	uses the last 50000 data points, or less
 	'''
-	states = load_states(state_function, pth)
-	return np.min(states, axis=0), np.max(states, axis=0)
+	saved_minmax_pth = os.path.join(pth, state_function.name + "_minmax.npy")
+	print(saved_minmax_pth)
+	try:
+		minmax = np.load(saved_minmax_pth)
+	except FileNotFoundError as e:
+		print("not loaded", saved_minmax_pth)
+		states = load_states(state_function.get_state, pth)
+		minmax = (np.min(states, axis=0), np.max(states, axis=0))
+		np.save(saved_minmax_pth, minmax)
+	return minmax
 
 
 

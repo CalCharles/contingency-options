@@ -66,8 +66,17 @@ def get_args():
                         help='beta value in exponential distribution')
     parser.add_argument('--dist-coef', type=float, default=1e-5,
                         help='the coefficient used for determining the loss value of the distribution')
-
-
+    # novelty search hyperparameters
+    parser.add_argument('--novelty-decay', type=int, default=5000,
+                        help='number of updates after which novelty rewards are halved')
+    parser.add_argument('--novelty-wrappers', default=[""], nargs='+',
+                    help='the different novelty definitions, which are defined in RewardFunctions.novelty_wrappers')
+    parser.add_argument('--visitation-magnitude', type=float, default=.01,
+                        help='the highest magnitude reward from novelty') # TODO: if multiple, don't share parameters
+    parser.add_argument('--visitation-lambda', type=float, default=5,
+                        help='laplace regularization of novelty decay term')
+    parser.add_argument('--novelty-hash-order', type=int, default=20,
+                        help='the number of possible values for tiles. Uses initial min max values, which might not be great (default: 20)')
     # offline learning parameters
     parser.add_argument('--grad-epoch', type=int, default=1,
                         help='number of gradient epochs in offline learning (default: 1, 4 good)')
@@ -128,18 +137,32 @@ def get_args():
                         help='how many training CPU processes to use (default: 16)')
     parser.add_argument('--num-steps', type=int, default=5,
                         help='number of forward steps before update (default: 5)')
-    parser.add_argument('--num-update-model', type=int, default=3,
-                        help='number of gradient steps before switching options (default: 3)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
                         help='number of forward steps used to compute gradient, -1 for not used (default: -1)')
-    parser.add_argument('--buffer-steps', type=int, default=-1,
-                        help='number of buffered steps in the record buffer, -1 implies it is not used (default: -1)')
+    parser.add_argument('--num-update-model', type=int, default=3,
+                        help='number of gradient steps before switching options (default: 3)')
     parser.add_argument('--changepoint-queue-len', type=int, default=30,
                         help='number of steps in the queue for computing the changepoints')
     parser.add_argument('--num-iters', type=int, default=int(2e3),
                         help='number of iterations for training (default: 2e3)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
+    parser.add_argument('--warm-up', type=int, default=10,
+                        help='num updates before changing model (default: 10)')
+
+    # Replay buffer settings
+    parser.add_argument('--buffer-steps', type=int, default=-1,
+                        help='number of buffered steps in the record buffer, -1 implies it is not used (default: -1)')
+    parser.add_argument('--weighting-lambda', type=float, default=1e-2,
+                        help='lambda for the sample weighting in prioritized replay (default = 1e-2)')
+    parser.add_argument('--prioritized-replay', default="",
+                        help='different prioritized replay schemes, (TD (Q TD error), return, recent, ""), default: ""')
+    # Trace settings
+    parser.add_argument('--trace-len', type=int, default=-1,
+                        help='number of states in a trace trajectory (default -1)')
+    parser.add_argument('--trace-queue-len', type=int, default=-1,
+                        help='number of trace trajectories in the trace queue (default -1)')
+
     # logging settings
     parser.add_argument('--log-interval', type=int, default=10,
                         help='log interval, one log per n updates (default: 10)')

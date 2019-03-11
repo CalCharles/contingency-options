@@ -16,8 +16,7 @@ def hot_actions(action_data, num_actions):
         action_data[i] = hot.tolist()
     return action_data
 
-
-def random_actions(args, true_environment):
+def get_states(args, true_environment):
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)
@@ -30,14 +29,49 @@ def random_actions(args, true_environment):
         num_actions = environments[-1].num_actions
     state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
     state_class.minmax = compute_minmax(state_class, dataset_path)
-    states = load_states(state_class, dataset_path)
+    states = load_states(state_class.get_state, dataset_path)
+    return states, num_actions, state_class
+
+def random_actions(args, true_environment):
+    states, num_actions, state_class = get_states(args, true_environment)
     actions = [np.random.randint(num_actions) for _ in range(args.num_stack, len(states))]
     actions = hot_actions(actions, num_actions)
     states = np.array([states[i-args.num_stack:i].flatten().tolist() for i in range(args.num_stack, len(states))])
     return np.array(actions), states, num_actions, state_class
 
+def range_Qvals(args, true_environment, minmax):
+    states, num_actions, state_class = get_states(args, true_environment)
+    minr, maxr = minmax
+    Qvals = [[minr + (maxr - minr) * np.random.rand()] * num_actions for _ in range(args.num_stack, len(states))]
+    states = np.array([states[i-args.num_stack:i].flatten().tolist() for i in range(args.num_stack, len(states))])
+    return np.array(Qvals), states, num_actions, state_class
 
-def pretrain_actions(args, true_environment, desired_actions, num_actions, state_class, states):
+def action_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizers, true_values):
+    dist_ent = -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean()
+    batch_mean = action_probs.squeeze().mean(dim=0)
+    batch_ent = -((batch_mean + 1e-10) * torch.log(batch_mean + 1e-10)).sum()
+    print(batch_ent, dist_ent, batch_mean, action_probs[0][0])
+    loss = dist_ent - batch_ent
+    # loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(desired_actions[idxes], cuda=args.cuda).squeeze())
+    for optimizer in optimizers:
+        optimizer.zero_grad()
+    loss.backward()
+    for optimizer in optimizers:
+        optimizer.step()
+    return loss
+
+def Q_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizers, true_values):
+    # we should probably include the criteria
+    loss = (Q_vals - true_values).pow(2).mean()
+    print(Q_vals[0][0])
+    for optimizer in optimizers:
+        optimizer.zero_grad()
+    loss.backward()
+    for optimizer in optimizers:
+        optimizer.step()
+    return loss
+
+def pretrain(args, true_environment, desired, num_actions, state_class, states, criteria):
     # args = get_args()
     # true_environment = Paddle()
     # true_environment = PaddleNoBlocks()
@@ -49,38 +83,28 @@ def pretrain_actions(args, true_environment, desired_actions, num_actions, state
     print(args.state_names, args.state_forms)
     print(state_class.minmax)
     # behavior_policy = EpsilonGreedyProbs()
-    fit_actions(args, option_chain.save_dir, true_environment, train_models, state_class, desired_actions, states, num_actions)
+    fit(args, option_chain.save_dir, true_environment, train_models, state_class, desired, states, num_actions, criteria)
 
-def fit_actions(args, save_dir, true_environment, train_models, state_class, desired_actions, states, num_actions):
+def fit(args, save_dir, true_environment, train_models, state_class, desired, states, num_actions, criteria):
     train_models.initialize(args, 1, state_class)
     # print(len([desired_actions[:] for i in range(len(train_models.models))]))
     print("train_models", len(train_models.models))
-    desired_actions = np.stack([desired_actions[:] for i in range(len(train_models.models))], axis=1)
+    desired = pytorch_model.wrap(np.stack([desired[:] for i in range(len(train_models.models))], axis=1)) # replicating for different policies
     optimizers = []
     min_batch = 10
     batch_size = 100
     for model in train_models.models:
         optimizers.append(optim.Adam(model.parameters(), args.lr, eps=args.eps, betas=args.betas, weight_decay=args.weight_decay))
     for i in range(args.num_iters):
-        # idxes = np.random.choice(list(range(len(desired_actions))), (batch_size,), replace=False)
-        start = np.random.randint(len(desired_actions))
-        idxes = [(idx + start) % len(desired_actions) for idx in range(batch_size)]
+        # idxes = np.random.choice(list(range(len(desired))), (batch_size,), replace=False)
+        start = np.random.randint(len(desired))
+        idxes = [(idx + start) % len(desired) for idx in range(batch_size)]
         values, dist_entropy, action_probs, Q_vals = train_models.determine_action(pytorch_model.wrap(states[idxes], cuda=args.cuda))
-        # print(action_probs.transpose(1,0).shape, desired_actions[idxes].shape)
-        # print(action_probs.squeeze().shape, desired_actions.shape)
+        # print(action_probs.transpose(1,0).shape, desired[idxes].shape)
+        # print(action_probs.squeeze().shape, desired.shape)
         # print(states[idxes])
         # print(action_probs,(action_probs.squeeze() * torch.log(action_probs.squeeze())).sum(dim=1).mean())
-        dist_ent = -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean()
-        batch_mean = action_probs.squeeze().mean(dim=0)
-        batch_ent = -((batch_mean + 1e-10) * torch.log(batch_mean + 1e-10)).sum()
-        print(batch_ent, dist_ent, batch_mean, action_probs[0][0])
-        loss = dist_ent - batch_ent
-        # loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(desired_actions[idxes], cuda=args.cuda).squeeze())
-        for optimizer in optimizers:
-            optimizer.zero_grad()
-        loss.backward()
-        for optimizer in optimizers:
-            optimizer.step()
+        loss = criteria(train_models, values, dist_entropy, action_probs, Q_vals, optimizers, desired)
         print("iter ", i, " at loss: ", loss.detach().cpu())
         if i % (args.num_iters // 10):
             batch_size = max(batch_size //   2, min_batch)

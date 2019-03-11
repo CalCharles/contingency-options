@@ -98,7 +98,7 @@ class Model(nn.Module):
         # nn.init.uniform_(self.action_probs.bias.data, -.1,.1)
 
     def normalize(self, x):
-        return (x - self.minmax[0]) / (self.minmax[1] - self.minmax[0])
+        return (x - self.minmax[0]) / (self.minmax[1] - self.minmax[0] + 1e-10)
 
     def forward(self, x):
         '''

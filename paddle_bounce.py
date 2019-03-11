@@ -13,6 +13,8 @@ from BehaviorPolicies.behavior_policies import behavior_policies
 from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
 from RewardFunctions.dummy_rewards import BounceReward, Xreward
+from RewardFunctions.changepointReward import compute_cp_minmax
+from RewardFunctions.novelty_wrappers import novelty_rewards
 
 if __name__ == "__main__":
     # used arguments
@@ -59,8 +61,14 @@ if __name__ == "__main__":
     print(args.state_names, args.state_forms)
     state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
     state_class.minmax = compute_minmax(state_class, dataset_path)
+    new_reward_classes = []
+    cp_minmax = compute_cp_minmax(reward_classes[0], dataset_path)
     for reward_class in reward_classes:
-        reward_class.traj_dim = state_class.shape
+        reward = reward_class
+        for wrapper in args.novelty_wrappers:
+            reward = novelty_rewards[wrapper](args, reward, minmax = cp_minmax)
+        new_reward_classes.append(reward)
+    reward_classes = new_reward_classes
     print(state_class.minmax)
     behavior_policy = behavior_policies[args.behavior_policy]()
     # behavior_policy = EpsilonGreedyProbs()

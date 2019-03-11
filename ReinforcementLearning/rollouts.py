@@ -9,7 +9,8 @@ from ReinforcementLearning.models import pytorch_model
 
 class RolloutOptionStorage(object):
     def __init__(self, num_processes, obs_shape, action_space,
-     extracted_shape, current_shape, buffer_steps, changepoint_queue_len, num_options, changepoint_shape):
+     extracted_shape, current_shape, buffer_steps, changepoint_queue_len,
+     trace_len, trace_queue_len, num_options, changepoint_shape):
         # TODO: storage does not currently support multiple processes, can be implemented
         self.num_processes = num_processes
         self.obs_shape = obs_shape
@@ -23,6 +24,10 @@ class RolloutOptionStorage(object):
         self.buffer_at = 0
         self.return_at = 0
         self.changepoint_at = 0
+        self.trace_at = 0
+        self.trace_len = trace_len
+        self.trace_queue_len = trace_queue_len
+        self.trace_filled = 0
         if buffer_steps > 0:
             self.state_queue = torch.zeros(buffer_steps, *self.extracted_shape)
             self.current_state_queue = torch.zeros(buffer_steps, *self.current_shape)
@@ -34,7 +39,11 @@ class RolloutOptionStorage(object):
             self.action_queue = torch.zeros(buffer_steps, 1).long()
             self.option_queue = torch.zeros(buffer_steps, 1).long()
             self.epsilon_queue = torch.zeros(buffer_steps, 1)
+            self.done_queue = torch.zeros(buffer_steps, 1)
             self.state_queue.requires_grad = self.current_state_queue.requires_grad = self.action_probs_queue.requires_grad = self.Qvals_queue.requires_grad = self.reward_queue.requires_grad = self.return_queue.requires_grad = self.values_queue.requires_grad = self.action_queue.requires_grad = self.option_queue.requires_grad = self.epsilon_queue.requires_grad = False
+        if self.trace_queue_len > 0:
+            self.trace_states = torch.zeros(self.trace_queue_len, self.trace_len, *self.current_state)
+            self.trace_actions = torch.zeros(self.trace_queue_len, self.trace_len, 1).long()
         self.changepoint_queue = torch.zeros(changepoint_queue_len, *self.changepoint_shape)
         self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long()
         self.num_options = num_options
@@ -84,6 +93,7 @@ class RolloutOptionStorage(object):
             self.option_queue = self.option_queue.cuda()
             self.current_state_queue = self.current_state_queue.cuda()
             self.epsilon_queue = self.epsilon_queue.cuda()
+            self.done_queue = self.done_queue.cuda()
         if self.changepoint_queue_len > 0:
             self.changepoint_queue = self.changepoint_queue.cuda()
             self.changepoint_action_queue = self.changepoint_action_queue.cuda()
@@ -97,6 +107,9 @@ class RolloutOptionStorage(object):
         self.actions = self.actions.cuda()
         self.masks = self.masks.cuda()
         self.epsilon = self.epsilon.cuda()
+        if self.trace_queue_len > 0:
+            self.trace_states = self.trace_states.cuda()
+            self.trace_actions = self.trace_actions.cuda()
 
     def cpu(self):
         # self.states = self.states.cuda()
@@ -112,6 +125,7 @@ class RolloutOptionStorage(object):
             self.option_queue = self.option_queue.cpu()
             self.current_state_queue = self.current_state_queue.cpu()
             self.epsilon_queue = self.epsilon_queue.cpu()
+            self.done_queue = self.done_queue.cpu()
         if self.changepoint_queue_len > 0:
             self.changepoint_queue = self.changepoint_queue.cpu()
             self.changepoint_action_queue = self.changepoint_action_queue.cpu()
@@ -125,9 +139,22 @@ class RolloutOptionStorage(object):
         self.returns = self.returns.cpu()
         self.actions = self.actions.cpu()
         self.masks = self.masks.cpu()
+        if self.trace_queue_len > 0:
+            self.trace_states = self.trace_states.cpu()
+            self.trace_actions = self.trace_actions.cpu()
 
+    def insert_trace(self, traces): # TODO: enforce trace diversity, enforce trace length
+        reward_at = 0
+        if self.trace_queue_len > 0 and torch.max(self.rewards) > 1:
+            reward_at = self.rewards.argmax()
+            for i, (current_state, action) in enumerate(traces[max(reward_at - self.trace_len,0):reward_at]): # assuming no resets (choose a short trace)
+                self.trace_states[self.trace_at, i].copy_(current_state)
+                self.trace_actions[self.trace_at, i].copy_(action)
+            self.trace_at += 1
+            self.trace_filled += int(self.trace_filled < self.trace_queue_len)
+        return traces[reward_at+1:]
 
-    def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state, epsilon): # got rid of masks... might be useful though
+    def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state, epsilon, done=False): # got rid of masks... might be useful though
         if self.buffer_steps > 0 and self.last_step != step: # using buffer and not the first step, which is a duplicate of the last step
             self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
             self.state_queue[self.buffer_at].copy_(extracted_state.squeeze().detach())
@@ -135,6 +162,7 @@ class RolloutOptionStorage(object):
             self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
             self.action_queue[self.buffer_at].copy_(action.squeeze().detach())
             self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze().detach())
+            self.done_queue[self.buffer_at].copy_(pytorch_model.wrap(int(done), cuda=self.iscuda))
             for oidx in range(self.num_options):
                 self.values_queue[oidx, self.buffer_at].copy_(value_preds[oidx].squeeze().detach())
                 self.Qvals_queue[oidx, self.buffer_at].copy_(q_vals[oidx].squeeze().detach())
@@ -224,22 +252,27 @@ class RolloutOptionStorage(object):
                     self.returns[idx, step] = self.returns[idx, step + 1] * gamma + self.rewards[idx, step]
                 # print(self.returns)
                 if self.buffer_steps > 0:
-                    for i, rew in enumerate(self.rewards[idx]):
+                    for i, rew in enumerate(reversed(self.rewards[idx])):
                         # update the last ten returns
                         # print(i, 11-i)
+                        i = self.rewards.size(1) - i - 1
                         update_last = 20 # imposes an artificial limit on Gamma
                         for j in range(update_last+1): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
                             # print(self.returns.shape, self.rewards.shape)
                             # print(self.returns[0], self.return_queue[-6+j])
-                            # print((self.return_at - j) % self.buffer_steps, self.state_queue[(self.return_at - j) % self.buffer_steps], self.return_queue[idx, (self.return_at - j) % self.buffer_steps], torch.tensor(np.power(gamma, j)).cuda() * rew)
-                            self.return_queue[idx, (self.return_at - j) % self.buffer_steps] += torch.tensor(np.power(gamma,j)).cuda() * rew
+                            # print(self.return_at)
+                            update_idx = (self.return_at - j + i) % self.buffer_steps
+                            # print(update_idx, torch.tensor(np.power(gamma, j)).cuda() * rew, self.return_queue[idx, update_idx])
+                            if self.done_queue[update_idx] or (self.buffer_filled < self.buffer_steps and update_idx > self.buffer_filled): # end of episode or wrapping around before buffer is filled
+                                break # break out of done values
+                            self.return_queue[idx, update_idx] += torch.tensor(np.power(gamma,j)).cuda() * rew
                     
-                    # for i, ret in enumerate(self.returns[idx]):
-                    #     # print('copying', self.return_at + i)
-                    #     self.return_queue[idx, (self.return_at + i) % self.buffer_steps].copy_(ret)
-        # print(self.state_queue)
+                    for i, ret in enumerate(self.returns[idx][:-1]):
+                        # print('copying', self.return_at + i)
+                        self.return_queue[idx, (self.return_at + i) % self.buffer_steps].copy_(ret)
         if self.buffer_steps > 0:
-            self.return_at = (self.return_at + self.returns.size(1)) % self.buffer_steps
+            self.return_at = (self.return_at + self.returns.size(1) - 1) % self.buffer_steps
+        # print(self.state_queue)
     def compute_full_returns(self, next_value, gamma):
         self.returns = torch.zeros(self.num_options, self.rewards.size(1) + 1, 1).cuda()
         for idx in range(self.num_options):

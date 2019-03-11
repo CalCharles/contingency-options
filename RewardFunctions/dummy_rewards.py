@@ -6,7 +6,8 @@ from file_management import get_edge
 
 
 class BounceReward(ChangepointReward):
-    def __init__(self, vel, args): 
+    def __init__(self, vel, args):
+        super().__init__(None, args)
         self.anybounce = False
         self.desired_vels = [torch.tensor([-2.,-1.]).cuda(), torch.tensor([-1.,-1.]).cuda(), torch.tensor([-1.,1.]).cuda(), torch.tensor([-2.,1.]).cuda()]
         if vel == -1:
@@ -20,8 +21,6 @@ class BounceReward(ChangepointReward):
             self.desired_vel = self.desired_vels[2]
         elif vel == 3:
             self.desired_vel = self.desired_vels[3]
-        self.traj_dim = 2 # SET THIS
-        self.head, self.tail = get_edge(args.train_edge)
         self.form = args.reward_form
 
 
@@ -72,6 +71,7 @@ class Xreward(ChangepointReward):
     def __init__(self, args): 
         self.traj_dim = 2 # SET THIS
         self.head, self.tail = get_edge(args.train_edge)
+        self.name = "x"
 
 
     def compute_reward(self, states, actions):
