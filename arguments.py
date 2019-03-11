@@ -69,8 +69,8 @@ def get_args():
     # novelty search hyperparameters
     parser.add_argument('--novelty-decay', type=int, default=5000,
                         help='number of updates after which novelty rewards are halved')
-    parser.add_argument('--novelty-wrappers', default=[""], nargs='+',
-                    help='the different novelty definitions, which are defined in RewardFunctions.novelty_wrappers')
+    parser.add_argument('--novelty-wrappers', default=[], nargs='+',
+                    help='the different novelty definitions, which are defined in RewardFunctions.novelty_wrappers, empty uses no wrappers (default)')
     parser.add_argument('--visitation-magnitude', type=float, default=.01,
                         help='the highest magnitude reward from novelty') # TODO: if multiple, don't share parameters
     parser.add_argument('--visitation-lambda', type=float, default=5,
@@ -147,8 +147,8 @@ def get_args():
                         help='number of iterations for training (default: 2e3)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--warm-up', type=int, default=10,
-                        help='num updates before changing model (default: 10)')
+    parser.add_argument('--warm-up', type=int, default=200,
+                        help='num updates before changing model (default: 200 (1000 timesteps))')
 
     # Replay buffer settings
     parser.add_argument('--buffer-steps', type=int, default=-1,
