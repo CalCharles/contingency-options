@@ -64,13 +64,13 @@ class Model(nn.Module):
         self.iscuda = args.cuda # TODO: don't just set this to true
         self.use_normalize = args.normalize
         self.init_form = args.init_form 
-        
+            
 
     def reset_parameters(self):
         relu_gain = nn.init.calculate_gain('relu')
         for layer in self.layers:
             if type(layer) == nn.Conv2d:
-                torch.nn.init.eye_(layer.weight.data)
+                nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu')
             else:
                 if self.init_form == "uni":
                     # print("div", layer.weight.data.shape[0], layer.weight.data.shape)

@@ -32,7 +32,7 @@ class ImageModel(Model):
 
         x = self.conv3(x)
         x = F.relu(x)
-
+        # print(x)
         x = x.view(-1, 8 * self.factor * self.viewsize * self.viewsize)
         x = self.linear1(x)
         x = F.relu(x)
@@ -55,7 +55,7 @@ class ObjectSumImageModel(ImageModel):
         self.order_vector = pytorch_model.wrap(self.order_vector, cuda = args.cuda).detach()
 
         self.viewsize = int((((self.order-4)/4-2)/2-2))
-
+        print("insize", self.insize)
         self.conv1 = nn.Conv2d(1, 2 * factor, 8, stride=4)
         self.conv2 = nn.Conv2d(2 * factor, 4 * factor, 4, stride=2)
         self.conv3 = nn.Conv2d(4 * factor, 8 * factor, 3, stride=1)

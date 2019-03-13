@@ -219,13 +219,14 @@ class LearningOptimizer():
         '''
         if rollouts.cp_filled:
             # TODO: changepoint buffer must exceed args.correlate_steps, remove this
-            states = torch.cat([rollouts.changepoint_queue[rollouts.changepoint_queue_len - max(rollouts.changepoint_at-args.correlate_steps,0):], rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
-            actions = torch.cat([rollouts.changepoint_action_queue[rollouts.changepoint_queue_len - max(rollouts.changepoint_at-args.correlate_steps,0):], rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
+            states = torch.cat([rollouts.changepoint_queue[rollouts.changepoint_queue_len - max(args.correlate_steps - rollouts.changepoint_at,0):], rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
+            actions = torch.cat([rollouts.changepoint_action_queue[rollouts.changepoint_queue_len - max(args.correlate_steps - rollouts.changepoint_at,0):], rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
         else:
             states = rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
             actions = rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
         if rollouts.buffer_filled == rollouts.buffer_steps:
-            current_states = torch.cat([rollouts.current_state_queue[rollouts.buffer_steps - max(rollouts.buffer_at-args.correlate_steps,0):], rollouts.current_state_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
+            print(rollouts.buffer_steps - max(args.correlate_steps - rollouts.buffer_at,0), max(rollouts.buffer_at-args.correlate_steps,0),rollouts.buffer_at)
+            current_states = torch.cat([rollouts.current_state_queue[rollouts.buffer_steps - max(args.correlate_steps- rollouts.buffer_at,0):], rollouts.current_state_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
             # current_probs = torch.cat([rollouts.action_probs_queue[train_models.option_index, rollouts.buffer_steps - max(rollouts.buffer_at-args.correlate_steps,0):], rollouts.action_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
         else:
             current_states = rollouts.current_state_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
@@ -234,13 +235,15 @@ class LearningOptimizer():
         take_action_probs = torch.zeros((args.correlate_steps, rollouts.action_space)).float()
         if args.cuda:
             take_action_probs = take_action_probs.cuda()
-        take_action_probs[list(range(args.correlate_steps)), actions] = 1.0
-        correlate_state_diversity = 1.0/(((correlate_states - correlate_states.mean(dim=0)) / 32).pow(2).sum() + 1e-2) # diversity is 1/sigma^2
+        take_action_probs[list(range(args.correlate_steps)), actions.squeeze()] = 1.0
+        correlate_state_diversity = 1.0/(((correlate_states - correlate_states.mean(dim=0))/16).pow(2).sum() + 1e-2) # diversity is 1/sigma^2
         values, dist_entropy, action_probs, q_values = train_models.determine_action(current_states)
         values, action_probs, q_values = train_models.get_action(values, action_probs, q_values)
         # print(correlate_states, correlate_state_diversity, take_action_probs * torch.log(action_probs + 1e-10))
         # loss = -(take_action_probs * torch.log(action_probs + 1e-10)).sum() * correlate_state_diversity / 100 # l1 loss
-        loss = torch.exp(-(take_action_probs - action_probs).abs().sum()) * correlate_state_diversity / 100 # l1 loss
+        loss = torch.exp(-(take_action_probs - action_probs).abs().sum()) * correlate_state_diversity # l1 loss
+        # print(loss, correlate_states, correlate_state_diversity, take_action_probs - action_probs)
+        # print(loss)
         optimizer = self.optimizers[train_models.option_index]
         optimizer.zero_grad()
         loss.backward()
@@ -382,6 +385,7 @@ class PPO_optimizer(LearningOptimizer):
             # output_entropy = compute_output_entropy(args, action_probs, log_output_probs)
             entropy_loss = (dist_entropy - output_entropy) #we can have two parameters
             # print("weight update pre tm, sm", train_models.models[train_models.option_index].action_probs.weight)
+            # print(train_models.currentModel().conv3.weight[0])
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
                             value_loss * args.value_loss_coef + action_loss + entropy_loss * args.entropy_coef, RL=0)
             # print("weight update post", train_models.models[train_models.option_index].action_probs.weight)
