@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import imageio as imio
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 
 
 

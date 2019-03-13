@@ -4,7 +4,7 @@ from SelfBreakout.noblock import PaddleNoBlocks
 from SelfBreakout.unobstructpaddle import PaddleNoWalls
 from file_management import load_from_pickle, get_edge
 import glob, os
-from ReinforcementLearning.models import models
+from Models.models import models
 from Environments.multioption import MultiOption
 from ReinforcementLearning.learning_algorithms import learning_algorithms
 from OptionChain.option_chain import OptionChain
@@ -60,7 +60,9 @@ if __name__ == "__main__":
         num_actions = environments[-1].num_actions
     print(args.state_names, args.state_forms)
     state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
-    state_class.minmax = compute_minmax(state_class, dataset_path)
+    if args.normalize:
+        state_class.minmax = compute_minmax(state_class, dataset_path)
+        print(state_class.minmax)
     new_reward_classes = []
     cp_minmax = compute_cp_minmax(reward_classes[0], dataset_path)
     for reward_class in reward_classes:
@@ -69,7 +71,6 @@ if __name__ == "__main__":
             reward = novelty_rewards[wrapper](args, reward, minmax = cp_minmax)
         new_reward_classes.append(reward)
     reward_classes = new_reward_classes
-    print(state_class.minmax)
     behavior_policy = behavior_policies[args.behavior_policy]()
     # behavior_policy = EpsilonGreedyProbs()
     trainRL(args, option_chain.save_dir, true_environment, train_models, learning_algorithm, proxy_environment,

@@ -1,5 +1,5 @@
 import torch
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 import numpy as np
 from RewardFunctions.changepointReward import ChangepointReward
 from file_management import get_edge
@@ -61,8 +61,8 @@ class BounceReward(ChangepointReward):
                     rewards.append(-abs(proximity[0] + proximity[1]) * 0.001)
                 else:
                     # print(proximity[0])
-                    if proximity[0] == 0 and self.form == 'neg':
-                        rewards.append(-.1)
+                    if self.form == 'neg' and proximity[0] == 3:
+                        rewards.append(-1)
                     else:
                         rewards.append(0)
         return pytorch_model.wrap(rewards, cuda=True)

@@ -1,5 +1,5 @@
 import glob, os, torch
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 
 class MultiOption():
     def __init__(self, num_options=0, option_class=None): 

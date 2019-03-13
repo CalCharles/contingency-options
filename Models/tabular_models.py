@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
-from ReinforcementLearning.models import Model, pytorch_model
+from Models.models import Model, pytorch_model
 
 class TabularModel(Model):
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):

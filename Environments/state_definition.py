@@ -195,6 +195,7 @@ def compute_minmax(state_function, pth):
 		states = load_states(state_function.get_state, pth)
 		minmax = (np.min(states, axis=0), np.max(states, axis=0))
 		np.save(saved_minmax_pth, minmax)
+	print(minmax)
 	return minmax
 
 

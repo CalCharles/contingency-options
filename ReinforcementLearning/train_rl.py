@@ -7,7 +7,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 
 from Environments.environment_specification import ProxyEnvironment
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 from ReinforcementLearning.rollouts import RolloutOptionStorage
 from file_management import save_to_pickle
 
@@ -50,13 +50,15 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     cp_state = proxy_environment.changepoint_state([raw_state])
     # print("initial_state (s, hs, rs, cps)", state, hist_state, raw_state, cp_state)
     # print(cp_state.shape, state.shape, hist_state.shape, state_class.shape)
-    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, args.trace_queue_len, args.trace_len, len(train_models.models), cp_state[0].shape)
+    print(args.trace_len, args.trace_queue_len)
+    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, args.trace_len, args.trace_queue_len, len(train_models.models), cp_state[0].shape)
     option_actions = {option.name: collections.Counter() for option in train_models.models}
     total_duration = 0
     total_elapsed = 0
     start = time.time()
     fcnt = 0
     final_rewards = list()
+    average_rewards, average_counts = [], []
     option_counter = collections.Counter()
     option_value = collections.Counter()
     trace_queue = [] # keep the last states until end of trajectory (or until a reset), and dump when a reward is found
@@ -77,7 +79,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             rollouts.insert(step, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state[0], pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda))
             # print("step states (cs, s, cps, act)", current_state, estate, cp_state, action) 
             # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
-            trace_queue.append((current_state, action))
+            trace_queue.append((current_state.clone().detach(), action.clone().detach()))
             state, raw_state, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
             # print("step check (al, s)", action_list, state)
             learning_algorithm.interUpdateModel(step)
@@ -88,13 +90,13 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             if done:
                 # print("reached end")
                 rollouts.cut_current(step+1)
-                trace_queue = []
                 # print(step)
                 break
         current_state = proxy_environment.getHistState()
         values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0))
         v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
         action = behavior_policy.take_action(ap, qv)
+        trace_queue.append((current_state.clone().detach(), action.clone().detach()))
         # print(state, action)
         # print("step states (cs, s, cps, act)", current_state, estate, cp_state, action) 
         # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
@@ -109,6 +111,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         # print("rewards", rewards)
         rollouts.insert_rewards(rewards)
         trace_queue = rollouts.insert_trace(trace_queue)
+        if done:
+            trace_queue = [] # insert first
         # print(rollouts.extracted_state)
         # print(rewards)
         rollouts.compute_returns(args, values)
@@ -128,6 +132,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = learning_algorithm.step(args, train_models, rollouts)
             if args.dist_interval != -1 and j % args.dist_interval == 0:
                 learning_algorithm.distibutional_sparcity_step(args, train_models, rollouts)
+            if args.correlate_steps > 0 and j % args.diversity_interval == 0:
+                loss= learning_algorithm.correlate_diversity_step(args, train_models, rollouts)
             if args.greedy_epsilon_decay > 0 and j % args.greedy_epsilon_decay == 0 and j != 0:
                 behavior_policy.epsilon = max(args.min_greedy_epsilon, behavior_policy.epsilon * 0.5) # TODO: more advanced greedy epsilon methods
         else:
@@ -153,15 +159,22 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                         option_actions[name][i] = 0
             end = time.time()
             final_rewards = torch.stack(final_rewards)
+            average_rewards.append(final_rewards.sum())
+            average_counts.append(len(final_rewards))
+            acount = np.sum(average_counts)
+                
             el, vl, al = unwrap_or_none(entropy_loss), unwrap_or_none(value_loss), unwrap_or_none(action_loss)
             total_elapsed += total_duration
-            log_stats = "Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {}, value loss {}, policy loss {}".format(j, total_elapsed,
+            log_stats = "Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {}, value loss {}, policy loss {}, average_reward {}".format(j, total_elapsed,
                        int(total_elapsed / (end - start)),
                        final_rewards.mean(),
                        np.median(final_rewards.cpu()),
                        final_rewards.min(),
                        final_rewards.max(), el,
-                       vl, al)
+                       vl, al, torch.stack(average_rewards).sum()/acount)
+            if acount > 300:
+                average_counts.pop(0)
+                average_rewards.pop(0)
             print(log_stats)
             final_rewards = list()
             total_duration = 0

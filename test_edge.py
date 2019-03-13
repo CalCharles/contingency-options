@@ -7,7 +7,7 @@ import torch.optim as optim
 import sys, glob, copy, os, collections, time
 from arguments import get_args
 from ReinforcementLearning.learning_algorithms import learning_algorithms
-from ReinforcementLearning.models import models 
+from Models.models import models 
 from ReinforcementLearning.test_policies import testRL
 from Environments.environment_specification import ChainMDP, ProxyEnvironment
 from Environments.state_definition import GetRaw, GetState, compute_minmax

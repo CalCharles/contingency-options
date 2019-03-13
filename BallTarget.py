@@ -1,7 +1,7 @@
 from SelfBreakout.breakout_screen import Screen
 from file_management import load_from_pickle, get_edge
 import glob, os
-from ReinforcementLearning.models import models
+from Models.models import models
 from Environments.multioption import MultiOption
 from ReinforcementLearning.learning_algorithms import learning_algorithms
 from OptionChain.option_chain import OptionChain

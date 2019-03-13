@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
-from ReinforcementLearning.models import Model, pytorch_model
+from Models.models import Model, pytorch_model
 
 class BasisModel(Model):
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
@@ -16,7 +16,7 @@ class BasisModel(Model):
         super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
         self.num_stack = args.num_stack
         self.dim = num_inputs // self.num_stack
-        self.order = factor + 1 # include zero order
+        self.order = args.order + 1 # include zero order
         self.variate = args.num_layers % 10 # decide the relatinship
         self.layering = args.num_layers // 10 # defines different kinds of relationships
         self.period = args.period
@@ -205,7 +205,9 @@ class GaussianBasisModel(BasisModel):
     def basis_fn(self, inputs):
         # print("minmax", self.min_, self.max_)
         if self.minmax is not None and self.use_normalize:
+            # print(inputs)
             inputs = self.normalize(inputs)
+            # print(inputs)
         # for loops are supposed to be bad practice, but we will just keep these for now
         bat = []
         # print("ord", self.order_vector)
@@ -229,10 +231,14 @@ class GaussianMultilayerModel(GaussianBasisModel):
         num_population is used as the size of the last layer (don't mix evolutionary and gaussian basis for now)        
         '''
         print("basis size", self.basis_size)
-        self.l1 = nn.Linear(self.basis_size, args.num_population)
-        self.l2 = nn.Linear(args.num_population, args.num_population)
-        self.QFunction = nn.Linear(args.num_population, self.num_outputs, bias=True)
-        self.action_probs = nn.Linear(args.num_population, self.num_outputs, bias=True)
+        self.l1 = nn.Linear(self.basis_size, self.insize)
+        self.l2 = nn.Linear(self.insize, self.insize)
+        self.QFunction = nn.Linear(self.insize, self.num_outputs, bias=True)
+        self.critic_linear = nn.Linear(self.insize, 1, bias=True)
+        self.time_estimator = nn.Linear(self.insize, 1, bias=True)
+        self.action_probs = nn.Linear(self.insize, self.num_outputs, bias=True)
+        self.layers[0] = self.critic_linear
+        self.layers[1] = self.time_estimator
         self.layers[2] = self.QFunction
         self.layers[3] = self.action_probs
         self.layers.append(self.l1)
@@ -255,7 +261,7 @@ class GaussianMultilayerModel(GaussianBasisModel):
         Qvals = self.QFunction(x)
         aprobs = self.action_probs(x)
         # print("after", aprobs)
-        values = Qvals.max(dim=1)[0]
+        values = self.critic_linear(x) #Qvals.max(dim=1)[0]
         probs = F.softmax(aprobs, dim=1)
         # print("probs", probs)
         log_probs = F.log_softmax(aprobs, dim=1)
@@ -276,7 +282,7 @@ def GaussianDistributionModel(GaussianBasisModel):
         self.value_support.requires_grad = False
 
     def forward(self, x):
-        x = self.basis_fn(inputs) # TODO: dimension
+        x = self.basis_fn(x) # TODO: dimension
         # print(self.basis_matrix.shape, x.shape)
         # print("xprebasis", x, self.basis_matrix)
         # print(x.shape, self.basis_matrix.shape)

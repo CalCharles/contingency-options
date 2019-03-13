@@ -45,7 +45,7 @@ def get_args():
     parser.add_argument('--init-form', default="uni",
                     help='initialization to use: uni, xnorm, xuni, eye')
     parser.add_argument('--model-form', default="",
-                        help='choose the model form, which is defined in ReinforcementLearning.models')
+                        help='choose the model form, which is defined in Models.models')
     # state hyperparameters
     parser.add_argument('--normalize', action='store_true', default=False,
                         help='Normalized inputs for the neural network/function approximator')
@@ -66,6 +66,11 @@ def get_args():
                         help='beta value in exponential distribution')
     parser.add_argument('--dist-coef', type=float, default=1e-5,
                         help='the coefficient used for determining the loss value of the distribution')
+    parser.add_argument('--correlate-steps', type=int, default=-1,
+                    help='decides how many steps are used to compute correlate diversity enforcement (default -1)')
+    parser.add_argument('--diversity-interval', type=int, default=2,
+                        help='decides how often correlate diversity error is computed')
+
     # novelty search hyperparameters
     parser.add_argument('--novelty-decay', type=int, default=5000,
                         help='number of updates after which novelty rewards are halved')
@@ -73,7 +78,7 @@ def get_args():
                     help='the different novelty definitions, which are defined in RewardFunctions.novelty_wrappers, empty uses no wrappers (default)')
     parser.add_argument('--visitation-magnitude', type=float, default=.01,
                         help='the highest magnitude reward from novelty') # TODO: if multiple, don't share parameters
-    parser.add_argument('--visitation-lambda', type=float, default=5,
+    parser.add_argument('--visitation-lambda', type=float, default=1,
                         help='laplace regularization of novelty decay term')
     parser.add_argument('--novelty-hash-order', type=int, default=20,
                         help='the number of possible values for tiles. Uses initial min max values, which might not be great (default: 20)')
@@ -108,6 +113,8 @@ def get_args():
                 help='length of period over which fourier basis is applied')
     parser.add_argument('--scale', type=float, default=1,
                 help='scaling term for magnitudes, which can be useful in multilayer to exacerbate differences')
+    parser.add_argument('--order', type=int, default=40,
+                        help='decides order of the basis functions (related to number of basis functions)')
 
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,

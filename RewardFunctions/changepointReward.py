@@ -1,6 +1,6 @@
 import numpy as np
 import copy, os
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 from file_management import get_edge, get_individual_data
 import torch
 import torch.nn as nn

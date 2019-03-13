@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import sys, glob, copy, os, collections, time
 import numpy as np
 from ReinforcementLearning.train_rl import sample_actions
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 
 
 def initialize_optimizer(args, model):
@@ -52,7 +52,7 @@ class LearningOptimizer():
             self.models.option_index = np.random.randint(len(self.models.models))
             self.step_counter = 0
 
-    def compute_weights(self, possible_indexes, rollouts, weights):
+    def compute_weights(self, possible_indexes, rollouts, weights, reward_index):
         if len(weights) > 0:
             # allows combination of weighting schemes, by even averaging of schemes
             weighting_name = weights
@@ -60,16 +60,18 @@ class LearningOptimizer():
             if rollouts.iscuda:
                 weights = weights.cuda()
             if weighting_name.find("TD") != -1: # TODO: write TD_errors_queue
-                use_vals = rollouts.TD_errors_queue.squeeze()[possible_indexes]
+                use_vals = rollouts.TD_errors_queue[reward_index].squeeze()[possible_indexes]
                 weights += (use_vals + self.weighting_lambda) / (self.weighting_lambda * len(possible_indexes) + use_vals.sum())
             if weighting_name.find("return") != -1: # TODO: assumes positive return
-                use_vals = rollouts.return_queue.squeeze()[possible_indexes]
-                weights += (use_vals + self.weighting_lambda) / (self.weighting_lambda * len(possible_indexes) + use_vals.sum())
+                use_vals = rollouts.return_queue[reward_index].squeeze()[possible_indexes].abs()
+                weights += ((use_vals + self.weighting_lambda) / (self.weighting_lambda * len(possible_indexes) + use_vals.sum())).pow(2)
             if weighting_name.find("recent") != -1:
-                recency_weights = torch.arange(len(possible_indexes)) # TODO: recency can be some function
-                weights += (recency_weights + self.weighting_lambda) / (self.weighting_lambda * len(possible_indexes) + recency_weights.sum())
+                recency_weights = torch.arange(len(possible_indexes)).float() # TODO: recency can be some function, increasing
+                # recency_weights = torch.exp(torch.arange(len(possible_indexes)).float() - len(possible_indexes)) # TODO: recency can be some function, increasing
+                if rollouts.iscuda:
+                    recency_weights= recency_weights.cuda()
+                weights += ((recency_weights + self.weighting_lambda) / (self.weighting_lambda * len(possible_indexes) + recency_weights.sum())) * .1
             weights /= weights.sum()
-            # print(weights.sum())
             weights = pytorch_model.unwrap(weights.squeeze())
             # print(weights, rollouts.return_queue)
             # print(rollouts.buffer_filled, rollouts.buffer_at)
@@ -87,19 +89,19 @@ class LearningOptimizer():
             if sequential:
                 n_states = min(rollouts.buffer_filled - num_grad_states - 1, len(rollouts.state_queue) - num_grad_states - 1)
                 possible_indexes = list(range(n_states))
-                weights = self.compute_weights(possible_indexes, rollouts, weights)
+                weights = self.compute_weights(possible_indexes, rollouts, weights, reward_index)
                 seg = np.random.choice(possible_indexes, p=weights)
                 grad_indexes = list(range(seg, seg + num_grad_states))
             elif match_option:
                 possible_indexes = (rollouts.option_queue == reward_index).nonzero().squeeze().cpu().tolist()
                 n_states = min(rollouts.buffer_filled - 1, len(rollouts.state_queue) - 1, len(possible_indexes) - 1)
-                weights = self.compute_weights(possible_indexes, rollouts, weights)
+                weights = self.compute_weights(possible_indexes, rollouts, weights, reward_index)
                 grad_indexes = np.random.choice(possible_indexes, min(num_grad_states, n_states), replace=False, p=weights) # should probably choose from the actually valid indices...
             else:
                 n_states = min(rollouts.buffer_filled - 1, len(rollouts.state_queue) - 1)
                 possible_indexes = list(range(n_states))
                 # print(possible_indexes)
-                weights = self.compute_weights(possible_indexes, rollouts, weights)
+                weights = self.compute_weights(possible_indexes, rollouts, weights, reward_index)
                 # print(np.sum(weights), self.weighting_lambda)
                 grad_indexes = np.random.choice(possible_indexes, min(num_grad_states, n_states), replace=False, p=weights) # should probably choose from the actually valid indices...
                 # print(grad_indexes)
@@ -205,6 +207,44 @@ class LearningOptimizer():
         optimizer.zero_grad()
         loss.backward()
         for param in model.parameters():
+            if param.grad is not None: # some parts of the network may not be used
+                param.grad.data.clamp_(-1, 1)
+        optimizer.step()
+        return loss
+
+    def correlate_diversity_step(self, args, train_models, rollouts):
+        '''
+        Enforces diversity in the correlate state through importance sampling:
+            (diversity in correlate state * 
+        '''
+        if rollouts.cp_filled:
+            # TODO: changepoint buffer must exceed args.correlate_steps, remove this
+            states = torch.cat([rollouts.changepoint_queue[rollouts.changepoint_queue_len - max(rollouts.changepoint_at-args.correlate_steps,0):], rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
+            actions = torch.cat([rollouts.changepoint_action_queue[rollouts.changepoint_queue_len - max(rollouts.changepoint_at-args.correlate_steps,0):], rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
+        else:
+            states = rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
+            actions = rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
+        if rollouts.buffer_filled == rollouts.buffer_steps:
+            current_states = torch.cat([rollouts.current_state_queue[rollouts.buffer_steps - max(rollouts.buffer_at-args.correlate_steps,0):], rollouts.current_state_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
+            # current_probs = torch.cat([rollouts.action_probs_queue[train_models.option_index, rollouts.buffer_steps - max(rollouts.buffer_at-args.correlate_steps,0):], rollouts.action_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
+        else:
+            current_states = rollouts.current_state_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
+            # current_probs = rollouts.action_probs_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
+        correlate_states = states[:,-2:]# assuming traj dim of 2
+        take_action_probs = torch.zeros((args.correlate_steps, rollouts.action_space)).float()
+        if args.cuda:
+            take_action_probs = take_action_probs.cuda()
+        take_action_probs[list(range(args.correlate_steps)), actions] = 1.0
+        correlate_state_diversity = 1.0/(((correlate_states - correlate_states.mean(dim=0)) / 32).pow(2).sum() + 1e-2) # diversity is 1/sigma^2
+        values, dist_entropy, action_probs, q_values = train_models.determine_action(current_states)
+        values, action_probs, q_values = train_models.get_action(values, action_probs, q_values)
+        # print(correlate_states, correlate_state_diversity, take_action_probs * torch.log(action_probs + 1e-10))
+        # loss = -(take_action_probs * torch.log(action_probs + 1e-10)).sum() * correlate_state_diversity / 100 # l1 loss
+        loss = torch.exp(-(take_action_probs - action_probs).abs().sum()) * correlate_state_diversity / 100 # l1 loss
+        optimizer = self.optimizers[train_models.option_index]
+        optimizer.zero_grad()
+        loss.backward()
+        for param in train_models.currentModel().parameters():
             if param.grad is not None: # some parts of the network may not be used
                 param.grad.data.clamp_(-1, 1)
         optimizer.step()
@@ -334,6 +374,7 @@ class PPO_optimizer(LearningOptimizer):
             #     print("NAN", rollout_returns, values, a, astd, oa)
             # print("values (alp, oalp, advantages, log ratio, ratio, surr1, surr2)", action_log_probs, old_action_log_probs, advantages, action_log_probs - old_action_log_probs.detach(), ratio, surr1, surr2)
             value_loss = (Variable(rollout_returns) - values).pow(2).mean()
+            # TODO: importance sample entropy, value?
             log_output_probs = torch.log(torch.sum(action_probs, dim=0) / action_probs.size(0) + 1e-10)
             output_probs = torch.sum(action_probs, dim=0) / action_probs.size(0)
             output_entropy = -torch.sum(log_output_probs * output_probs) * args.high_entropy
@@ -559,6 +600,30 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
                 self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
                     q_loss, RL=0)
         return q_loss, None, dist_entropy, None, None, None
+
+class SupervisedLearning_optimizer(LearningOptimizer):
+    def initialize(self, args, train_models):
+        super().initialize(args, train_models)
+        for model in train_models.models:
+            self.optimizers.append(initialize_optimizer(args, model))
+
+    def step(self, args, train_models, rollouts):
+        self.step_counter += 1
+        current_state_eval, action_eval = self.get_trace_state(args.num_grad_states, rollouts, self.models.option_index, weights=args.prioritized_replay)    
+        values, dist_entropy, action_probs, qv = train_models.determine_action(current_state_eval)
+        values, action_probs, _ = train_models.get_action(values, action_probs, qv)
+        # print(state_eval, next_state_eval, rollout_rewards)
+        log_output_probs = torch.log(action_probs + 1e-10).gather(1, action_eval)
+        # print(torch.log(action_probs).gather(1, action_eval), torch.log(action_probs), action_eval)         
+        output_entropy = compute_output_entropy(args, action_probs, log_output_probs)
+        action_loss = (Variable(rollout_returns) * log_output_probs.squeeze()).mean()
+        # print(dist_entropy, output_entropy, action_probs, torch.sum(action_probs, dim=0))
+        entropy_loss = (dist_entropy - output_entropy) * args.entropy_coef
+        # entropy_loss = dist_entropy * args.entropy_coef
+        self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
+                action_loss + entropy_loss, RL=0)
+        return None, action_loss, dist_entropy, None, entropy_loss, log_output_probs
+
 
 learning_algorithms = {"DQN": DQN_optimizer, "DDPG": DDPG_optimizer, "PPO": PPO_optimizer, 
 "A2C": A2C_optimizer, "SARSA": SARSA_optimizer, "TabQ":TabQ_optimizer, "PG": PolicyGradient_optimizer,

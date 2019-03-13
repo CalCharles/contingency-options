@@ -40,14 +40,16 @@ class Model(nn.Module):
         if args.num_layers == 0:
             self.insize = num_inputs
         elif args.num_layers == 1:
-            self.insize = max(num_inputs * num_outputs * factor * factor, num_inputs * num_outputs)
+            self.insize = max(num_outputs * factor * factor, num_outputs)
         else:
-            self.insize = max(num_inputs * num_outputs * factor, num_inputs * num_outputs)
+            self.insize = max(num_outputs * factor * factor, num_outputs)
         self.minmax = minmax
+        print("MINMAX", self.minmax)
         if minmax is not None:
             self.minmax = (torch.cat([pytorch_model.wrap(minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
             for mm in self.minmax:
                 mm.requires_grad = False
+        print("MINMAX", self.minmax)
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
         if args.model_form in ["gaussian", "fourier", "gaumulti", "gaudist"]:
@@ -107,8 +109,6 @@ class Model(nn.Module):
         input: [batch size, state size] (TODO: no multiple processes)
         output [batch size, 1], [batch size, 1], [batch_size, num_actions], [batch_size, num_actions]
         '''
-        if self.minmax is not None and self.use_normalize:
-            x = self.normalize(x)
         action_probs = self.action_probs(x)
         Q_vals = self.QFunction(x)
         values = self.critic_linear(x)
@@ -126,7 +126,7 @@ class BasicModel(Model):
         super(BasicModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
         factor = int(args.factor)
         self.hidden_size = self.num_inputs*factor*factor // min(2,factor)
-        print("Network Sizes: ", self.num_inputs, self.num_inputs*factor*factor, self.insize)
+        print("Network Sizes: ", self.num_inputs, self.insize, self.hidden_size)
         # self.l1 = nn.Linear(self.num_inputs, self.num_inputs*factor*factor)
         if args.num_layers == 1:
             self.l1 = nn.Linear(self.num_inputs,self.insize)
@@ -135,7 +135,7 @@ class BasicModel(Model):
             self.l2 = nn.Linear(self.hidden_size, self.insize)
         elif args.num_layers == 3:
             self.l1 = nn.Linear(self.num_inputs,self.hidden_size)
-            self.l2 = nn.Linear(self.hidden_size,self.hidden_size//factor)
+            self.l2 = nn.Linear(self.hidden_size,self.hidden_size)
             self.l3 = nn.Linear(self.hidden_size, self.insize)
         if args.num_layers > 0:
             self.layers.append(self.l1)
@@ -161,16 +161,20 @@ class BasicModel(Model):
         if self.num_layers > 1:
             x = self.l2(x)
             x = F.relu(x)
+        if self.num_layers > 2:
+            x = self.l3(x)
+            x = F.relu(x)
+        values, dist_entropy, probs, Q_vals = super().forward(x)
         # print(self.l2.weight)
         # print(x.shape)
-        action_probs = self.action_probs(x)
-        # print(action_probs)
-        Q_vals = self.QFunction(x)
-        # print(self.action_probs.weight)
-        values = self.critic_linear(x)
-        probs = F.softmax(action_probs, dim=1)
-        log_probs = F.log_softmax(action_probs, dim=1)
-        dist_entropy = -(log_probs * probs).sum(-1).mean()
+        # action_probs = self.action_probs(x)
+        # # print(action_probs)
+        # Q_vals = self.QFunction(x)
+        # # print(self.action_probs.weight)
+        # values = self.critic_linear(x)
+        # probs = F.softmax(action_probs, dim=1)
+        # log_probs = F.log_softmax(action_probs, dim=1)
+        # dist_entropy = -(log_probs * probs).sum(-1).mean()
         # print("lp, p", action_probs, log_probs, probs)
         # print(values.shape, probs.shape, dist_entropy.shape, Q_vals.shape)
 
@@ -255,7 +259,7 @@ class DistributionalModel(BasicModel):
         return self.compute_value_distribution_mid(x)
 
 
-from ReinforcementLearning.basis_models import FourierBasisModel, GaussianBasisModel, GaussianMultilayerModel, GaussianDistributionModel
-from ReinforcementLearning.tabular_models import TabularQ, TileCoding
-
-models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel}
+from Models.basis_models import FourierBasisModel, GaussianBasisModel, GaussianMultilayerModel, GaussianDistributionModel
+from Models.tabular_models import TabularQ, TileCoding
+from Models.image_models import ObjectSumImageModel
+models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel, "sumimage": ObjectSumImageModel}

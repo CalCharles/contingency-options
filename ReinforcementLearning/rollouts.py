@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import collections
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 
 
 class RolloutOptionStorage(object):
@@ -42,8 +42,8 @@ class RolloutOptionStorage(object):
             self.done_queue = torch.zeros(buffer_steps, 1)
             self.state_queue.requires_grad = self.current_state_queue.requires_grad = self.action_probs_queue.requires_grad = self.Qvals_queue.requires_grad = self.reward_queue.requires_grad = self.return_queue.requires_grad = self.values_queue.requires_grad = self.action_queue.requires_grad = self.option_queue.requires_grad = self.epsilon_queue.requires_grad = False
         if self.trace_queue_len > 0:
-            self.trace_states = torch.zeros(self.trace_queue_len, self.trace_len, *self.current_state)
-            self.trace_actions = torch.zeros(self.trace_queue_len, self.trace_len, 1).long()
+            self.trace_states = torch.zeros(num_options, self.trace_queue_len, self.trace_len, *self.current_shape)
+            self.trace_actions = torch.zeros(num_options, self.trace_queue_len, self.trace_len, 1).long()
         self.changepoint_queue = torch.zeros(changepoint_queue_len, *self.changepoint_shape)
         self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long()
         self.num_options = num_options
@@ -145,13 +145,17 @@ class RolloutOptionStorage(object):
 
     def insert_trace(self, traces): # TODO: enforce trace diversity, enforce trace length
         reward_at = 0
-        if self.trace_queue_len > 0 and torch.max(self.rewards) > 1:
-            reward_at = self.rewards.argmax()
-            for i, (current_state, action) in enumerate(traces[max(reward_at - self.trace_len,0):reward_at]): # assuming no resets (choose a short trace)
-                self.trace_states[self.trace_at, i].copy_(current_state)
-                self.trace_actions[self.trace_at, i].copy_(action)
-            self.trace_at += 1
-            self.trace_filled += int(self.trace_filled < self.trace_queue_len)
+        # print(self.trace_queue_len, self.rewards, torch.max(self.rewards))
+        if self.trace_queue_len > 0:
+            for oidx, option_reward in enumerate(self.rewards):
+                if torch.max(option_reward) > 1:
+                    reward_at = len(traces) - len(option_reward) + option_reward.argmax()
+                    # print(traces[max(reward_at - self.trace_len,0):reward_at])
+                    for i, (current_state, action) in enumerate(traces[max(reward_at - self.trace_len,0):reward_at]): # assuming no resets (choose a short trace)
+                        self.trace_states[oidx, self.trace_at, i].copy_(current_state.squeeze())
+                        self.trace_actions[oidx, self.trace_at, i].copy_(action.squeeze())
+                    self.trace_at = (self.trace_at + 1) % self.trace_queue_len 
+                    self.trace_filled += int(self.trace_filled < self.trace_queue_len)
         return traces[reward_at+1:]
 
     def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state, epsilon, done=False): # got rid of masks... might be useful though
@@ -256,7 +260,7 @@ class RolloutOptionStorage(object):
                         # update the last ten returns
                         # print(i, 11-i)
                         i = self.rewards.size(1) - i - 1
-                        update_last = 20 # imposes an artificial limit on Gamma
+                        update_last = 10 # imposes an artificial limit on Gamma
                         for j in range(update_last+1): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
                             # print(self.returns.shape, self.rewards.shape)
                             # print(self.returns[0], self.return_queue[-6+j])

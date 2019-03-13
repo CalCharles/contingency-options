@@ -7,7 +7,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 
 from Environments.environment_specification import ProxyEnvironment
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 from ReinforcementLearning.rollouts import RolloutOptionStorage
 from file_management import save_to_pickle
 
