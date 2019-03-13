@@ -69,17 +69,20 @@ class Model(nn.Module):
     def reset_parameters(self):
         relu_gain = nn.init.calculate_gain('relu')
         for layer in self.layers:
-            if self.init_form == "uni":
-                # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
-                nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])
-            elif self.init_form == "xnorm":
-                torch.nn.init.xavier_normal_(layer.weight.data)
-            elif self.init_form == "xuni":
-                torch.nn.init.xavier_uniform_(layer.weight.data)
-            elif self.init_form == "eye":
+            if type(layer) == nn.Conv2d:
                 torch.nn.init.eye_(layer.weight.data)
-            if layer.bias is not None:                
-                nn.init.uniform_(layer.bias.data, 0.0, 1e-6)
+            else:
+                if self.init_form == "uni":
+                    # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
+                    nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])
+                elif self.init_form == "xnorm":
+                    torch.nn.init.xavier_normal_(layer.weight.data)
+                elif self.init_form == "xuni":
+                    torch.nn.init.xavier_uniform_(layer.weight.data)
+                elif self.init_form == "eye":
+                    torch.nn.init.eye_(layer.weight.data)
+                if layer.bias is not None:                
+                    nn.init.uniform_(layer.bias.data, 0.0, 1e-6)
 
         # nn.init.uniform_(self.critic_linear.weight.data, .9 / self.insize, 1.1 / self.insize)
         # nn.init.uniform_(self.time_estimator.weight.data, .9 / self.insize, 1.1 / self.insize)
