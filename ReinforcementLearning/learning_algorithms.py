@@ -217,33 +217,47 @@ class LearningOptimizer():
         Enforces diversity in the correlate state through importance sampling:
             (diversity in correlate state * 
         '''
-        if rollouts.cp_filled:
-            # TODO: changepoint buffer must exceed args.correlate_steps, remove this
-            states = torch.cat([rollouts.changepoint_queue[rollouts.changepoint_queue_len - max(args.correlate_steps - rollouts.changepoint_at,0):], rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
-            actions = torch.cat([rollouts.changepoint_action_queue[rollouts.changepoint_queue_len - max(args.correlate_steps - rollouts.changepoint_at,0):], rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
-        else:
-            states = rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
-            actions = rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
+        # if rollouts.cp_filled:
+        #     # TODO: changepoint buffer must exceed args.correlate_steps, remove this
+        #     states = torch.cat([rollouts.changepoint_queue[rollouts.changepoint_queue_len - max(args.correlate_steps - rollouts.changepoint_at,0):], rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
+        #     actions = torch.cat([rollouts.changepoint_action_queue[rollouts.changepoint_queue_len - max(args.correlate_steps - rollouts.changepoint_at,0):], rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]])
+        # else:
+        #     states = rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
+        #     actions = rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
         if rollouts.buffer_filled == rollouts.buffer_steps:
             print(rollouts.buffer_steps - max(args.correlate_steps - rollouts.buffer_at,0), max(rollouts.buffer_at-args.correlate_steps,0),rollouts.buffer_at)
+            states = torch.cat([rollouts.changepoint_buffer[rollouts.buffer_steps - max(args.correlate_steps - rollouts.buffer_at,0):], rollouts.changepoint_buffer[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
+            actions = torch.cat([rollouts.action_queue[rollouts.buffer_steps - max(args.correlate_steps - rollouts.buffer_at,0):], rollouts.action_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
             current_states = torch.cat([rollouts.current_state_queue[rollouts.buffer_steps - max(args.correlate_steps- rollouts.buffer_at,0):], rollouts.current_state_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
             # current_probs = torch.cat([rollouts.action_probs_queue[train_models.option_index, rollouts.buffer_steps - max(rollouts.buffer_at-args.correlate_steps,0):], rollouts.action_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
         else:
+            states = rollouts.changepoint_buffer[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
+            actions = rollouts.action_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
             current_states = rollouts.current_state_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
             # current_probs = rollouts.action_probs_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
         correlate_states = states[:,-2:]# assuming traj dim of 2
         take_action_probs = torch.zeros((args.correlate_steps, rollouts.action_space)).float()
+        noop_action_probs = torch.zeros((args.correlate_steps, rollouts.action_space)).float()
         if args.cuda:
             take_action_probs = take_action_probs.cuda()
+            noop_action_probs = noop_action_probs.cuda()
         take_action_probs[list(range(args.correlate_steps)), actions.squeeze()] = 1.0
-        correlate_state_diversity = 1.0/(((correlate_states - correlate_states.mean(dim=0))/16).pow(2).sum() + 1e-2) # diversity is 1/sigma^2
+        noop_action_probs[:,0] = 1.0 # TODO: assumes that noops are the 0th action
+        correlate_state_variance = ((correlate_states - correlate_states.mean(dim=0)).pow(2).mean(dim=0)).sum() # diversity is 1/sigma^2
+
+        # score is the exp(-z) * correlate_variance_cost
+        correlate_state_score = torch.exp(-(correlate_states - correlate_states.mean(dim=0)).pow(2).sum(dim=1) / torch.sqrt(correlate_state_variance) - torch.sqrt(correlate_state_variance) + 10)
+        # print(correlate_state_variance, -(correlate_states - correlate_states.mean(dim=0)).pow(2).sum(dim=1) / torch.sqrt(correlate_state_variance), correlate_state_variance + 6)
         values, dist_entropy, action_probs, q_values = train_models.determine_action(current_states)
         values, action_probs, q_values = train_models.get_action(values, action_probs, q_values)
         # print(correlate_states, correlate_state_diversity, take_action_probs * torch.log(action_probs + 1e-10))
         # loss = -(take_action_probs * torch.log(action_probs + 1e-10)).sum() * correlate_state_diversity / 100 # l1 loss
-        loss = torch.exp(-(take_action_probs - action_probs).abs().sum()) * correlate_state_diversity # l1 loss
-        # print(loss, correlate_states, correlate_state_diversity, take_action_probs - action_probs)
-        # print(loss)
+        ploss = torch.exp(-(take_action_probs - action_probs).abs().sum(dim=1)) * correlate_state_score / args.correlate_steps # l1 loss
+        # print(take_action_probs - action_probs, torch.exp(-(take_action_probs - action_probs).abs().sum(dim=1)), correlate_state_score)
+        loss = torch.max(ploss, torch.exp(-(noop_action_probs - action_probs).abs().sum(dim=1)) * correlate_state_score / args.correlate_steps).mean() # l1 loss
+        # print(correlate_state_variance, ploss.mean(), loss.mean())
+        # print(noop_action_probs)
+        # print(correlate_states, correlate_state_variance, loss)
         optimizer = self.optimizers[train_models.option_index]
         optimizer.zero_grad()
         loss.backward()

@@ -41,6 +41,7 @@ class RolloutOptionStorage(object):
             self.epsilon_queue = torch.zeros(buffer_steps, 1)
             self.done_queue = torch.zeros(buffer_steps, 1)
             self.state_queue.requires_grad = self.current_state_queue.requires_grad = self.action_probs_queue.requires_grad = self.Qvals_queue.requires_grad = self.reward_queue.requires_grad = self.return_queue.requires_grad = self.values_queue.requires_grad = self.action_queue.requires_grad = self.option_queue.requires_grad = self.epsilon_queue.requires_grad = False
+            self.changepoint_buffer = torch.zeros(buffer_steps, *self.changepoint_shape)
         if self.trace_queue_len > 0:
             self.trace_states = torch.zeros(num_options, self.trace_queue_len, self.trace_len, *self.current_shape)
             self.trace_actions = torch.zeros(num_options, self.trace_queue_len, self.trace_len, 1).long()
@@ -94,6 +95,7 @@ class RolloutOptionStorage(object):
             self.current_state_queue = self.current_state_queue.cuda()
             self.epsilon_queue = self.epsilon_queue.cuda()
             self.done_queue = self.done_queue.cuda()
+            self.changepoint_buffer = self.changepoint_buffer.cuda()
         if self.changepoint_queue_len > 0:
             self.changepoint_queue = self.changepoint_queue.cuda()
             self.changepoint_action_queue = self.changepoint_action_queue.cuda()
@@ -125,7 +127,9 @@ class RolloutOptionStorage(object):
             self.option_queue = self.option_queue.cpu()
             self.current_state_queue = self.current_state_queue.cpu()
             self.epsilon_queue = self.epsilon_queue.cpu()
+            self.changepoint_buffer = self.changepoint_buffer.cpu()
             self.done_queue = self.done_queue.cpu()
+            self.changepoint_buffer = self.changepoint_queue.cpu()
         if self.changepoint_queue_len > 0:
             self.changepoint_queue = self.changepoint_queue.cpu()
             self.changepoint_action_queue = self.changepoint_action_queue.cpu()
@@ -162,6 +166,7 @@ class RolloutOptionStorage(object):
         if self.buffer_steps > 0 and self.last_step != step: # using buffer and not the first step, which is a duplicate of the last step
             self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
             self.state_queue[self.buffer_at].copy_(extracted_state.squeeze().detach())
+            self.changepoint_buffer[self.buffer_at].copy_(changepoint_state.squeeze().detach())
             self.current_state_queue[self.buffer_at].copy_(current_state.squeeze().detach())
             self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
             self.action_queue[self.buffer_at].copy_(action.squeeze().detach())
@@ -201,6 +206,7 @@ class RolloutOptionStorage(object):
             self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
             self.action_queue[self.buffer_at].copy_(action.squeeze().detach())
             self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze().detach())
+            self.changepoint_buffer[self.buffer_at].copy_(changepoint_state.squeeze().detach())
             if self.buffer_at == self.buffer_steps - 1:
                 self.buffer_at = 0
             else:

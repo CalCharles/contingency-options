@@ -59,9 +59,15 @@ class BounceReward(ChangepointReward):
                 if self.form == 'dense':
                     # rewards.append(-abs(proximity[1] / (proximity[0] + .1) * .1))
                     rewards.append(-abs(proximity[0] + proximity[1]) * 0.001)
+                if self.form.find('xdense') != -1:
+                    if proximity[0] == 3 and self.form.find('neg') != -1:
+                        rewards.append(-1)
+                    # rewards.append(-abs(proximity[1] / (proximity[0] + .1) * .1))
+                    else:
+                        rewards.append(-abs(proximity[1]) * 0.001)
                 else:
                     # print(proximity[0])
-                    if self.form == 'neg' and proximity[0] == 3:
+                    if self.form == 'neg':
                         rewards.append(-1)
                     else:
                         rewards.append(0)
