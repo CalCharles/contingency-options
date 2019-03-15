@@ -15,9 +15,13 @@ class ImageModel(Model):
         self.conv1 = nn.Conv2d(1, 2 * factor, 8, stride=4)
         self.conv2 = nn.Conv2d(2 * factor, 4 * factor, 4, stride=2)
         self.conv3 = nn.Conv2d(4 * factor, 8 * factor, 3, stride=1)
+        self.viewsize = 7
         self.linear1 = nn.Linear(8 * factor * self.viewsize * self.viewsize, self.insize)
         self.factor = args.factor
-        self.viewsize = 7
+        self.layers.append(self.conv1)
+        self.layers.append(self.conv2)
+        self.layers.append(self.conv3)
+        self.layers.append(self.linear1)
 
     def forward(self, inputs):
         norm_term = 1.0
@@ -60,10 +64,10 @@ class ObjectSumImageModel(ImageModel):
         self.conv2 = nn.Conv2d(2 * factor, 4 * factor, 4, stride=2)
         self.conv3 = nn.Conv2d(4 * factor, 8 * factor, 3, stride=1)
         self.linear1 = nn.Linear(8 * factor * self.viewsize * self.viewsize, self.insize)
-        self.layers.append(self.conv1)
-        self.layers.append(self.conv2)
-        self.layers.append(self.conv3)
-        self.layers.append(self.linear1)
+        self.layers[-4] = self.conv1
+        self.layers[-3] = self.conv2
+        self.layers[-2] = self.conv3
+        self.layers[-1] = self.linear1
         self.reset_parameters()
 
     def normalize(self, inputs):
