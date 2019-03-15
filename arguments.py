@@ -91,11 +91,13 @@ def get_args():
                     help='ppo clip parameter (default: 0.2)')
 
     # Evolution parameters TODO: evolution not implemented at the moment
+    parser.add_argument('--evolve-form',  default="",
+                        help='base network form for evolution')
     parser.add_argument('--select-ratio', type=float, default=0.25,
                     help='percentage of population selected in evolution(default: 0.25)')
     parser.add_argument('--num-population', type=int, default=20,
                         help='size of the population (default: 20)')
-    parser.add_argument('--sample-duration', type=int, default=100,
+    parser.add_argument('--sample-duration', type=int, default=200,
                         help='number of time steps to evaluate a subject of the population (default: 100)')
     parser.add_argument('--elitism', action='store_true', default=False,
                         help='keep the best performing networks')
@@ -104,8 +106,8 @@ def get_args():
     # Evolution Gradient parameters
     parser.add_argument('--sample-steps', type=int, default=2000,
                     help='number of time steps to run to evaluate full population (default: 2000)')
-    parser.add_argument('--grad-sample-steps', type=int, default=2000,
-                    help='number of time steps to run to run ppo gradient on best performer (default: 2000)')
+    parser.add_argument('--base-learner',  default="",
+                        help='base learning algorithm for running the gradient component')
     parser.add_argument('--grad-lr', type=float, default=.0007,
                         help='the learning rate for the PPO steps (default -1, not used)')
     # basis function parameters
@@ -115,6 +117,8 @@ def get_args():
                 help='scaling term for magnitudes, which can be useful in multilayer to exacerbate differences')
     parser.add_argument('--order', type=int, default=40,
                         help='decides order of the basis functions (related to number of basis functions)')
+    parser.add_argument('--connectivity', type=int, default=1,
+                        help='decides the amount the basis functions are connected (1, 2, 12, 22, 3)')
 
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,
@@ -160,6 +164,8 @@ def get_args():
     # Replay buffer settings
     parser.add_argument('--buffer-steps', type=int, default=-1,
                         help='number of buffered steps in the record buffer, -1 implies it is not used (default: -1)')
+    parser.add_argument('--buffer-clip', type=int, default=20,
+                        help='backwards return computation (strong effect on runtime')
     parser.add_argument('--weighting-lambda', type=float, default=1e-2,
                         help='lambda for the sample weighting in prioritized replay (default = 1e-2)')
     parser.add_argument('--prioritized-replay', default="",

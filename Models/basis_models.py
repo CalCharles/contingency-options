@@ -17,8 +17,8 @@ class BasisModel(Model):
         self.num_stack = args.num_stack
         self.dim = num_inputs // self.num_stack
         self.order = args.order + 1 # include zero order
-        self.variate = args.num_layers % 10 # decide the relatinship
-        self.layering = args.num_layers // 10 # defines different kinds of relationships
+        self.variate = args.connectivity % 10 # decide the relatinship
+        self.layering = args.connectivity // 10 # defines different kinds of relationships
         self.period = args.period
         self.scale = args.scale
         self.base_vals = [i for i in range(self.order+1)]
@@ -231,8 +231,9 @@ class GaussianMultilayerModel(GaussianBasisModel):
         num_population is used as the size of the last layer (don't mix evolutionary and gaussian basis for now)        
         '''
         print("basis size", self.basis_size)
-        self.l1 = nn.Linear(self.basis_size, self.insize)
-        self.l2 = nn.Linear(self.insize, self.insize)
+        # TODO: merge with single basis model
+        if args.num_layers == 0:
+            self.insize = self.basis_size
         self.QFunction = nn.Linear(self.insize, self.num_outputs, bias=True)
         self.critic_linear = nn.Linear(self.insize, 1, bias=True)
         self.time_estimator = nn.Linear(self.insize, 1, bias=True)
@@ -241,8 +242,15 @@ class GaussianMultilayerModel(GaussianBasisModel):
         self.layers[1] = self.time_estimator
         self.layers[2] = self.QFunction
         self.layers[3] = self.action_probs
-        self.layers.append(self.l1)
-        self.layers.append(self.l2)
+        if args.num_layers >= 1:
+            self.l1 = nn.Linear(self.basis_size, self.insize)
+            self.layers.append(self.l1)
+        if args.num_layers >= 2:
+            self.l2 = nn.Linear(self.insize, self.insize)
+            self.layers.append(self.l2)
+        if args.num_layers >= 3:
+            self.l3 = nn.Linear(self.insize, self.insize)
+            self.layers.append(self.l3)
         self.reset_parameters()
         # print("done initializing")
 
@@ -254,10 +262,15 @@ class GaussianMultilayerModel(GaussianBasisModel):
         x = torch.mm(x, self.basis_matrix) 
         # print("xbasis", x.shape)
         # print("before", x)
-        x = self.l1(x)
-        x = F.relu(x)
-        x = self.l2(x)
-        x = F.relu(x)
+        if self.num_layers >= 1:
+            x = self.l1(x)
+            x = F.relu(x)
+        if self.num_layers >= 2:
+            x = self.l2(x)
+            x = F.relu(x)
+        if self.num_layers >= 3:
+            x = self.l3(x)
+            x = F.relu(x)
         Qvals = self.QFunction(x)
         aprobs = self.action_probs(x)
         # print("after", aprobs)

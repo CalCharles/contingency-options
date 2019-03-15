@@ -12,10 +12,10 @@ class ImageModel(Model):
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
         super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess)
         # TODO: assumes images of size 84x84, make general
-        self.conv1 = nn.Conv2d(1, 4, 8, stride=4)
-        self.conv2 = nn.Conv2d(4, 4, 4, stride=2)
-        self.conv3 = nn.Conv2d(4, 2, 3, stride=1)
-        self.linear1 = nn.Linear(2 * 7 * 7, self.insize)
+        self.conv1 = nn.Conv2d(1, 2 * factor, 8, stride=4)
+        self.conv2 = nn.Conv2d(2 * factor, 4 * factor, 4, stride=2)
+        self.conv3 = nn.Conv2d(4 * factor, 8 * factor, 3, stride=1)
+        self.linear1 = nn.Linear(8 * factor * self.viewsize * self.viewsize, self.insize)
         self.factor = args.factor
         self.viewsize = 7
 

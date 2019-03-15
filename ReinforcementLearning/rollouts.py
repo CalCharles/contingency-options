@@ -234,6 +234,37 @@ class RolloutOptionStorage(object):
         if self.iscuda:
             self.rewards = self.rewards.cuda()
 
+    def buffer_get_last(self, i, n, changepoint=False):
+        # TODO: choose values to get from the queue
+        # i is the starting index (0 from the most recent)
+        # n is the number taken
+        # changepoint is getting from the changepoint queue
+        if self.buffer_filled == self.buffer_steps and not changepoint:
+            # print(self.buffer_steps - max(n - self.buffer_at - i,0), max(self.buffer_at - i-n,0),self.buffer_at - i)
+            states = torch.cat([self.changepoint_buffer[self.buffer_steps - max(n - self.buffer_at - i,0):], self.changepoint_buffer[max(self.buffer_at - i - n,0):self.buffer_at - i]])
+            actions = torch.cat([self.action_queue[self.buffer_steps - max(n - self.buffer_at - i,0):], self.action_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]])
+            current_states = torch.cat([self.current_state_queue[self.buffer_steps - max(n- self.buffer_at - i,0):], self.current_state_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]])
+            returns = torch.cat([self.return_queue[self.buffer_steps - max(n- self.buffer_at - i,0):], self.return_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]])
+            # current_probs = torch.cat([self.action_probs_queue[train_models.option_index, self.buffer_steps - max(self.buffer_at - i-n,0):], self.action_queue[max(self.buffer_at - i-n,0):self.buffer_at - i]])
+        elif not changepoint:
+            states = self.changepoint_buffer[max(self.buffer_at - i - n,0):self.buffer_at - i]
+            actions = self.action_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]
+            current_states = self.current_state_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]
+            returns = self.return_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]
+        elif changepoint and self.cp_filled:
+            # TODO: changepoint buffer must exceed n, remove this
+            states = torch.cat([self.changepoint_queue[self.changepoint_queue_len - max(n - self.changepoint_at,0):], self.changepoint_queue[max(self.changepoint_at-n,0):self.changepoint_at]])
+            actions = torch.cat([self.changepoint_action_queue[self.changepoint_queue_len - max(n - self.changepoint_at,0):], self.changepoint_action_queue[max(self.changepoint_at-n,0):self.changepoint_at]])
+            current_states = None
+            returns = None
+        else:
+            states = self.changepoint_queue[max(self.changepoint_at-n,0):self.changepoint_at]
+            actions = self.changepoint_action_queue[max(self.changepoint_at-n,0):self.changepoint_at]
+            current_states = None
+            returns = None
+        return states, actions, current_states, returns
+
+
     def compute_returns(self, args, next_value, segmented_duration=-1):
         gamma = args.gamma
         tau = args.tau
@@ -262,24 +293,45 @@ class RolloutOptionStorage(object):
                     self.returns[idx, step] = self.returns[idx, step + 1] * gamma + self.rewards[idx, step]
                 # print(self.returns)
                 if self.buffer_steps > 0:
+                    update_last = args.buffer_clip # imposes an artificial limit on Gamma
+                    if self.iscuda:
+                        last_values = torch.arange(start=update_last-1, end = -1, step=-1).float().cuda()
+                    else:
+                        last_values = torch.arange(start=update_last-1, end = -1, step=-1).float()
                     for i, rew in enumerate(reversed(self.rewards[idx])):
                         # update the last ten returns
                         # print(i, 11-i)
-                        i = self.rewards.size(1) - i - 1
-                        update_last = 10 # imposes an artificial limit on Gamma
-                        for j in range(update_last+1): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
-                            # print(self.returns.shape, self.rewards.shape)
-                            # print(self.returns[0], self.return_queue[-6+j])
-                            # print(self.return_at)
-                            update_idx = (self.return_at - j + i) % self.buffer_steps
-                            # print(update_idx, torch.tensor(np.power(gamma, j)).cuda() * rew, self.return_queue[idx, update_idx])
-                            if self.done_queue[update_idx] or (self.buffer_filled < self.buffer_steps and update_idx > self.buffer_filled): # end of episode or wrapping around before buffer is filled
-                                break # break out of done values
-                            self.return_queue[idx, update_idx] += torch.tensor(np.power(gamma,j)).cuda() * rew
-                    
+                        i = self.rewards.size(1) - i
+                        # updates = torch.tensor(np .power(gamma,j)).cuda() * rew
+                        split_point = update_last - ((self.return_at + i) % self.buffer_steps)
+                        if split_point <= 0: # enough buffer space
+                            # print(last_values.shape, self.return_at + i - update_last,self.return_at + i, split_point)
+                            self.return_queue[idx, self.return_at + i - update_last:self.return_at + i] += (torch.pow(gamma,last_values) * rew).unsqueeze(1)
+                        else:
+                            # print(split_point, update_last - split_point, self.return_at + i)
+                            last_valuese = last_values[split_point:]
+                            self.return_queue[idx, :update_last - split_point] += (torch.pow(gamma,last_valuese) * rew).unsqueeze(1)
+                            if self.buffer_filled == self.buffer_steps:
+                                last_valuesb = last_values[:split_point]
+                                self.return_queue[idx, -(split_point):] += (torch.pow(gamma,last_valuesb) * rew).unsqueeze(1)
+
+
+                        # for j in range(update_last+1): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
+                        #     # print(self.returns.shape, self.rewards.shape)
+                        #     # print(self.returns[0], self.return_queue[-6+j])
+                        #     # print(self.return_at)
+                        #     update_idx = (self.return_at - j + i) % self.buffer_steps
+                        #     # print(update_idx, torch.tensor(np.power(gamma, j)).cuda() * rew, self.return_queue[idx, update_idx])
+                        #     # if self.done_queue[update_idx] or (self.buffer_filled < self.buffer_steps and update_idx > self.buffer_filled): # end of episode or wrapping around before buffer is filled
+                        #     #     break # break out of done values
+                        #     self.return_queue[idx, update_idx] += torch.tensor(np.power(gamma,j)).cuda() * rew
+                        
                     for i, ret in enumerate(self.returns[idx][:-1]):
                         # print('copying', self.return_at + i)
                         self.return_queue[idx, (self.return_at + i) % self.buffer_steps].copy_(ret)
+                # print(self.return_queue)
+                # if torch.sum(self.return_queue) > 0:
+                #     error
         if self.buffer_steps > 0:
             self.return_at = (self.return_at + self.returns.size(1) - 1) % self.buffer_steps
         # print(self.state_queue)

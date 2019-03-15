@@ -100,6 +100,8 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
         start = np.random.randint(len(desired))
         idxes = [(idx + start) % len(desired) for idx in range(batch_size)]
         values, dist_entropy, action_probs, Q_vals = train_models.determine_action(pytorch_model.wrap(states[idxes], cuda=args.cuda))
+        if args.model_form == "population": # train the whole population, each individually
+            train_models.currentModel().current_network_index = (train_models.currentModel().current_network_index + 1) % train_models.currentModel().num_population
         # print(action_probs.transpose(1,0).shape, desired[idxes].shape)
         # print(action_probs.squeeze().shape, desired.shape)
         # print(states[idxes])

@@ -67,7 +67,7 @@ class BounceReward(ChangepointReward):
                         rewards.append(-abs(proximity[1]) * 0.001)
                 else:
                     # print(proximity[0])
-                    if self.form == 'neg':
+                    if proximity[0] == 3 and self.form == 'neg':
                         rewards.append(-1)
                     else:
                         rewards.append(0)

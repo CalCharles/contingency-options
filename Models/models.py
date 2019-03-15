@@ -266,3 +266,5 @@ from Models.basis_models import FourierBasisModel, GaussianBasisModel, GaussianM
 from Models.tabular_models import TabularQ, TileCoding
 from Models.image_models import ObjectSumImageModel
 models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel, "sumimage": ObjectSumImageModel}
+from Models.multi_models import PopulationModel
+models["population"] = PopulationModel
