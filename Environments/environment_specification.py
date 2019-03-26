@@ -224,11 +224,12 @@ class ProxyEnvironment():
             states = rollout.changepoint_queue[:rollout.changepoint_at+1] # multiple policies training
             actions = rollout.changepoint_action_queue[:rollout.changepoint_at+1]
         rewards = []
+        # print(rollout.changepoint_queue.shape)
         # print(states)
         for reward_fn in self.reward_fns:
             rwd = reward_fn.compute_reward(states,actions)
             if len(rwd) < length: #queue not yet filled enough
-                ext = torch.zeros((length - len(rwd), )).cuda()
+                ext = torch.zeros((length - len(rwd), )).cuda().detach()
                 # print(ext.shape)
                 rwd = torch.cat([ext, rwd], dim = 0)
             # print(rwd.shape, length)

@@ -6,11 +6,36 @@ import sys, glob, copy, os, collections, time
 import numpy as np
 from ReinforcementLearning.train_rl import sample_actions
 from Models.models import pytorch_model
+import cma
 
+
+
+class PopOptim():
+    def __init__(self, model, args):
+        self.optims = []
+        for m in model.networks:
+            if args.optim == "RMSprop":
+                self.optims.append(optim.RMSprop(m.parameters(), args.lr, eps=args.eps, alpha=args.alpha))
+            elif args.optim == "Adam":
+                self.optims.append(optim.Adam(m.parameters(), args.lr, eps=args.eps, betas=args.betas, weight_decay=args.weight_decay))
+            else:
+                raise NotImplementedError("Unimplemented optimization")
+        self.model = model
+
+    def zero_grad(self):
+        self.optims[self.model.current_network_index].zero_grad()
+
+    def step(self):
+        for param in self.model.currentModel().parameters():
+            if param.grad is not None: # some parts of the network may not be used
+                param.grad.data.clamp_(-1, 1)
+        self.optims[self.model.current_network_index].step()
 
 def initialize_optimizer(args, model):
     print(args.lr)
-    if args.optim == "RMSprop":
+    if args.model_form == "population":
+        return PopOptim(model, args)
+    elif args.optim == "RMSprop":
         return optim.RMSprop(model.parameters(), args.lr, eps=args.eps, alpha=args.alpha)
     elif args.optim == "Adam":
         return optim.Adam(model.parameters(), args.lr, eps=args.eps, betas=args.betas, weight_decay=args.weight_decay)
@@ -40,6 +65,9 @@ class LearningOptimizer():
         self.step_counter = 0
         self.last_selected_indexes = None
         self.weighting_lambda = args.weighting_lambda # the nonzero normalization weight
+        self.max_duration = self.current_duration
+        self.sample_duration = args.sample_duration
+        self.RL = 0
 
     def interUpdateModel(self, step):
         # see evolutionary methods for how this is used
@@ -87,10 +115,11 @@ class LearningOptimizer():
         '''
         if num_grad_states > 0 and not last_states: # last_states true will get the last operated states
             if last_buffer:
-                if rollouts.buffer_filled == rollouts.buffer_at: # TODO: why not get these states normally? Because it is computationally expensive?
-                    grad_indexes = list(range(rollouts.buffer_steps - max(num_grad_states - self.buffer_at,0), rollouts.buffer_steps)) + list(range(max(rollouts.buffer_at - num_grad_states, 0), rollouts.buffer_at))
+                if rollouts.buffer_filled == rollouts.buffer_steps: # TODO: why not get these states normally? Because it is computationally expensive?
+                    grad_indexes = list(range(rollouts.buffer_steps - max(num_grad_states - rollouts.buffer_at,0), rollouts.buffer_steps)) + list(range(max(rollouts.buffer_at - num_grad_states, 0), rollouts.buffer_at))
                 else:
-                    grad_indexes = list(range(rollouts.buffer_at - num_grad_states, rollouts.buffer_at))
+                    grad_indexes = list(range(max(rollouts.buffer_at - num_grad_states, 0), rollouts.buffer_at))
+                print(rollouts.buffer_at, grad_indexes[:10], grad_indexes[-10:], rollouts.buffer_steps)
             if sequential:
                 n_states = min(rollouts.buffer_filled - num_grad_states - 1, len(rollouts.state_queue) - num_grad_states - 1)
                 possible_indexes = list(range(n_states))
@@ -153,12 +182,40 @@ class LearningOptimizer():
         if RL == 0:
             optimizer.zero_grad()
             (loss).backward()
-            # print("gradients", model.QFunction.weight.grad)
-            # print("gradients", model.action_probs.weight.grad)
             for param in model.parameters():
                 if param.grad is not None: # some parts of the network may not be used
                     param.grad.data.clamp_(-1, 1)
             optimizer.step()
+        elif RL == 1: # breaks abstraction, but the SARSA update is model dependent
+            model.QFunction.requires_grad = False
+            with torch.no_grad():
+                deltas, actions, states = loss
+                states = model.basis_fn(states)
+                states = torch.mm(states, model.basis_matrix)
+                # print (states, deltas)
+                for delta, action, state in zip(deltas, actions, states):
+                    model.QFunction.weight[action,:] += (self.lr * delta * state)
+        elif RL == 2: # breaks abstraction, but the Tabular Q learning update is model dependent
+            with torch.no_grad():
+                deltas, actions, states = loss
+                for delta, action, state in zip(deltas, actions, states):
+                    # if len(state.shape) > 1:
+                    #     state = state[0]
+                    # print(state)
+                    state = model.hash_function(state)
+                    action = int(pytorch_model.unwrap(action))
+                    if state not in model.Qtable:
+                        Aprob = torch.Tensor([model.initial_aprob for _ in range(model.num_outputs)]).cuda()
+                        Qval = torch.Tensor([model.initial_value for _ in range(model.num_outputs)]).cuda()
+                        model.Qtable[state] = Qval
+                        model.action_prob_table[state] = Aprob
+                    # print(model.Qtable)
+                    # print(self.lr, delta, state, model.Qtable[state][action])
+                    model.Qtable[state][action] += self.lr * delta
+            # print(model.name, states,actions, model.Qtable[state], deltas)
+        elif RL == 3: # no update to the values, only perform backward operation
+            optimizer.zero_grad()
+            (loss).backward()
         else:
             raise NotImplementedError("Check that Optimization is appropriate")
 
@@ -230,6 +287,7 @@ class LearningOptimizer():
         #     states = rollouts.changepoint_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
         #     actions = rollouts.changepoint_action_queue[max(rollouts.changepoint_at-args.correlate_steps,0):rollouts.changepoint_at]
         states, actions, current_states, returns = rollouts.buffer_get_last(0, args.correlate_steps, changepoint=False)
+        # print(states, rollouts.extracted_state, current_states, actions)
         # if rollouts.buffer_filled == rollouts.buffer_steps:
         #     print(rollouts.buffer_steps - max(args.correlate_steps - rollouts.buffer_at,0), max(rollouts.buffer_at-args.correlate_steps,0),rollouts.buffer_at)
         #     states = torch.cat([rollouts.changepoint_buffer[rollouts.buffer_steps - max(args.correlate_steps - rollouts.buffer_at,0):], rollouts.changepoint_buffer[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]])
@@ -242,29 +300,33 @@ class LearningOptimizer():
         #     current_states = rollouts.current_state_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
             # current_probs = rollouts.action_probs_queue[max(rollouts.buffer_at-args.correlate_steps,0):rollouts.buffer_at]
         # print(states.shape, actions.shape, current_states.shape)
-        correlate_states = states[:,-2:]# assuming traj dim of 2
-        take_action_probs = torch.zeros((args.correlate_steps, rollouts.action_space)).float()
-        noop_action_probs = torch.zeros((args.correlate_steps, rollouts.action_space)).float()
+        correlate_states = states[1:,-2:]# assuming traj dim of 2
+        take_action_probs = torch.zeros((args.correlate_steps-1, rollouts.action_space)).float()
+        noop_action_probs = torch.zeros((args.correlate_steps-1, rollouts.action_space)).float()
         if args.cuda:
             take_action_probs = take_action_probs.cuda()
             noop_action_probs = noop_action_probs.cuda()
-        take_action_probs[list(range(args.correlate_steps)), actions.squeeze()] = 1.0
+        take_action_probs[list(range(args.correlate_steps-1)), actions.squeeze()[:-1]] = 1.0
         noop_action_probs[:,0] = 1.0 # TODO: assumes that noops are the 0th action
         correlate_state_variance = ((correlate_states - correlate_states.mean(dim=0)).pow(2).mean(dim=0)).sum() # diversity is 1/sigma^2
 
         # score is the exp(-z) * correlate_variance_cost
-        correlate_state_score = torch.exp(-(correlate_states - correlate_states.mean(dim=0)).pow(2).sum(dim=1) / torch.sqrt(correlate_state_variance) - torch.sqrt(correlate_state_variance) + 10)
-        # print(correlate_state_variance, -(correlate_states - correlate_states.mean(dim=0)).pow(2).sum(dim=1) / torch.sqrt(correlate_state_variance), correlate_state_variance + 6)
+        correlate_state_score = torch.exp(-(correlate_states - correlate_states.mean(dim=0)).pow(2).sum(dim=1) / (torch.sqrt(correlate_state_variance) + 1e-10) - torch.sqrt(correlate_state_variance) + 10)
+        # print("var", correlate_state_variance, correlate_states)
+        # print(correlate_state_variance, -(correlate_states - correlate_states.mean(dim=0)).pow(2).sum(dim=1) / torch.sqrt(correlate_state_variance+1e-10), - torch.sqrt(correlate_state_variance) + 10)
         values, dist_entropy, action_probs, q_values = train_models.determine_action(current_states)
         values, action_probs, q_values = train_models.get_action(values, action_probs, q_values)
+        action_probs = action_probs[:-1]
         # print(correlate_states, correlate_state_diversity, take_action_probs * torch.log(action_probs + 1e-10))
         # loss = -(take_action_probs * torch.log(action_probs + 1e-10)).sum() * correlate_state_diversity / 100 # l1 loss
-        ploss = torch.exp(-(take_action_probs - action_probs).abs().sum(dim=1)) * correlate_state_score / args.correlate_steps # l1 loss
+        ploss = torch.exp(-(take_action_probs - action_probs).abs().sum(dim=1)) * correlate_state_score / (args.correlate_steps-1) # l1 loss
         # print(take_action_probs - action_probs, torch.exp(-(take_action_probs - action_probs).abs().sum(dim=1)), correlate_state_score)
-        loss = torch.max(ploss, torch.exp(-(noop_action_probs - action_probs).abs().sum(dim=1)) * correlate_state_score / args.correlate_steps).mean() # l1 loss
+        loss = torch.max(ploss, torch.exp(-(noop_action_probs - action_probs).abs().sum(dim=1)) * correlate_state_score / (args.correlate_steps-1)).mean()# l1 loss
         # print(correlate_state_variance, ploss.mean(), loss.mean())
         # print(noop_action_probs)
         # print(correlate_states, correlate_state_variance, loss)
+        # print(train_models.option_index)
+        print("diversity_loss", pytorch_model.unwrap(loss)) 
         optimizer = self.optimizers[train_models.option_index]
         optimizer.zero_grad()
         loss.backward()
@@ -314,7 +376,7 @@ class DQN_optimizer(LearningOptimizer):
             total_loss += value_loss
             # Optimize the model
             # print("weight update pre tm, sm", train_models.models[train_models.option_index].QFunction.weight)
-            self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index], value_loss, RL=0)
+            self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index], value_loss, RL=self.RL)
             # print("weight update post", train_models.models[train_models.option_index].QFunction.weight)
         return total_loss/args.grad_epoch, None, None, None, None, torch.log(action_probs)
 
@@ -348,7 +410,7 @@ class DDPG_optimizer(LearningOptimizer):
             q_loss = (expected_qvals.detach() - q_values.squeeze().gather(1, action_eval)).norm().pow(2)/action_eval.size(0)
             policy_loss = -q_values.gather(1, sample_actions(action_probs, deterministic=True).unsqueeze(1)).mean()
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
-                            q_loss * args.value_loss_coefe + policy_loss, RL=0)
+                            q_loss * args.value_loss_coefe + policy_loss, RL=self.RL)
             total_loss += q_loss
             tpl +=  policy_loss
             for target_param, param in zip(self.old_models.models[train_models.option_index].parameters(), train_models.currentModel().parameters()):
@@ -408,7 +470,7 @@ class PPO_optimizer(LearningOptimizer):
             # print("weight update pre tm, sm", train_models.models[train_models.option_index].action_probs.weight)
             # print(train_models.currentModel().conv3.weight[0])
             self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
-                            value_loss * args.value_loss_coef + action_loss + entropy_loss * args.entropy_coef, RL=0)
+                            value_loss * args.value_loss_coef + action_loss + entropy_loss * args.entropy_coef, RL=self.RL)
             # print("weight update post", train_models.models[train_models.option_index].action_probs.weight)
         return value_loss, action_loss, dist_entropy, None, entropy_loss, action_log_probs
 
@@ -434,7 +496,7 @@ class A2C_optimizer(LearningOptimizer):
         entropy_loss = (dist_entropy - output_entropy) * args.entropy_coef # TODO: find a way to use output_entropy
         # entropy_loss = dist_entropy * args.entropy_coef
         self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
-                value_loss * args.value_loss_coef + action_loss + entropy_loss, RL=0)
+                value_loss * args.value_loss_coef + action_loss + entropy_loss, RL=self.RL)
         return value_loss, action_loss, dist_entropy, None, entropy_loss, log_output_probs
 
 class Distributional_optimizer(LearningOptimizer):
@@ -469,7 +531,7 @@ class Distributional_optimizer(LearningOptimizer):
             # print(m, torch.log(p_current), train_models.currentModel().value_support, train_models.currentModel().dz, args.value_bounds[0])
             # print(train_models.currentModel().compute_value_distribution(current_state_eval))
             value_loss = -(m * torch.log(p_current)).sum()
-            self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index], value_loss, RL=0)
+            self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index], value_loss, RL=self.RL)
             # print (value_loss)
         return value_loss, None, None, None, None, None
 
@@ -493,7 +555,7 @@ class PolicyGradient_optimizer(LearningOptimizer):
         entropy_loss = (dist_entropy - output_entropy) * args.entropy_coef
         # entropy_loss = dist_entropy * args.entropy_coef
         self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
-                action_loss + entropy_loss, RL=0)
+                action_loss + entropy_loss, RL=self.RL)
         return None, action_loss, dist_entropy, None, entropy_loss, log_output_probs
 
 
@@ -555,7 +617,7 @@ class SARSA_optimizer(LearningOptimizer):
                     (delta, action_eval, current_state_eval), RL=1)
             else:
                 self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
-                    q_loss, RL=0)
+                    q_loss, RL=self.RL)
             # print("weight update post", train_models.models[train_models.option_index].QFunction.weight)
         return q_loss, None, dist_entropy, None, None, None
 
@@ -627,14 +689,60 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
         return q_loss, None, dist_entropy, None, None, None
 
 class Evolutionary_optimizer(LearningOptimizer):
-    def initialize(args, train_models):
+    def initialize(self, args, train_models):
         super().initialize(args, train_models)
+        self.reset_current_duration(args.sample_duration)
+        self.variance_lr = args.variance_lr
+        if args.reassess_num > 0:
+            self.reassess_pool = []
+            self.reassess_values = []
+            self.reentered_list = ([], [])
+            for _ in train_models.models:
+                self.reassess_pool.append([None for i in range(args.reassess_num)])
+                self.reassess_values.append([-1 for i in range(args.reassess_num)])
+                self.reentered_list[0].append([])
+                self.reentered_list[1].append([])
 
-    def step(self, args, train_models, rollouts):
-        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(args.sample_steps, rollouts, self.models.option_index, last_states=args.buffer_steps <= 0, last_buffer = True)    
+    def reset_current_duration(self, sample_duration):
+        self.current_duration = sample_duration * self.models.currentModel().num_population     
+        self.max_duration = sample_duration * self.models.currentModel().num_population
+        self.sample_duration = sample_duration
+
+    def interUpdateModel(self, step):
+        if step % self.sample_duration == 0 and step != 0:
+            self.models.currentModel().current_network_index += 1
+
+    def updateModel(self):
+        self.models.currentModel().current_network_index = 0
+
+    def alter_reentry_list(self, returns):
+        oi = self.models.option_index
+        new_values = returns[self.reentered_list[0][oi]] / self.sample_duration
+        for i, val in zip(self.reentered_list[1][oi], new_values):
+            old_val = self.reassess_values[oi].pop(i)
+            net = self.reassess_pool[oi].pop(i)
+            new_val = (val + old_val) / 2
+            j = 0
+            while j < len(self.reassess_values[oi]) and new_val > self.reassess_values[oi][j]:
+                j += 1
+            print("reentered: ", old_val, val, new_val, j)
+            self.reassess_values[oi].insert(j, new_val)
+            self.reassess_pool[oi].insert(j, net)
+        self.reentered_list[0][oi] = list()
+        self.reentered_list[1][oi] = list()
+
+
+
+    def step(self, args, train_models, rollouts, usebuffer =False):
+        sample_duration = self.max_duration
+        if not usebuffer:
+            sample_duration = -1
+        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(sample_duration, rollouts, self.models.option_index, last_states=args.buffer_steps <= 0, last_buffer = True)    
+        # print(rollout_returns[args.sample_duration * 0:args.sample_duration * (1)].shape, args.sample_duration)
         values, dist_entropy, action_probs, q_values = train_models.determine_action(current_state_eval)
-        values,  action_probs, q_values = train_models.get_action(values, action_probs, q_values) 
-        returns = [rollout_returns[train_models.option_index, (args.sample_steps) * i:(args.sample_steps + 1) * i].abs().sum() for i in range(args.num_population)]
+        # values,  action_probs, q_values = train_models.get_action(values, action_probs, q_values) 
+        print(rollout_returns.shape)
+        returns = torch.stack([rollout_returns[self.sample_duration * i:self.sample_duration * (i+1)].sum() for i in range(args.num_population)])
         _, best = torch.sort(returns)
         best = best[-int(args.select_ratio * train_models.currentModel().num_population):]
         if args.evo_gradient > 0:
@@ -644,28 +752,68 @@ class Evolutionary_optimizer(LearningOptimizer):
                 best_values = returns[best] - worst + torch.abs(torch.mean(returns[best]))
             else:
                 best_values = returns[best]
-            gradients = best_values / torch.sum(best_values)
+            gradients = best_values / torch.sum(best_values + 1e-10)
             # print(gradients)
             gradient_layers = []
             for layer_idx in range(len(train_models.currentModel().networks[0].layers)):
-                grad = torch.zeros(train_models.currentModel().networks.layers[layer_idx].weight.data.shape)
+                grad = torch.zeros(train_models.currentModel().networks[0].layers[layer_idx].weight.data.shape)
+                if args.cuda:
+                    grad = grad.cuda()
                 for i, idx in enumerate(best):
-                    grad += train_models.currentModel().networks.layers[layer_idx].weight.data * gradients[i]
+                    grad += train_models.currentModel().networks[idx].layers[layer_idx].weight.data * gradients[i]
                 gradient_layers.append(grad)
-        # print(returns, best)
+        vlr = 1.0
+        if self.variance_lr > 0:
+            params = []
+            for i in range(train_models.currentModel().num_population):
+                params.append(train_models.currentModel().networks[i].get_parameters())
+            params = torch.stack(params)
+            print(params.shape, params.var(dim=0).shape, torch.sqrt(params.var(dim=0)).mean())
+            vlr = self.variance_lr * torch.exp(-torch.sqrt(params.var(dim=0)).mean() / .005)
+            print("vlr", vlr)
+        if args.reassess_num > 0:
+            oi = self.models.option_index
+            self.alter_reentry_list(returns)
+            best_values = returns[best] / self.sample_duration
+            print(self.reassess_values)
+            for i in range(1, len(best_values) + 1):
+                print(best_values[-i])
+                if best_values[-i] > self.reassess_values[oi][0]:
+                    j = 1
+                    while j < len(self.reassess_values[oi]) and best_values[-i] > self.reassess_values[oi][j]:
+                        j += 1
+                    # print(best_values[-i], self.sample_duration)
+                    self.reassess_values[oi].pop(0)
+                    self.reassess_values[oi].insert(j-1, best_values[-i])
+                    self.reassess_pool[oi].pop(0)
+                    self.reassess_pool[oi].insert(j-1, copy.deepcopy(train_models.currentModel().networks[best[-i]]))
+                else:
+                    break
+            print(self.reassess_values)
+
+        print("returns, best", returns, best)
         new_networks = []
         for j, idx in enumerate(best):
             for i in range(int(1 / args.select_ratio)):
                 new_network = copy.deepcopy(train_models.currentModel().networks[idx])
                 if i == 0 and args.elitism:
                     pass
-                elif i == 1 and self.gradient > 0: # has to be at least two children
+                elif i == 1 and args.evo_gradient > 0: # has to be at least two children
                     for layer_idx in range(len(new_network.layers)):
                         new_network.layers[layer_idx].weight.data = new_network.layers[layer_idx].weight.data + ((new_network.layers[layer_idx].weight.data - gradient_layers[layer_idx]) * args.evo_gradient).cuda()
                 else:
-                    for layer_idx in range(len(new_network.layers)):
-                        new_network.layers[layer_idx].weight.data = new_network.layers[layer_idx].weight.data + ((torch.rand(new_network.layers[layer_idx].weight.data.size())*2-1) * self.lr).cuda()
-                    # print(new_network.dist.linear.weight.data)
+                    if np.random.rand() < args.reentry_rate:
+                        k = np.random.randint(len(self.reassess_pool[oi]))
+                        if self.reassess_pool[oi][k] is not None:
+                            new_network = copy.deepcopy(self.reassess_pool[oi][k])
+                            self.reentered_list[0][oi].append(j * int(1 / args.select_ratio) + i)
+                            self.reentered_list[1][oi].append(k)
+                        else:
+                            for layer_idx in range(len(new_network.layers)):
+                                new_network.layers[layer_idx].weight.data = new_network.layers[layer_idx].weight.data + ((torch.rand(new_network.layers[layer_idx].weight.data.size())*2-1) * self.lr * vlr).cuda()
+                    else:
+                        for layer_idx in range(len(new_network.layers)):
+                            new_network.layers[layer_idx].weight.data = new_network.layers[layer_idx].weight.data + ((torch.rand(new_network.layers[layer_idx].weight.data.size())*2-1) * self.lr * vlr).cuda()
                 new_networks.append(new_network)
         train_models.currentModel().set_networks(new_networks)
         return None, None, dist_entropy, None, None, None
@@ -673,41 +821,122 @@ class Evolutionary_optimizer(LearningOptimizer):
 class GradientEvolution_optimizer(LearningOptimizer):
     # trains num_population models for n time steps, then chooses the ones with the highest return over the train period
     # keeps the performance of the last model as well
-    def initialize(args, train_models):
+    def initialize(self, args, train_models):
         super().initialize(args, train_models)
-        for model in train_models.models:
-            self.optimizers.append(learning_algorithms[args.base_learner]().initialize(args, train_models))
-            self.evo_optimizers.append(Evolutionary_optimizer.initialize(args, train_models))
-        self.current_duration = args.sample_duration
-        train_models.currentModel().current_network_index = 1
+        print("current model", train_models.currentModel())
+        self.optimizer = learning_algorithms[args.base_learner]()
+        self.optimizer.initialize(args, train_models)
+        self.optimizers = self.optimizer.optimizers
+        self.evo_optimizer = Evolutionary_optimizer()
+        self.evo_optimizer.initialize(args, train_models)
+        self.evo_optimizer.lr = args.evo_lr
+        print("optimizer", self.optimizers)
+        self.current_duration = args.num_steps
+        self.max_duration = args.sample_duration * (train_models.currentModel().num_population - 1)
+        self.current_duration_at = 0
+        train_models.currentModel().current_network_index = 0
         self.first = True
         self.total_returns = torch.zeros((len(train_models.currentModel().networks), ))
         if args.cuda:
             self.total_returns = self.total_returns.cuda()
 
+    def reset_current_duration(self, sample_duration):
+        self.max_duration = sample_duration * (self.models.currentModel().num_population - 1)
+        self.evo_optimizer.max_duration = self.max_duration
+    
     def step(self, args, train_models, rollouts):
+        # print(self.max_duration, self.models.currentModel().num_population, self.first, self.current_duration_at, train_models.currentModel().current_network_index)
         if self.first:
             # Must use a buffer to store the values    
             states, actions, current_states, returns = rollouts.buffer_get_last(0, args.sample_duration, changepoint=False)
             self.total_returns[0].copy_(returns.sum())
             self.first = False
-        elif self.current_duration > 0:
-            self.optimizers[train_models.option_index].step(args, train_models, rollouts)
-            self.current_duration -= args.num_steps
-        elif train_models.currentModel().current_network_index == len(train_models.currentModel().networks) - 1:
+            rval = None, None, None, None, None, None
+        if self.models.currentModel().current_network_index == 0:
+            self.current_duration_at += args.num_steps
+            rval = None, None, None, None, None, None
+        elif self.current_duration_at < self.max_duration:
+            # print("stepping")
+            rval = self.optimizer.step(args, train_models, rollouts)
+            self.current_duration_at += args.num_steps
+        if train_models.currentModel().current_network_index == len(train_models.currentModel().networks) - 1 and self.current_duration_at % self.sample_duration == 0 and self.current_duration_at != 0:
             # when we have finished with the last model
             # use args.elitism to keep the best
-            self.evo_optimizers.step(args, train_models, rollouts)
+            # print("evolution")
+            rval = self.evo_optimizer.step(args, train_models, rollouts, usebuffer=True)
+            self.current_duration_at = 0
+        return rval
 
-
-
-    def interUpdateModel(self):
-        if self.current_duration < 0:
-            train_models.currentModel().current_network_index += 1
 
     def updateModel(self):
-        super().updateModel()
-        self.models.currentModel().current_network_index = 1
+        # self.models.currentModel().current_network_index = (self.models.currentModel().current_network_index + 1 )  % self.models.currentModel().num_population
+        # print(self.current_duration_at, self.sample_duration, self.models.currentModel().num_population, self.models.currentModel().current_network_index)
+        if self.current_duration_at % self.sample_duration == 0 and self.current_duration_at != 0:
+            self.models.currentModel().current_network_index += 1
+            if self.models.currentModel().current_network_index % self.models.currentModel().num_population == 0:
+                self.models.currentModel().current_network_index = 0
+            super().updateModel()
+
+class SteinVariational_optimizer(LearningOptimizer):
+    def initialize(self, args, train_models):
+        super().__init__(args, train_models)
+        self.theta_shape = train_models.currentModel().parameter_vector().shape
+        self.kernel = kernels[args.kernel](args, theta_shape)
+        self.ialpha = 1.0 / args.stein_alpha
+        self.optimizer = learning_algorithms[args.base_learner]()
+        self.optimizer.initialize(args, train_models)
+        self.optimizer.RL = 3 # sets the step function to only perform backward (manually apply gradient)
+        self.optimizers = self.optimizer.optimizers
+
+    def step(self, args, train_models, rollouts):
+        policy_grads = []
+        for i in range(train_models.currentModel().num_population):
+            train_models.currentModel().current_network_index = i
+            self.optimizer.step(args, train_models, rollouts)
+            policy_grads.append(train_models.currentModel().get_gradients())
+        deltas = []
+        for i in range(train_models.currentModel().num_population):
+            thetai = train_models.currentModel().networks[i].get_parameters().clone().detach()
+            grad_thetai = torch.zeros(self.theta_shape)
+            if args.cuda:
+                grad_thetai = grad_thetai.cuda()
+            for j in range(train_models.currentModel().num_population):
+                thetaj = train_models.currentModel().networks[j].get_parameters().clone().detach()
+                kij = self.kernel(thetai, thetaj)
+                kij.backward()
+                grad_kij = theta_j.grad.clone()
+                grad_thetai += self.ialpha * policy_grads[j] * kij + grad_kij
+            deltas.append(thetai + self.lr * grad_thetai)
+        for i in range(train_models.currentModel().num_population):
+            train_models.currentModel().networks[i].set_parameters(deltas[i])
+
+class CMAES_optimizer(LearningOptimizer):
+    def initialize(self, args, train_models):
+        super().__init__(self, args, train_models)
+        self.optimizers = []
+        self.solutions = []
+        for i in range(len(train_models.models)):
+            cmaes_params = {"popsize": args.num_population} # might be different than the population in the model...
+            xinit = (np.random.rand(train_models.currentModel().networks[0].count_parameters())-0.5)*2 # initializes [-1,1]
+            self.optimizers.append(cma.CMAEvolutionStrategy(xinit, 1.0, cmaes_params))
+            self.solutions.append(self.cmaes.ask())
+        for i in range(len(train_models.models)):
+            self.assign_solutions(train_models, i)
+
+    def assign_solutions(self, train_models, i):
+        for j in range(train_models.models[i].num_population):
+            train_models.models[i].networks[j].set_parameters(self.solutions[i][j])
+
+    def step(self, args, train_models, rollouts):
+        sample_duration = self.max_duration
+        if not usebuffer:
+            sample_duration = -1
+        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval = self.get_rollouts_state(sample_duration, rollouts, self.models.option_index, last_states=args.buffer_steps <= 0, last_buffer = True)    
+        returns = torch.stack([rollout_returns[args.sample_duration * i:args.sample_duration * (i+1)].sum() for i in range(args.num_population)])
+        self.cmaes.tell(self.solutions, pytorch_model.unwrap(-1*returns))
+        self.solutions = self.cmaes.ask()
+        self.assign_solutions(self, train_models, i)
+
 # class SupervisedLearning_optimizer(LearningOptimizer): # TODO: implement this
 #     def initialize(self, args, train_models):
 #         super().initialize(args, train_models)
@@ -734,4 +963,4 @@ class GradientEvolution_optimizer(LearningOptimizer):
 
 learning_algorithms = {"DQN": DQN_optimizer, "DDPG": DDPG_optimizer, "PPO": PPO_optimizer, 
 "A2C": A2C_optimizer, "SARSA": SARSA_optimizer, "TabQ":TabQ_optimizer, "PG": PolicyGradient_optimizer,
-"Dist": Distributional_optimizer}
+"Dist": Distributional_optimizer, "Evo": Evolutionary_optimizer, "GradEvo": GradientEvolution_optimizer}

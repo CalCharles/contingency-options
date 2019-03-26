@@ -8,6 +8,7 @@ from Models.models import models, pytorch_model
 from Environments.multioption import MultiOption
 from OptionChain.option_chain import OptionChain
 from Environments.state_definition import GetState, compute_minmax, load_states
+from ReinforcementLearning.learning_algorithms import PopOptim
 
 def hot_actions(action_data, num_actions):
     for i in range(len(action_data)):
@@ -94,13 +95,16 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
     min_batch = 10
     batch_size = 100
     for model in train_models.models:
-        optimizers.append(optim.Adam(model.parameters(), args.lr, eps=args.eps, betas=args.betas, weight_decay=args.weight_decay))
+        if args.model_form == "population":
+            optimizers.append(PopOptim(model, args))
+        else:    
+            optimizers.append(optim.Adam(model.parameters(), args.lr, eps=args.eps, betas=args.betas, weight_decay=args.weight_decay))
     for i in range(args.num_iters):
         # idxes = np.random.choice(list(range(len(desired))), (batch_size,), replace=False)
         start = np.random.randint(len(desired))
         idxes = [(idx + start) % len(desired) for idx in range(batch_size)]
         values, dist_entropy, action_probs, Q_vals = train_models.determine_action(pytorch_model.wrap(states[idxes], cuda=args.cuda))
-        if args.model_form == "population": # train the whole population, each individually
+        if args.model_form == "population" and i % args.sample_duration == 0: # train the whole population, each individually
             train_models.currentModel().current_network_index = (train_models.currentModel().current_network_index + 1) % train_models.currentModel().num_population
         # print(action_probs.transpose(1,0).shape, desired[idxes].shape)
         # print(action_probs.squeeze().shape, desired.shape)

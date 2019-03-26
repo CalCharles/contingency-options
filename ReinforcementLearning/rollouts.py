@@ -29,29 +29,35 @@ class RolloutOptionStorage(object):
         self.trace_queue_len = trace_queue_len
         self.trace_filled = 0
         if buffer_steps > 0:
-            self.state_queue = torch.zeros(buffer_steps, *self.extracted_shape)
-            self.current_state_queue = torch.zeros(buffer_steps, *self.current_shape)
-            self.action_probs_queue = torch.zeros(num_options, buffer_steps, action_space)
-            self.Qvals_queue = torch.zeros(num_options, buffer_steps, action_space)
-            self.reward_queue = torch.zeros(num_options, buffer_steps)
-            self.return_queue = torch.zeros(num_options, buffer_steps, 1)
-            self.values_queue = torch.zeros(num_options, buffer_steps, 1)
-            self.action_queue = torch.zeros(buffer_steps, 1).long()
-            self.option_queue = torch.zeros(buffer_steps, 1).long()
-            self.epsilon_queue = torch.zeros(buffer_steps, 1)
-            self.done_queue = torch.zeros(buffer_steps, 1)
-            self.state_queue.requires_grad = self.current_state_queue.requires_grad = self.action_probs_queue.requires_grad = self.Qvals_queue.requires_grad = self.reward_queue.requires_grad = self.return_queue.requires_grad = self.values_queue.requires_grad = self.action_queue.requires_grad = self.option_queue.requires_grad = self.epsilon_queue.requires_grad = False
+            self.state_queue = torch.zeros(buffer_steps, *self.extracted_shape).detach()
+            self.current_state_queue = torch.zeros(buffer_steps, *self.current_shape).detach()
+            self.action_probs_queue = torch.zeros(num_options, buffer_steps, action_space).detach()
+            self.Qvals_queue = torch.zeros(num_options, buffer_steps, action_space).detach()
+            self.reward_queue = torch.zeros(num_options, buffer_steps).detach()
+            self.return_queue = torch.zeros(num_options, buffer_steps, 1).detach()
+            self.values_queue = torch.zeros(num_options, buffer_steps, 1).detach()
+            self.action_queue = torch.zeros(buffer_steps, 1).long().detach()
+            self.option_queue = torch.zeros(buffer_steps, 1).long().detach()
+            self.epsilon_queue = torch.zeros(buffer_steps, 1).detach()
+            self.done_queue = torch.zeros(buffer_steps, 1).detach()
+            self.state_queue.requires_grad = self.current_state_queue.requires_grad = self.action_probs_queue.requires_grad = self.Qvals_queue.requires_grad = self.reward_queue.requires_grad = self.return_queue.requires_grad = self.values_queue.requires_grad = self.action_queue.requires_grad = self.option_queue.requires_grad = self.epsilon_queue.requires_grad = self.done_queue.requires_grad = False
             self.changepoint_buffer = torch.zeros(buffer_steps, *self.changepoint_shape)
         if self.trace_queue_len > 0:
-            self.trace_states = torch.zeros(num_options, self.trace_queue_len, self.trace_len, *self.current_shape)
-            self.trace_actions = torch.zeros(num_options, self.trace_queue_len, self.trace_len, 1).long()
+            self.trace_states = torch.zeros(num_options, self.trace_queue_len, self.trace_len, *self.current_shape).detach()
+            self.trace_actions = torch.zeros(num_options, self.trace_queue_len, self.trace_len, 1).long().detach()
         self.changepoint_queue = torch.zeros(changepoint_queue_len, *self.changepoint_shape)
         self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long()
+        self.changepoint_queue.requires_grad = self.changepoint_action_queue.requires_grad = False
         self.num_options = num_options
         self.iscuda = False
         self.set_parameters(1)
         self.last_step = 0
         self.cp_filled = False
+
+    def set_changepoint_queue(self, newlen): # TODO: currently reset queue as well
+        self.changepoint_queue = torch.zeros(newlen, *self.changepoint_shape).detach()
+        self.changepoint_action_queue = torch.zeros(newlen, 1).long().detach()
+        self.changepoint_queue_len = newlen
 
     def set_parameters(self, num_steps):
         self.last_step = num_steps
@@ -66,6 +72,7 @@ class RolloutOptionStorage(object):
         self.actions = torch.zeros(num_steps + 1, 1).long() # no other processes
         self.actions = self.actions.long()
         self.masks = torch.ones(num_steps + 1, *self.obs_shape) # no other processes
+        # print("returns", self.num_options, self.returns.shape, num_steps)
 
     def cut_current(self, num_steps):
         self.last_step = num_steps
@@ -152,14 +159,16 @@ class RolloutOptionStorage(object):
         # print(self.trace_queue_len, self.rewards, torch.max(self.rewards))
         if self.trace_queue_len > 0:
             for oidx, option_reward in enumerate(self.rewards):
-                if torch.max(option_reward) > 1:
-                    reward_at = len(traces) - len(option_reward) + option_reward.argmax()
+                removed_amount = 0
+                while torch.max(option_reward) > 1:
+                    reward_at = len(traces) - len(option_reward) + option_reward.argmax() + removed_amount
                     # print(traces[max(reward_at - self.trace_len,0):reward_at])
                     for i, (current_state, action) in enumerate(traces[max(reward_at - self.trace_len,0):reward_at]): # assuming no resets (choose a short trace)
                         self.trace_states[oidx, self.trace_at, i].copy_(current_state.squeeze())
                         self.trace_actions[oidx, self.trace_at, i].copy_(action.squeeze())
                     self.trace_at = (self.trace_at + 1) % self.trace_queue_len 
                     self.trace_filled += int(self.trace_filled < self.trace_queue_len)
+                    removed_amount = reward_at
         return traces[reward_at+1:]
 
     def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state, epsilon, done=False): # got rid of masks... might be useful though
@@ -289,15 +298,16 @@ class RolloutOptionStorage(object):
                 # print(self.returns)
             else:
                 self.returns[idx, -1] = 0 #next_value
+                # print(self.returns.shape, self.rewards.shape)
                 for step in reversed(range(self.rewards.size(1))):
                     self.returns[idx, step] = self.returns[idx, step + 1] * gamma + self.rewards[idx, step]
-                # print(self.returns)
+                # print(self.returns.sum(), self.returns.shape)
                 if self.buffer_steps > 0:
                     update_last = args.buffer_clip # imposes an artificial limit on Gamma
                     if self.iscuda:
-                        last_values = torch.arange(start=update_last-1, end = -1, step=-1).float().cuda()
+                        last_values = torch.arange(start=update_last-1, end = -1, step=-1).float().cuda().detach()
                     else:
-                        last_values = torch.arange(start=update_last-1, end = -1, step=-1).float()
+                        last_values = torch.arange(start=update_last-1, end = -1, step=-1).float().detach()
                     for i, rew in enumerate(reversed(self.rewards[idx])):
                         # update the last ten returns
                         # print(i, 11-i)

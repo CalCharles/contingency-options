@@ -27,9 +27,9 @@ def get_args():
                         help='0 for default, 1 for gae, 2 for return queue')
     parser.add_argument('--tau', type=float, default=0.95,
                         help='gae parameter (default: 0.95)')
-    parser.add_argument('--entropy-coef', type=float, default=1e-7,
+    parser.add_argument('--entropy-coef', type=float, default=1e-4,
                         help='entropy loss term coefficient (default: 1e-7)')
-    parser.add_argument('--high-entropy', type=float, default=1,
+    parser.add_argument('--high-entropy', type=float, default=0,
                         help='high entropy (for low frequency) term coefficient (default: 1)')
     parser.add_argument('--value-loss-coef', type=float, default=0.5,
                         help='value loss coefficient (default: 0.5)')
@@ -42,6 +42,8 @@ def get_args():
                         help='decides width of the network')
     parser.add_argument('--optim', default="Adam",
                         help='optimizer to use: Adam, RMSprop, Evol')
+    parser.add_argument('--activation', default="relu",
+                        help='activation function for hidden layers: relu, sin, tanh, sigmoid')
     parser.add_argument('--init-form', default="uni",
                     help='initialization to use: uni, xnorm, xuni, eye')
     parser.add_argument('--model-form', default="",
@@ -90,26 +92,40 @@ def get_args():
     parser.add_argument('--clip-param', type=float, default=0.2,
                     help='ppo clip parameter (default: 0.2)')
 
-    # Evolution parameters TODO: evolution not implemented at the moment
-    parser.add_argument('--evolve-form',  default="",
-                        help='base network form for evolution')
+    # Evolution parameters 
+    parser.add_argument('--base-form',  default="",
+                        help='base network form for population model')
     parser.add_argument('--select-ratio', type=float, default=0.25,
                     help='percentage of population selected in evolution(default: 0.25)')
     parser.add_argument('--num-population', type=int, default=20,
                         help='size of the population (default: 20)')
-    parser.add_argument('--sample-duration', type=int, default=200,
-                        help='number of time steps to evaluate a subject of the population (default: 100)')
+    parser.add_argument('--sample-duration', type=int, default=-1,
+                        help='number of time steps to evaluate a subject of the population (default: -1)')
+    parser.add_argument('--sample-schedule', type=int, default=-1,
+                        help='number of updates to increase the duration by a factor of duration (default: 10)')
     parser.add_argument('--elitism', action='store_true', default=False,
                         help='keep the best performing networks')
     parser.add_argument('--evo-gradient', type=float, default=-1,
                         help='take a step towards the weighted mean, with weight as given, (default -1, not used)')
+    parser.add_argument('--variance-lr', type=float, default=-1,
+                        help='adjusts the learning rate based on the variance of the weights, (default -1, not used)')
+    parser.add_argument('--reassess-num', type=int, default=-1,
+                        help='number of best sampled networks, (default -1, not used)')
+    parser.add_argument('--reentry-rate', type=float, default=0.0,
+                        help='rate of randomly re-entering a best network, to update the performance, (default 0.0)')
     # Evolution Gradient parameters
     parser.add_argument('--sample-steps', type=int, default=2000,
                     help='number of time steps to run to evaluate full population (default: 2000)')
     parser.add_argument('--base-learner',  default="",
                         help='base learning algorithm for running the gradient component')
-    parser.add_argument('--grad-lr', type=float, default=.0007,
-                        help='the learning rate for the PPO steps (default -1, not used)')
+    parser.add_argument('--evo-lr', type=float, default=.05,
+                        help='the learning rate for the evolutionary steps (default .05, not used)')
+    # Stein Variational policy gradient hyperparameters
+    parser.add_argument('--stein-alpha', type=float, default=.05,
+                        help='the learning rate for the stein steps (default .05, not used)')
+    parser.add_argument('--kernel-form',  default="",
+                        help='name of kernel function used (defined in ReinforcementLearning.kernels')
+
     # basis function parameters
     parser.add_argument('--period', type=float, default=1,
                 help='length of period over which fourier basis is applied')
@@ -119,7 +135,6 @@ def get_args():
                         help='decides order of the basis functions (related to number of basis functions)')
     parser.add_argument('--connectivity', type=int, default=1,
                         help='decides the amount the basis functions are connected (1, 2, 12, 22, 3)')
-
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,
                     help='percentage of random actions in epsilon greedy')

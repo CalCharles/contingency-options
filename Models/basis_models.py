@@ -7,7 +7,7 @@ import torch.optim as optim
 from Models.models import Model, pytorch_model
 
 class BasisModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, addbias=False):
         ''' 
         initializes parameters and basis relations. 1 is fully independent (factor+1 * num_inputs) number of bases
         2 implies either time correlated (12), or state correlated(22), or both (02) (using tens place) (if input dim 4, around 40 is max order)
@@ -92,10 +92,10 @@ class BasisModel(Model):
             self.basis_matrix = self.basis_matrix.T
             self.basis_matrix = pytorch_model.wrap(self.basis_matrix)
             self.basis_size = (self.order) ** (self.num_inputs)
-            self.QFunction = nn.Linear((self.order) ** (self.num_inputs), self.num_outputs, bias=False)
+            self.QFunction = nn.Linear((self.order) ** (self.num_inputs), self.num_outputs, bias=addbias)
         print(self.basis_matrix.shape)
-        self.QFunction = nn.Linear(self.basis_size, self.num_outputs, bias=False)
-        self.action_probs = nn.Linear(self.basis_size, self.num_outputs, bias=False)
+        self.QFunction = nn.Linear(self.basis_size, self.num_outputs, bias=addbias)
+        self.action_probs = nn.Linear(self.basis_size, self.num_outputs, bias=addbias)
         self.layers[2] = self.QFunction
         self.layers[3] = self.action_probs
         self.reset_parameters()
@@ -243,13 +243,13 @@ class GaussianMultilayerModel(GaussianBasisModel):
         self.layers[2] = self.QFunction
         self.layers[3] = self.action_probs
         if args.num_layers >= 1:
-            self.l1 = nn.Linear(self.basis_size, self.insize)
+            self.l1 = nn.Linear(self.basis_size, self.insize, bias=True)
             self.layers.append(self.l1)
         if args.num_layers >= 2:
-            self.l2 = nn.Linear(self.insize, self.insize)
+            self.l2 = nn.Linear(self.insize, self.insize, bias=True)
             self.layers.append(self.l2)
         if args.num_layers >= 3:
-            self.l3 = nn.Linear(self.insize, self.insize)
+            self.l3 = nn.Linear(self.insize, self.insize, bias=True)
             self.layers.append(self.l3)
         self.reset_parameters()
         # print("done initializing")
@@ -264,13 +264,13 @@ class GaussianMultilayerModel(GaussianBasisModel):
         # print("before", x)
         if self.num_layers >= 1:
             x = self.l1(x)
-            x = F.relu(x)
+            x = self.acti(x)
         if self.num_layers >= 2:
             x = self.l2(x)
-            x = F.relu(x)
+            x = self.acti(x)
         if self.num_layers >= 3:
             x = self.l3(x)
-            x = F.relu(x)
+            x = self.acti(x)
         Qvals = self.QFunction(x)
         aprobs = self.action_probs(x)
         # print("after", aprobs)

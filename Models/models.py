@@ -39,8 +39,6 @@ class Model(nn.Module):
         self.num_layers = args.num_layers
         if args.num_layers == 0:
             self.insize = num_inputs
-        elif args.num_layers == 1:
-            self.insize = max(num_outputs * factor * factor, num_outputs)
         else:
             self.insize = max(num_outputs * factor * factor, num_outputs)
         self.minmax = minmax
@@ -64,6 +62,15 @@ class Model(nn.Module):
         self.iscuda = args.cuda # TODO: don't just set this to true
         self.use_normalize = args.normalize
         self.init_form = args.init_form 
+        self.scale = args.scale
+        if args.activation == "relu":
+                self.acti = F.relu
+        elif args.activation == "sin":
+            self.acti = torch.sin
+        elif args.activation == "sigmoid":
+            self.acti = F.sigmoid
+        elif args.activation == "tanh":
+            self.acti = F.tanh
             
 
     def reset_parameters(self):
@@ -83,6 +90,7 @@ class Model(nn.Module):
                     torch.nn.init.eye_(layer.weight.data)
                 if layer.bias is not None:                
                     nn.init.uniform_(layer.bias.data, 0.0, 1e-6)
+        self.count_parameters(reuse=False)
 
         # nn.init.uniform_(self.critic_linear.weight.data, .9 / self.insize, 1.1 / self.insize)
         # nn.init.uniform_(self.time_estimator.weight.data, .9 / self.insize, 1.1 / self.insize)
@@ -103,7 +111,7 @@ class Model(nn.Module):
         # nn.init.uniform_(self.action_probs.bias.data, -.1,.1)
 
     def normalize(self, x):
-        return (x - self.minmax[0]) / (self.minmax[1] - self.minmax[0] + 1e-10)
+        return (x - self.minmax[0]) / (abs(self.minmax[1] - self.minmax[0]) + 1e-10)
 
     def forward(self, x):
         '''
@@ -123,6 +131,39 @@ class Model(nn.Module):
 
     def save(self, pth):
         torch.save(self, pth + self.name + ".pt")
+
+    def get_parameters(self):
+        params = []
+        for param in self.parameters():
+            params.append(param.data.flatten())
+        return torch.cat(params)
+
+    def get_gradients(self):
+        grads = []
+        for param in self.parameters():
+            grads.append(param.grad.data.flatten())
+        return torch.cat(grads)
+
+    def set_parameters(self, param_val): # sets the parameters of a model to the parameter values given as a single long vector
+        if len(param_val) != self.count_parameters():
+            raise ValueError('invalid number of parameters to set')
+        pval_idx = 0
+        for param in self.parameters():
+            param_size = np.prod(param.size())
+            cur_param_val = param_val[pval_idx : pval_idx+param_size]
+            param.data = torch.from_numpy(cur_param_val) \
+                              .reshape(param.size()).float()
+            pval_idx += param_size
+
+    # count number of parameters
+    def count_parameters(self, reuse=True):
+        if reuse and self.parameter_count > 0:
+            return self.parameter_count
+        self.parameter_count = 0
+        for param in self.parameters():
+            self.parameter_count += np.prod(param.size())
+        return self.parameter_count
+
 
 class BasicModel(Model):    
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
@@ -157,16 +198,29 @@ class BasicModel(Model):
         # print(x.shape)
         if self.minmax is not None and self.use_normalize:
             x = self.normalize(x)
+        x = x * self.scale
+        # if torch.isnan(x.sum()):
+        #     print("in", x)
+        # inp = x
+
         # print("normin", x)
         if self.num_layers > 0:
             x = self.l1(x)
-            x = F.relu(x)
+            x = self.acti(x)
+        # if torch.isnan(x.sum()):
+        #     print("l1", x, inp)
         if self.num_layers > 1:
             x = self.l2(x)
-            x = F.relu(x)
+            x = self.acti(x)
+        # if torch.isnan(x.sum()):
+        #     print("l2", x, inp)
         if self.num_layers > 2:
             x = self.l3(x)
-            x = F.relu(x)
+            x = self.acti(x)
+        # if torch.isnan(x.sum()):
+        #     print("l3", x, inp)
+        # if np.random.rand() < .001:
+        #     print("total", x.sum().detach(), self.l1.weight.abs().sum().detach(), self.action_probs.weight.abs().sum().detach())
         values, dist_entropy, probs, Q_vals = super().forward(x)
         # print(self.l2.weight)
         # print(x.shape)

@@ -22,24 +22,25 @@ class ImageModel(Model):
         self.layers.append(self.conv2)
         self.layers.append(self.conv3)
         self.layers.append(self.linear1)
+        self.reset_parameters()
 
     def forward(self, inputs):
         norm_term = 1.0
         if self.use_normalize:
             norm_term =  255.0
-        x = self.create_image(inputs)
+        
         x = self.conv1(x / norm_term)
-        x = F.relu(x)
+        x = self.acti(x)
 
         x = self.conv2(x)
-        x = F.relu(x)
+        x = self.acti(x)
 
         x = self.conv3(x)
-        x = F.relu(x)
+        x = self.acti(x)
         # print(x)
         x = x.view(-1, 8 * self.factor * self.viewsize * self.viewsize)
         x = self.linear1(x)
-        x = F.relu(x)
+        x = self.acti(x)
         values, dist_entropy, probs, Q_vals = super().forward(x)
         return values, dist_entropy, probs, Q_vals
 
@@ -91,5 +92,10 @@ class ObjectSumImageModel(ImageModel):
             batch.append(image.view(self.order, self.order))
         im = torch.stack(batch, dim=0)
         return im.unsqueeze(1)
+
+    def forward(self, inputs):
+        x = self.create_image(inputs)
+        values, dist_entropy, probs, Q_vals = super().forward(x)
+        return values, dist_entropy, probs, Q_vals
 
 
