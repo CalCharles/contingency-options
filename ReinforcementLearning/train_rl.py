@@ -170,6 +170,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # print("eps", time.time() - start)
             if args.sample_schedule > 0 and j % sample_schedule == 0 and j != 0:
                 learning_algorithm.sample_duration = (j // args.sample_schedule + 1) * args.sample_duration
+                learning_algorithm.retest += 1
                 learning_algorithm.reset_current_duration(learning_algorithm.sample_duration)
                 args.changepoint_queue_len = max(learning_algorithm.max_duration, args.changepoint_queue_len)
                 rollouts.set_changepoint_queue(args.changepoint_queue_len)
