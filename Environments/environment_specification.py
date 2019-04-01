@@ -120,11 +120,13 @@ class ProxyEnvironment():
         self.extracted_state = torch.Tensor(self.stateExtractor.get_state(proxy_chain[0].getState())).cuda()
         self.insert_extracted()
         print("num_reward_functions", len(self.reward_fns))
-        if len(self.reward_fns) > len(self.models.models):
-            self.models.duplicate(len(self.reward_fns))
 
     def set_models(self, models):
         self.models = models
+
+    def duplicate(self):
+        if len(self.reward_fns) > len(self.models.models):
+            self.models.duplicate(len(self.reward_fns))
 
     def set_proxy_chain(self, proxy_chain):
         self.proxy_chain = proxy_chain

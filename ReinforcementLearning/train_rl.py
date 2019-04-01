@@ -44,6 +44,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     if not args.load_weights:
         train_models.initialize(args, len(reward_classes), state_class)
         proxy_environment.set_models(train_models)
+    else:
+        proxy_environment.duplicate()
     learning_algorithm.initialize(args, train_models)
     state = pytorch_model.wrap(proxy_environment.getState(), cuda = args.cuda)
     hist_state = pytorch_model.wrap(proxy_environment.getHistState(), cuda = args.cuda)
@@ -171,7 +173,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             if args.sample_schedule > 0 and j % sample_schedule == 0 and j != 0:
                 learning_algorithm.sample_duration = (j // args.sample_schedule + 1) * args.sample_duration
                 learning_algorithm.retest += 1
-                learning_algorithm.reset_current_duration(learning_algorithm.sample_duration)
+                learning_algorithm.reset_current_duration(learning_algorithm.sample_duration, args.reward_check)
                 args.changepoint_queue_len = max(learning_algorithm.max_duration, args.changepoint_queue_len)
                 rollouts.set_changepoint_queue(args.changepoint_queue_len)
                 sample_schedule = args.sample_schedule * (j // args.sample_schedule + 1)# sum([args.sample_schedule * (i+1) for i in range(j // args.sample_schedule + 1)])

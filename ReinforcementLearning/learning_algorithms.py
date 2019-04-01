@@ -790,7 +790,7 @@ class Evolutionary_optimizer(LearningOptimizer):
                     for (s,e) in self.sample_indexes[i][j]:
                         # print(s,e,np.sqrt(e-s), returns[k, s:e].sum(), returns.shape)
                         if returns[k, s:e].sum() < .5: # TODO: negative rewards not hardcoded
-                            total_value += returns[k, s:e].sum() + (-(e-s) / np.sqrt(self.sample_duration))
+                            total_value += returns[k, s:e].sum() + (-(e-s) / self.sample_duration * 5)
                         else:
                             total_value += returns[k, s:e].sum() / np.sqrt((e-s))
                     total_value /= self.retest
