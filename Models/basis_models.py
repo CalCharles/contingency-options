@@ -116,12 +116,16 @@ class BasisModel(Model):
     #     nn.init.uniform_(self.action_probs.weight.data, 0, .1 / self.num_outputs * 2)
     #     nn.init.uniform_(self.QFunction.weight.data, 0, .1 / self.basis_size)
 
-    def forward(self, inputs):
+    def hidden(self,inputs):
         x = self.basis_fn(inputs) # TODO: dimension
         # print(self.basis_matrix.shape, x.shape)
         # print("xprebasis", x, self.basis_matrix)
         # print(x.shape, self.basis_matrix.shape)
         x = torch.mm(x, self.basis_matrix)
+        return x
+
+    def forward(self, inputs):
+        x = self.hidden(inputs)
         # print("xbasis", x.shape)
         Qvals = self.QFunction(x)
         aprobs = self.action_probs(x)
@@ -254,14 +258,12 @@ class GaussianMultilayerModel(GaussianBasisModel):
         self.reset_parameters()
         # print("done initializing")
 
-    def forward(self, inputs):
+    def hidden(self, inputs):
         x = self.basis_fn(inputs) # TODO: dimension
         # print(self.basis_matrix.shape, x.shape)
         # print("xprebasis", x, self.basis_matrix)
         # print(x.shape, self.basis_matrix.shape)
         x = torch.mm(x, self.basis_matrix) 
-        # print("xbasis", x.shape)
-        # print("before", x)
         if self.num_layers >= 1:
             x = self.l1(x)
             x = self.acti(x)
@@ -271,6 +273,10 @@ class GaussianMultilayerModel(GaussianBasisModel):
         if self.num_layers >= 3:
             x = self.l3(x)
             x = self.acti(x)
+        return x
+
+    def forward(self, inputs):
+        x = self.hidden(inputs)
         Qvals = self.QFunction(x)
         aprobs = self.action_probs(x)
         # print("after", aprobs)

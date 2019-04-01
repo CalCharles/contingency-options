@@ -110,6 +110,10 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             # print("reward time", time.time() - start)
             # print("rewards", torch.sum(rewards))
             rollouts.insert_rewards(rewards, last_total_steps)
+            name = train_models.currentName()
+            option_counter[name] += m + 1
+            option_value[name] += rewards.sum(dim=1)[train_models.option_index]  
+
             last_total_steps = total_steps
             completed = learning_algorithm.interUpdateModel(total_steps, rewards)
             if completed:
@@ -148,15 +152,13 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         # print("returns and rewards (rew, ret)", rollouts.rewards, rollouts.returns)
         # print("returns and return queue", rollouts.returns, rollouts.return_queue)
         # print("reward check (cs, rw, rol rw, rt", rollouts.current_state, rewards, rollouts.rewards, rollouts.returns)
-        name = train_models.currentName()
+        
         # print(name, rollouts.extracted_state, rollouts.rewards, rollouts.actions)
 
         #### logging
         reward_total = rollouts.rewards.sum(dim=1)[train_models.option_index]
         # print("reward_total", reward_total.shape)
         final_rewards.append(reward_total)
-        option_counter[name] += total_steps + 1
-        option_value[name] += reward_total.data  
         #### logging
         # start = time.time()
         if step != 0 and j >= args.warm_up:
@@ -172,7 +174,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # print("eps", time.time() - start)
             if args.sample_schedule > 0 and j % sample_schedule == 0 and j != 0:
                 learning_algorithm.sample_duration = (j // args.sample_schedule + 1) * args.sample_duration
-                learning_algorithm.retest += 1
+                if args.retest_schedule:
+                    learning_algorithm.retest += 1
                 learning_algorithm.reset_current_duration(learning_algorithm.sample_duration, args.reward_check)
                 args.changepoint_queue_len = max(learning_algorithm.max_duration, args.changepoint_queue_len)
                 rollouts.set_changepoint_queue(args.changepoint_queue_len)

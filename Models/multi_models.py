@@ -47,6 +47,13 @@ class PopulationModel(Model):
 		for network in self.networks:
 			network.reset_parameters()
 
+	def hidden(self, inputs, idx=-1):
+		if self.test:
+			self.mean.hidden(inputs)
+		if idx < 0:
+			return self.networks[self.current_network_index].hidden(inputs)
+		return self.networks[idx].hidden(inputs)		
+
 	def forward(self, inputs, idx=-1):
 		# self.current_network_index = (self.current_network_index + 1) % self.num_population
 		if self.test:

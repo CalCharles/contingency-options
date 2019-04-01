@@ -1,4 +1,5 @@
 
+# TODO: completely incomplete!!!!!!!!!!!!!!!!!!!!!!!!!!!
 class AttentionModel(Model):    
     def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
         super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)

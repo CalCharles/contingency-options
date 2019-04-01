@@ -103,6 +103,8 @@ def get_args():
                         help='number of time steps to evaluate a subject of the population (default: -1)')
     parser.add_argument('--sample-schedule', type=int, default=-1,
                         help='number of updates to increase the duration by a factor of duration (default: 10)')
+    parser.add_argument('--retest-schedule', action='store_true', default=False,
+                        help='if true, increases retest on each sample schedule (default: False)')
     parser.add_argument('--elitism', action='store_true', default=False,
                         help='keep the best performing networks')
     parser.add_argument('--evo-gradient', type=float, default=-1,

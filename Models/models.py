@@ -193,11 +193,7 @@ class BasicModel(Model):
         self.train()
         self.reset_parameters()
 
-    def forward(self, x):
-        '''
-        TODO: make use of time_estimator, link up Q vals and action probs
-        TODO: clean up cuda = True to something that is actually true
-        '''
+    def hidden(self, x):
         # print(x.shape)
         if self.minmax is not None and self.use_normalize:
             x = self.normalize(x)
@@ -224,6 +220,14 @@ class BasicModel(Model):
         #     print("l3", x, inp)
         # if np.random.rand() < .001:
         #     print("total", x.sum().detach(), self.l1.weight.abs().sum().detach(), self.action_probs.weight.abs().sum().detach())
+        return x
+
+    def forward(self, x):
+        '''
+        TODO: make use of time_estimator, link up Q vals and action probs
+        TODO: clean up cuda = True to something that is actually true
+        '''
+        x = self.hidden(x)
         values, dist_entropy, probs, Q_vals = super().forward(x)
         # print(self.l2.weight)
         # print(x.shape)

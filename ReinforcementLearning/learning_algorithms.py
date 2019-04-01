@@ -1050,11 +1050,15 @@ class CMAES_optimizer(Evolutionary_optimizer):
             state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, full_rollout_returns = self.get_rollouts_state(sample_duration, rollouts, self.models.option_index, last_states=args.buffer_steps <= 0, last_buffer = True)    
             if args.weight_sharing:
                 returns, indexes = self.single_option_best(self.get_corresponding_returns(full_rollout_returns), oidx)
+                solutions = [] 
+                for idx in indexes:
+                    solutions.append(self.solutions[idx[0]][idx[1]])
             else:
                 returns = self.single_option_returns(self.get_corresponding_returns(full_rollout_returns), oidx)
+                solutions = self.solutions[train_models.option_index]
             # returns = torch.stack([rollout_returns[self.sample_duration * i:self.sample_duration * (i+1)].sum() / self.sample_duration for i in range(args.num_population)])
             cmaes = self.optimizers[train_models.option_index]
-            cmaes.tell(self.solutions[train_models.option_index], -1*returns)
+            cmaes.tell(solutions, -1*returns)
             self.solutions[train_models.option_index] = cmaes.ask()
             self.assign_solutions(train_models, train_models.option_index)
             best = cmaes.result[0]
