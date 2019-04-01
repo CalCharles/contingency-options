@@ -125,7 +125,7 @@ class ProximityBehaviorDeterminer(ChangepointDeterminer):
     '''
     finds modes based on whether they are proximal and then the subsequent behavior (velocity)
     '''
-    def __init__(self, prox_distance=6, min_cluster = 3):
+    def __init__(self, prox_distance=3, min_cluster = 10):
         self.prox_distance = prox_distance # TODO: Set proximal distance based on ...
         self.min_cluster = min_cluster
 
@@ -138,23 +138,28 @@ class ProximityBehaviorDeterminer(ChangepointDeterminer):
         for k in seen_modes.keys():
             if seen_modes[k] > self.min_cluster:
                 self.used_clusters.add(k)
+        print(self.used_clusters)
         # TODO: Fix it so that proximal distance is only used when relevant
         self.key_mapping = dict()
         k = 0 # no mixed clusters in this case, because we only concern with proximal
-        for i, mean in enumerate(mode_model.mean()):
-            if np.sum(np.abs(mean[0])) < self.prox_distance:
-                for j in range(mode_model.mean()):
+        for i, mean in enumerate(mode_models.mean()[0]):
+            if np.sum(np.abs(mean)) < self.prox_distance:
+                for j in range(len(mode_models.mean()[1])):
+                    print(mean, mode_models.mean()[1][j], seen_modes[(i,j)])
                     if (i,j) in self.used_clusters:
-                        self.key_mapping[i] = k
+                        self.key_mapping[(i,j)] = k
                         k += 1
-        self.num_mappings = keys
+        self.num_mappings = k
+        print("num mappings ", k)
+        print(mode_models.mean())
 
     def collapse_assignments(self, assigned_modes):
         mode_assignments = []
         for am in assigned_modes:
-            if (am[0], am[1]) not in self.used_clusters:
+            if (am[0], am[1]) not in self.key_mapping:
                 mode_assignments.append(-1)
             else:
+                print(am)
                 mode_assignments.append(self.key_mapping[(am[0], am[1])])
         return np.array(mode_assignments)
 

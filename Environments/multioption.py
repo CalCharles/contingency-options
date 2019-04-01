@@ -1,4 +1,4 @@
-import glob, os, torch
+import glob, os, torch, copy
 from Models.models import pytorch_model
 
 class MultiOption():
@@ -87,7 +87,7 @@ class MultiOption():
 
     def load(self, args, pth):
         model_paths = glob.glob(os.path.join(pth, '*.pt'))
-        print(model_paths)
+        print("loading", model_paths)
         model_paths.sort(key=lambda x: int(x.split("__")[1]))
         for mpth in model_paths:
             self.models.append(torch.load(mpth))
@@ -95,3 +95,13 @@ class MultiOption():
                 self.models[-1] = self.models[-1].cuda()
         self.option_index = 0
         self.num_options = len(self.models)
+
+    def duplicate(self, num_models):
+        # TODO: only handles 1->many of models, build in many->many handling
+        old_model = self.models[0]
+        self.models = []
+        for i in range(num_models):
+            new_model = copy.deepcopy(old_model)
+            self.models.append(new_model)
+        self.num_options = num_models
+        self.option_index = 0

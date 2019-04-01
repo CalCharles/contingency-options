@@ -6,11 +6,11 @@ import torch.nn.functional as F
 import collections
 from Models.models import pytorch_model
 
-
+# TODO: clean up the rollouts
 class RolloutOptionStorage(object):
     def __init__(self, num_processes, obs_shape, action_space,
      extracted_shape, current_shape, buffer_steps, changepoint_queue_len,
-     trace_len, trace_queue_len, num_options, changepoint_shape):
+     trace_len, trace_queue_len, num_options, changepoint_shape, lag_num, cuda):
         # TODO: storage does not currently support multiple processes, can be implemented
         self.num_processes = num_processes
         self.obs_shape = obs_shape
@@ -20,14 +20,40 @@ class RolloutOptionStorage(object):
         self.buffer_steps = buffer_steps
         self.changepoint_queue_len = changepoint_queue_len
         self.changepoint_shape = changepoint_shape
+        self.lag_num = lag_num
         self.buffer_filled = 0
-        self.buffer_at = 0
-        self.return_at = 0
+        self.buffer_at = -lag_num
+        self.true_buffer_at = 0
+        self.return_at = -lag_num
         self.changepoint_at = 0
         self.trace_at = 0
         self.trace_len = trace_len
         self.trace_queue_len = trace_queue_len
         self.trace_filled = 0
+
+        self.lag_extracted_state = torch.zeros(self.lag_num, *self.extracted_shape)
+        self.lag_current_state = torch.zeros(self.lag_num, *self.current_shape)
+        self.lag_rewards = torch.zeros(num_options, self.lag_num)
+        self.lag_returns = torch.zeros(num_options, self.lag_num, 1)
+        self.lag_action_probs = torch.zeros(num_options, self.lag_num, action_space)
+        self.lag_Qvals = torch.zeros(num_options, self.lag_num, action_space)
+        self.lag_value_preds = torch.zeros(num_options, self.lag_num, 1)
+        self.lag_actions = torch.zeros(self.lag_num, 1)
+        self.lag_epsilon = torch.zeros(self.lag_num, 1)
+        self.lag_masks = torch.zeros(self.lag_num, 1)
+        if cuda:
+            self.lag_extracted_state = self.lag_extracted_state.cuda()
+            self.lag_current_state = self.lag_current_state.cuda()
+            self.lag_rewards = self.lag_rewards.cuda()
+            self.lag_returns = self.lag_returns.cuda()
+            self.lag_action_probs = self.lag_action_probs.cuda()
+            self.lag_Qvals = self.lag_Qvals.cuda()
+            self.lag_value_preds = self.lag_value_preds.cuda()
+            self.lag_actions = self.lag_actions.cuda()
+            self.lag_epsilon = self.lag_epsilon.cuda()
+            self.lag_masks = self.lag_masks.cuda()
+
+
         if buffer_steps > 0:
             self.state_queue = torch.zeros(buffer_steps, *self.extracted_shape).detach()
             self.current_state_queue = torch.zeros(buffer_steps, *self.current_shape).detach()
@@ -72,20 +98,44 @@ class RolloutOptionStorage(object):
         self.actions = torch.zeros(num_steps + 1, 1).long() # no other processes
         self.actions = self.actions.long()
         self.masks = torch.ones(num_steps + 1, *self.obs_shape) # no other processes
+        # if num_steps > self.changepoint_queue_len:
+        #     self.set_changepoint_queue(num_steps)
         # print("returns", self.num_options, self.returns.shape, num_steps)
 
     def cut_current(self, num_steps):
         self.last_step = num_steps
-        self.extracted_state = self.extracted_state[:num_steps + 1]
-        self.current_state = self.current_state[:num_steps + 1]
-        self.rewards = self.rewards[:, :num_steps] # Pretend there are no other processes
-        self.returns = self.returns[:, :num_steps + 1]
-        self.action_probs = self.action_probs[:, :num_steps + 1]
-        self.Qvals = self.Qvals[:, :num_steps + 1]
-        self.value_preds = self.value_preds[:, :num_steps + 1]
-        self.actions = self.actions[:num_steps + 1] # no other processes
-        self.epsilon = self.epsilon[:num_steps + 1]
-        self.masks = self.masks[:num_steps + 1] # no other processes
+        self.extracted_state[:self.lag_num] = self.lag_extracted_state
+        self.current_state[:self.lag_num] = self.lag_current_state
+        self.rewards[:, :self.lag_num] = self.lag_rewards # Pretend there are no other processes
+        self.returns[:, :self.lag_num] = self.lag_returns
+        self.action_probs[:, :self.lag_num] = self.lag_action_probs
+        self.Qvals[:, :self.lag_num] = self.lag_Qvals
+        self.value_preds[:, :self.lag_num] = self.lag_value_preds
+        self.actions[:self.lag_num] = self.lag_actions # no other processes
+        self.epsilon[:self.lag_num] = self.lag_epsilon
+        self.masks[:self.lag_num] = self.lag_masks # no other processes
+
+        self.lag_extracted_state = self.extracted_state[num_steps + 1 - self.lag_num:num_steps + 1]
+        self.lag_current_state = self.current_state[num_steps + 1 - self.lag_num:num_steps + 1]
+        self.lag_rewards = self.rewards[:, num_steps-self.lag_num:num_steps] # Pretend there are no other processes
+        self.lag_returns = self.returns[:, num_steps + 1 - self.lag_num:num_steps + 1]
+        self.lag_action_probs = self.action_probs[:, num_steps + 1 - self.lag_num:num_steps + 1]
+        self.lag_Qvals = self.Qvals[:, num_steps + 1 - self.lag_num:num_steps + 1]
+        self.lag_value_preds = self.value_preds[:, num_steps + 1 - self.lag_num:num_steps + 1]
+        self.lag_actions = self.actions[num_steps + 1 - self.lag_num:num_steps + 1] # no other processes
+        self.lag_epsilon = self.epsilon[num_steps + 1 - self.lag_num:num_steps + 1]
+        self.lag_masks = self.masks[num_steps + 1 - self.lag_num:num_steps + 1] # no other processes
+
+        self.extracted_state = self.extracted_state[:num_steps + 1 - self.lag_num]
+        self.current_state = self.current_state[:num_steps + 1 - self.lag_num]
+        self.rewards = self.rewards[:, :num_steps - self.lag_num] # Pretend there are no other processes
+        self.returns = self.returns[:, :num_steps + 1 - self.lag_num]
+        self.action_probs = self.action_probs[:, :num_steps + 1 - self.lag_num]
+        self.Qvals = self.Qvals[:, :num_steps + 1 - self.lag_num]
+        self.value_preds = self.value_preds[:, :num_steps + 1 - self.lag_num]
+        self.actions = self.actions[:num_steps + 1 - self.lag_num] # no other processes
+        self.epsilon = self.epsilon[:num_steps + 1 - self.lag_num]
+        self.masks = self.masks[:num_steps + 1 - self.lag_num] # no other processes
 
     def cuda(self):
         # self.states = self.states.cuda()
@@ -174,21 +224,22 @@ class RolloutOptionStorage(object):
     def insert(self, step, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state, epsilon, done=False): # got rid of masks... might be useful though
         if self.buffer_steps > 0 and self.last_step != step: # using buffer and not the first step, which is a duplicate of the last step
             self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
-            self.state_queue[self.buffer_at].copy_(extracted_state.squeeze().detach())
-            self.changepoint_buffer[self.buffer_at].copy_(changepoint_state.squeeze().detach())
-            self.current_state_queue[self.buffer_at].copy_(current_state.squeeze().detach())
-            self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
-            self.action_queue[self.buffer_at].copy_(action.squeeze().detach())
-            self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze().detach())
-            self.done_queue[self.buffer_at].copy_(pytorch_model.wrap(int(done), cuda=self.iscuda))
+            self.state_queue[self.true_buffer_at].copy_(extracted_state.squeeze().detach())
+            self.changepoint_buffer[self.true_buffer_at].copy_(changepoint_state.squeeze().detach())
+            self.current_state_queue[self.true_buffer_at].copy_(current_state.squeeze().detach())
+            self.option_queue[self.true_buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
+            self.action_queue[self.true_buffer_at].copy_(action.squeeze().detach())
+            self.epsilon_queue[self.true_buffer_at].copy_(epsilon.squeeze().detach())
+            self.done_queue[self.true_buffer_at].copy_(pytorch_model.wrap(int(done), cuda=self.iscuda))
             for oidx in range(self.num_options):
-                self.values_queue[oidx, self.buffer_at].copy_(value_preds[oidx].squeeze().detach())
-                self.Qvals_queue[oidx, self.buffer_at].copy_(q_vals[oidx].squeeze().detach())
-                self.action_probs_queue[oidx, self.buffer_at].copy_(action_probs[oidx].squeeze().detach())
-            if self.buffer_at == self.buffer_steps - 1:
-                self.buffer_at = 0
+                self.values_queue[oidx, self.true_buffer_at].copy_(value_preds[oidx].squeeze().detach())
+                self.Qvals_queue[oidx, self.true_buffer_at].copy_(q_vals[oidx].squeeze().detach())
+                self.action_probs_queue[oidx, self.true_buffer_at].copy_(action_probs[oidx].squeeze().detach())
+            if self.true_buffer_at == self.buffer_steps - 1:
+                self.true_buffer_at = 0
             else:
-                self.buffer_at += 1
+                self.true_buffer_at += 1
+            self.buffer_at = self.true_buffer_at - self.lag_num
         if self.changepoint_queue_len > 0:
             self.changepoint_action_queue[self.changepoint_at].copy_(action.squeeze().detach())
             self.changepoint_queue[self.changepoint_at].copy_(changepoint_state.squeeze().detach())
@@ -198,28 +249,28 @@ class RolloutOptionStorage(object):
                     self.changepoint_at = 0
                 else:
                     self.changepoint_at += 1
-        self.extracted_state[step].copy_(extracted_state.squeeze())
-        self.actions[step].copy_(action.squeeze())
-        self.current_state[step].copy_(current_state.squeeze())
-        self.epsilon[step].copy_(epsilon.squeeze())
+        self.extracted_state[step + self.lag_num].copy_(extracted_state.squeeze())
+        self.actions[step + self.lag_num].copy_(action.squeeze())
+        self.current_state[step + self.lag_num].copy_(current_state.squeeze())
+        self.epsilon[step + self.lag_num].copy_(epsilon.squeeze())
         for oidx in range(self.num_options):
-            self.value_preds[oidx, step].copy_(value_preds[oidx].squeeze())
-            self.Qvals[oidx, step].copy_(q_vals[oidx].squeeze())
-            self.action_probs[oidx, step].copy_(action_probs[oidx].squeeze())
+            self.value_preds[oidx, step + self.lag_num].copy_(value_preds[oidx].squeeze())
+            self.Qvals[oidx, step + self.lag_num].copy_(q_vals[oidx].squeeze())
+            self.action_probs[oidx, step + self.lag_num].copy_(action_probs[oidx].squeeze())
 
     def insert_no_out(self, step, extracted_state, current_state, action, option_no, changepoint_state, epsilon): # got rid of masks... might be useful though
         if self.buffer_steps > 0 and self.last_step != step: # using buffer and not the first step, which is a duplicate of the last step
             self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
-            self.state_queue[self.buffer_at].copy_(extracted_state.squeeze().detach())
-            self.current_state_queue[self.buffer_at].copy_(current_state.squeeze().detach())
-            self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
-            self.action_queue[self.buffer_at].copy_(action.squeeze().detach())
-            self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze().detach())
-            self.changepoint_buffer[self.buffer_at].copy_(changepoint_state.squeeze().detach())
-            if self.buffer_at == self.buffer_steps - 1:
-                self.buffer_at = 0
+            self.state_queue[self.true_buffer_at].copy_(extracted_state.squeeze().detach())
+            self.current_state_queue[self.true_buffer_at].copy_(current_state.squeeze().detach())
+            self.option_queue[self.true_buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
+            self.action_queue[self.true_buffer_at].copy_(action.squeeze().detach())
+            self.epsilon_queue[self.true_buffer_at].copy_(epsilon.squeeze().detach())
+            self.changepoint_buffer[self.true_buffer_at].copy_(changepoint_state.squeeze().detach())
+            if self.true_buffer_at == self.buffer_steps - 1:
+                self.true_buffer_at = 0
             else:
-                self.buffer_at += 1
+                self.true_buffer_at += 1
         if self.changepoint_queue_len > 0:
             self.changepoint_action_queue[self.changepoint_at].copy_(action.squeeze().detach())
             self.changepoint_queue[self.changepoint_at].copy_(changepoint_state.squeeze().detach())
@@ -229,17 +280,22 @@ class RolloutOptionStorage(object):
                     self.changepoint_at = 0
                 else:
                     self.changepoint_at += 1
-        self.extracted_state[step].copy_(extracted_state.squeeze())
-        self.actions[step].copy_(action.squeeze())
-        self.current_state[step].copy_(current_state.squeeze())
-        self.epsilon[step].copy_(epsilon.squeeze())
+        self.extracted_state[step + lag_num].copy_(extracted_state.squeeze())
+        self.actions[step + lag_num].copy_(action.squeeze())
+        self.current_state[step + lag_num].copy_(current_state.squeeze())
+        self.epsilon[step + lag_num].copy_(epsilon.squeeze())
 
-    def insert_rewards(self, rewards):
+    def insert_rewards(self, rewards, rewards_at):
         if self.buffer_steps > 0:
             for oidx in range(rewards.size(0)):
                 for i, reward in enumerate(rewards[oidx]):
                     self.reward_queue[oidx, (self.buffer_at + i - rewards.size(1)) % self.buffer_steps].copy_(reward)
-        self.rewards = rewards
+        num_rewards = rewards.size(1)
+        if len(self.rewards) != len(rewards):
+            self.rewards = torch.zeros(len(rewards), *tuple(self.rewards.shape[1:]))
+        if (self.rewards[:, rewards_at:rewards_at + num_rewards].shape[1] != rewards.shape[1]):
+            print(rewards_at, num_rewards, self.rewards.shape, self.rewards[:, rewards_at:rewards_at + num_rewards].shape[1], rewards.shape[1])
+        self.rewards[:, rewards_at:rewards_at + num_rewards] = rewards
         if self.iscuda:
             self.rewards = self.rewards.cuda()
 

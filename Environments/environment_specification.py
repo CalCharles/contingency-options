@@ -119,6 +119,9 @@ class ProxyEnvironment():
         self.reset_history()
         self.extracted_state = torch.Tensor(self.stateExtractor.get_state(proxy_chain[0].getState())).cuda()
         self.insert_extracted()
+        print("num_reward_functions", len(self.reward_fns))
+        if len(self.reward_fns) > len(self.models.models):
+            self.models.duplicate(len(self.reward_fns))
 
     def set_models(self, models):
         self.models = models
@@ -234,9 +237,14 @@ class ProxyEnvironment():
                 rwd = torch.cat([ext, rwd], dim = 0)
             # print(rwd.shape, length)
             rewards.append(rwd)
-        # print(states, rollout.extracted_state)
         # print(torch.stack(rewards, dim=0)[:,-length:].shape)
-        return torch.stack(rewards, dim=0)[:,-length:]
+        # print(states, rollout.extracted_state)
+        # print(length, torch.stack(rewards, dim=0).shape, torch.stack(rewards, dim=0)[:,-length:].shape)
+        # error
+        # print(rewards, rollout.lag_num, -length-rollout.lag_num)
+        # if rewards > 0:
+        #     error
+        return torch.stack(rewards, dim=0)[:,-length-rollout.lag_num:-rollout.lag_num]
 
     def changepoint_state(self, raw_state):
         return self.reward_fns[0].get_trajectories(raw_state).cuda()

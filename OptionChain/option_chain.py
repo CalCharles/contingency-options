@@ -47,8 +47,10 @@ class OptionChain():
                     proxy_env = load_from_pickle(os.path.join(save_path, d, "env.pkl"))
                     proxy_env.set_models(models)
                     proxy_env.set_test() # changes behavior policy to testing mode (no random actions)
+                    print(proxy_env.__dict__)
                     self.environments[edge] = proxy_env
-                if d == train_edge and args.load_weights:
+                elif d == train_edge and args.load_weights:
+                    print("training", d)
                     model_path = os.path.join(save_path, d)
                     models = MultiOption()
                     models.load(args, model_path)

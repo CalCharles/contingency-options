@@ -56,7 +56,6 @@ class Model(nn.Module):
         self.time_estimator = nn.Linear(self.insize, 1)
         self.QFunction = nn.Linear(self.insize, num_outputs)
         self.action_probs = nn.Linear(self.insize, num_outputs)
-        self.value_distribution = nn.Linear(self.insize, args.num_value_atoms * num_outputs)
         self.layers = [self.critic_linear, self.time_estimator, self.QFunction, self.action_probs]
         self.name = name
         self.iscuda = args.cuda # TODO: don't just set this to true
@@ -71,6 +70,7 @@ class Model(nn.Module):
             self.acti = F.sigmoid
         elif args.activation == "tanh":
             self.acti = F.tanh
+        self.test = not args.train # testing mode for evaluation
             
 
     def reset_parameters(self):
@@ -154,6 +154,8 @@ class Model(nn.Module):
             param.data = torch.from_numpy(cur_param_val) \
                               .reshape(param.size()).float()
             pval_idx += param_size
+        if self.iscuda:
+            self.cuda()
 
     # count number of parameters
     def count_parameters(self, reuse=True):
@@ -161,6 +163,7 @@ class Model(nn.Module):
             return self.parameter_count
         self.parameter_count = 0
         for param in self.parameters():
+            # print(param.size(), np.prod(param.size()), self.insize, self.hidden_size)
             self.parameter_count += np.prod(param.size())
         return self.parameter_count
 
@@ -260,6 +263,8 @@ class DistributionalModel(BasicModel):
         self.dz = (self.value_bounds[1] - self.value_bounds[0]) / (self.num_value_atoms - 1)
         self.value_support = pytorch_model.wrap([self.value_bounds[0] + (i * self.dz) for i in range(self.num_value_atoms)], cuda = args.cuda)
         self.value_support.requires_grad = False
+        self.value_distribution = nn.Linear(self.insize, args.num_value_atoms * num_outputs)
+        self.layers.append(value_distribution)
 
     def forward(self, x):
         if self.minmax is not None and self.use_normalize:

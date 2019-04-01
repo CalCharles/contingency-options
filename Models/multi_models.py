@@ -10,6 +10,8 @@ class PopulationModel(Model):
 		for i in range(args.num_population):
 			networks.append(models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess))
 		self.networks = nn.ModuleList(networks)
+		self.mean = models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess)
+		self.best = models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess)
 		# self.networks = networks
 		self.layers += self.networks
 		self.num_population = args.num_population
@@ -47,6 +49,8 @@ class PopulationModel(Model):
 
 	def forward(self, inputs, idx=-1):
 		# self.current_network_index = (self.current_network_index + 1) % self.num_population
+		if self.test:
+			self.mean(inputs)
 		if idx < 0:
 			return self.networks[self.current_network_index](inputs)
 		return self.networks[idx](inputs)
