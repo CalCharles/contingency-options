@@ -113,6 +113,14 @@ def get_args():
                         help='number of best sampled networks, (default -1, not used)')
     parser.add_argument('--reentry-rate', type=float, default=0.0,
                         help='rate of randomly re-entering a best network, to update the performance, (default 0.0)')
+    parser.add_argument('--retest', type=int, default=1,
+                        help='number of times a network is sampled, (default 1)')
+    parser.add_argument('--reward-stopping', action='store_true', default=False,
+                        help='if getting a reward causes a stopping behavior, (default False)')
+    parser.add_argument('--OoO-eval', action='store_true', default=False,
+                        help='out of order execution of networks, (default False)')
+    parser.add_argument('--weight-sharing', action='store_true', default=False,
+                        help='out of order execution of networks, (default False)')
     # Evolution Gradient parameters
     parser.add_argument('--sample-steps', type=int, default=2000,
                     help='number of time steps to run to evaluate full population (default: 2000)')
@@ -161,10 +169,14 @@ def get_args():
                         help='random seed (default: 1)')
     parser.add_argument('--num-processes', type=int, default=1,
                         help='how many training CPU processes to use (default: 16)')
+    parser.add_argument('--lag-num', type=int, default=2,
+                        help='lag between states executed and those used for learning, to delay for reward computation (default: 2)')
     parser.add_argument('--num-steps', type=int, default=5,
                         help='number of forward steps before update (default: 5)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
                         help='number of forward steps used to compute gradient, -1 for not used (default: -1)')
+    parser.add_argument('--reward-check', type=int, default=1,
+                        help='steps between a check for reward, (default 1)')
     parser.add_argument('--num-update-model', type=int, default=3,
                         help='number of gradient steps before switching options (default: 3)')
     parser.add_argument('--changepoint-queue-len', type=int, default=30,
@@ -254,6 +266,8 @@ def get_args():
     args = parser.parse_args()
     if args.dp_gmm[0] == 'default':
         args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
+    if args.dp_gmm[0] == 'far':
+        args.dp_gmm = [10, 6000, 1e-10, 'diag', 20]
     if args.champ_parameters[0] == "Paddle":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-1, 0]
     elif args.champ_parameters[0] == "Ball": 
