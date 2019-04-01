@@ -3,7 +3,7 @@ from SelfBreakout.paddle import Paddle
 from SelfBreakout.noblock import PaddleNoBlocks
 from SelfBreakout.unobstructpaddle import PaddleNoWalls
 from file_management import load_from_pickle, get_edge
-import glob, os
+import glob, os, torch
 from Models.models import models
 from Environments.multioption import MultiOption
 from ReinforcementLearning.learning_algorithms import learning_algorithms
@@ -33,6 +33,7 @@ if __name__ == "__main__":
     # x values bounce 100k python paddle_bounce.py --model-form gaumulti --optimizer-form PPO --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 100000 --state-forms xprox --state-names Paddle --base-node Paddle --changepoint-dir ../datasets/caleb_data/cotest/paddlegraph --factor 40 --num-layers 1 --lr 7e-4 --behavior-policy esp --optim RMSprop --period .01 --scale 30 --num-population 50 --normalize --reward-form bounce --gamma .99 --save-dir data/doperl --init-form xnorm --entropy-coef 0.1 --grad-epoch 5 > outdope.txt
     # evo python paddle_bounce.py --model-form population --optimizer-form Evo --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 20000 --state-forms prox --state-names Paddle --base-node Paddle --changepoint-dir ../datasets/caleb_data/cotest/paddlegraph --lr 5e-2 --behavior-policy esp --reward-form bounce --gamma .8 --init-form xnorm --factor 4 --num-layers 2 --evolve-form basic --select-ratio .25 --num-population 20 --sample-duration 100 --sample-schedule 8 --elitism --warm-up 0 --log-interval 1 --scale 5
     args = get_args()
+    torch.cuda.set_device(args.gpu)
     # true_environment = Paddle()
     true_environment = PaddleNoWalls()
     # true_environment = PaddleNoBlocks()

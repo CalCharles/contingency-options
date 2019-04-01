@@ -68,7 +68,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     option_value = collections.Counter()
     trace_queue = [] # keep the last states until end of trajectory (or until a reset), and dump when a reward is found
     for j in range(args.num_iters):
-        rollouts.set_parameters(learning_algorithm.current_duration * args.reward_check)            
+        rollouts.set_parameters(learning_algorithm.current_duration * args.reward_check + 1)            
         raw_actions = []
         rollouts.cuda()
         last_total_steps, total_steps = 0, 0
@@ -134,7 +134,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         # print("states and actions (es, cs, a, m)", rollouts.extracted_state, rollouts.current_state, rollouts.actions, rollouts.masks)
         # print("actions and Qvals (qv, vp, ap)", rollouts.Qvals, rollouts.value_preds, rollouts.action_probs)
         # start = time.time()
-        total_duration += total_steps + 1
+        total_duration += total_steps
         if done:
             trace_queue = rollouts.insert_trace(trace_queue)
             trace_queue = [] # insert first

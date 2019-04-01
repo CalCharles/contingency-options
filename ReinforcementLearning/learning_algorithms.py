@@ -789,8 +789,8 @@ class Evolutionary_optimizer(LearningOptimizer):
                     total_value = 0
                     for (s,e) in self.sample_indexes[i][j]:
                         # print(s,e,np.sqrt(e-s), returns[k, s:e].sum(), returns.shape)
-                        if returns[k, s:e].sum() < .1:
-                            total_value += returns[k, s:e].sum() + (-(e-s) / self.sample_duration)
+                        if returns[k, s:e].sum() < .5: # TODO: negative rewards not hardcoded
+                            total_value += returns[k, s:e].sum() + (-(e-s) / np.sqrt(self.sample_duration))
                         else:
                             total_value += returns[k, s:e].sum() / np.sqrt((e-s))
                     total_value /= self.retest
@@ -1024,7 +1024,8 @@ class CMAES_optimizer(Evolutionary_optimizer):
         for i in range(len(train_models.models)):
             if args.load_weights: # TODO: initialize from non-population model
                 xinit = pytorch_model.unwrap(train_models.models[i].mean.get_parameters())
-                sigma = 0.1#pytorch_model.unwrap(torch.stack([train_models.models[i].networks[j].get_parameters() for j in range(train_models.models[i].num_population)]).var(dim=1).mean())
+                # TODO: parameter for sigma?
+                sigma = .5#pytorch_model.unwrap(torch.stack([train_models.models[i].networks[j].get_parameters() for j in range(train_models.models[i].num_population)]).var(dim=1).mean())
                 print(xinit, sigma)
             else:
                 xinit = (np.random.rand(train_models.currentModel().networks[0].count_parameters())-0.5)*2 # initializes [-1,1]

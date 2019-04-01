@@ -246,6 +246,8 @@ def get_args():
     parser.add_argument('--window', type=int, default=3,
                 help='A window over which to compute changepoint statistics')
     # environmental variables
+    parser.add_argument('--gpu', type=int, default=0,
+                        help='gpu number to use (default: 0)')
     parser.add_argument('--num-frames', type=int, default=10e4,
                         help='number of frames to use for the training set (default: 10e6)')
     parser.add_argument('--env-name', default='BreakoutNoFrameskip-v4',
