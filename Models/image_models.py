@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 
 
 class ImageModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess, param_dim=param_dim)
         # TODO: assumes images of size 84x84, make general
         self.conv1 = nn.Conv2d(1, 2 * factor, 8, stride=4)
         self.conv2 = nn.Conv2d(2 * factor, 4 * factor, 4, stride=2)
@@ -49,8 +49,8 @@ class ImageModel(Model):
         return values, dist_entropy, probs, Q_vals
 
 class ObjectSumImageModel(ImageModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess, param_dim=param_dim)
         # TODO: assumes images of size 84x84
         # TODO: only handles bounds as input, and no object shape. If useful, we would need both
         # TODO: valid input orders: 83, 75, 67, 59, 51, 43, 35

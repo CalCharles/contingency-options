@@ -28,6 +28,8 @@ class Paddle(RawEnvironment):
             pass
 
     def step(self, action):
+        # TODO: action is tenor, might not be safe assumption
+        action = action.clone()
         if action == 1:
             action[0] = 2
         elif action == 2:

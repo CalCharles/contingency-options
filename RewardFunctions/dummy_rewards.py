@@ -75,6 +75,7 @@ class BounceReward(ChangepointReward):
 
 class Xreward(ChangepointReward):
     def __init__(self, args): 
+        super().__init__(None, args)
         self.traj_dim = 2 # SET THIS
         self.head, self.tail = get_edge(args.train_edge)
         self.name = "x"

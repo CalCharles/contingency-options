@@ -26,7 +26,7 @@ def compute_cp_minmax(reward_class, pth):
 
 
 class ChangepointReward():
-    def __init__(self, model,args):
+    def __init__(self, model, args):
         '''
         model is a changepoint model
         '''
@@ -35,6 +35,7 @@ class ChangepointReward():
         self.model = model
         self.cuda = args.cuda
         self.traj_dim = 2 #TODO: the dimension of the input trajectory is currently pre-set at 2, the dim of a location. Once we figure out dynamic setting, this can change
+        self.parameter_minmax = None
 
     def compute_reward(self, states, actions):
         '''

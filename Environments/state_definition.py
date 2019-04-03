@@ -155,7 +155,7 @@ class GetRaw(StateGet):
 	def get_state(self, state):
 		return state[0].flatten()
 
-def load_states(state_function, pth):
+def load_states(state_function, pth, length_constraint=50000):
 	raw_files = []
 	for root, dirs, files in os.walk(pth, topdown=False):
 		dirs.sort(key=lambda x: int(x))
@@ -164,12 +164,12 @@ def load_states(state_function, pth):
 			try:
 				for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
 					raw_files.append(imio.imread(p))
-					if len(raw_files) > 50000:
+					if len(raw_files) > length_constraint:
 						raw_files.pop(0)
 			except OSError as e:
 				# reached the end of the file
 				pass
-	dumps = read_obj_dumps(pth, i=-1, rng = 50000)
+	dumps = read_obj_dumps(pth, i=-1, rng = length_constraint)
 	print(len(raw_files), len(dumps))
 	if len(raw_files) < len(dumps):
 		# raw files not saved for some reason, which means use a dummy array of the same length

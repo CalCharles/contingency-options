@@ -92,10 +92,11 @@ class ChainMDP(RawEnvironment):
 
 
 class ProxyEnvironment():
-    def __init__(self):
+    def __init__(self, name= "0"):
         '''
         create a dummy placeholder
         '''
+        self.name = name
 
     def initialize(self, args, proxy_chain, reward_fns, state_get, behavior_policy):
         '''
@@ -110,7 +111,6 @@ class ProxyEnvironment():
         self.reward_fns = reward_fns
         self.stateExtractor = state_get
         self.iscuda = args.cuda
-        self.name = args.unique_id # name should be of form: head_tail
 
         self.num_hist = args.num_stack
         self.state_size = self.stateExtractor.shape
@@ -121,12 +121,41 @@ class ProxyEnvironment():
         self.insert_extracted()
         print("num_reward_functions", len(self.reward_fns))
 
+    def get_names(self):
+        if len(self.proxy_chain) > 1:
+            return self.proxy_chain[-1].get_names() + [self.name]
+        else: 
+            return ["Action"] + [self.name]
+
+    def set_save(self, itr, save_dir, recycle):
+        '''
+        sets the files for saving the action data
+        '''
+        self.save_path=save_dir
+        self.itr = itr
+        self.recycle = recycle
+        if len(self.save_path) > 0:
+            try:
+                os.makedirs(save_dir)
+            except OSError:
+                pass
+            self.save_files = []
+            for name in self.get_names():
+                f = open(os.path.join(self.save_path, name + "_actions.txt"), 'w')
+                f = open(os.path.join(self.save_path, name + "_actions.txt"), 'a')
+                self.save_files.append(f)
+
+    def save_actions(self, action_list):
+        if len(self.save_path) > 0:
+            for i, action in enumerate(action_list):
+                self.save_files[i].write(str(action) + '\n')
+
     def set_models(self, models):
         self.models = models
 
-    def duplicate(self):
-        if len(self.reward_fns) > len(self.models.models):
-            self.models.duplicate(len(self.reward_fns))
+    def duplicate(self, args):
+        if len(self.reward_fns) > len(self.models.models) or args.adjustment_model:
+            self.models.duplicate(len(self.reward_fns), args, self.stateExtractor, self.reward_fns[0].parameter_minmax)
 
     def set_proxy_chain(self, proxy_chain):
         self.proxy_chain = proxy_chain
@@ -196,6 +225,7 @@ class ProxyEnvironment():
         # TODO: implement multiprocessing support
         self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(self.raw_state), cuda=self.iscuda).unsqueeze(0)
         self.insert_extracted()
+        # self.save_actions(action_list)
         return self.extracted_state, self.raw_state, done, action_list
 
     def step_dope(self, action, rollout, model=False, action_list=[]):

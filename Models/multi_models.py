@@ -2,16 +2,16 @@ from Models.models import Model, models
 import torch.nn as nn
 
 class PopulationModel(Model):
-	def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
-		super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess)
+	def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
+		super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess, param_dim=param_dim)
 		self.layers = []
 		networks = []
 		print("initializing options")
 		for i in range(args.num_population):
-			networks.append(models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess))
+			networks.append(models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess, param_dim=param_dim))
 		self.networks = nn.ModuleList(networks)
-		self.mean = models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess)
-		self.best = models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess)
+		self.mean = models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess, param_dim=param_dim)
+		self.best = models[args.base_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess, param_dim=param_dim)
 		# self.networks = networks
 		self.layers += self.networks
 		self.num_population = args.num_population

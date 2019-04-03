@@ -7,13 +7,13 @@ import torch.optim as optim
 from Models.models import Model, pytorch_model
 
 class BasisModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, addbias=False):
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, addbias=False, param_dim=-1):
         ''' 
         initializes parameters and basis relations. 1 is fully independent (factor+1 * num_inputs) number of bases
         2 implies either time correlated (12), or state correlated(22), or both (02) (using tens place) (if input dim 4, around 40 is max order)
         3 implies fully correlated (factor+1 ^ num_inputs)
         '''
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None, param_dim=param_dim)
         self.num_stack = args.num_stack
         self.dim = num_inputs // self.num_stack
         self.order = args.order + 1 # include zero order
@@ -140,8 +140,8 @@ class BasisModel(Model):
         return values, dist_entropy, aprobs, Qvals
 
 class FourierBasisModel(BasisModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = None)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = None, param_dim=param_dim)
         '''
         factor is the order
         layers defines the variate (1 = univariate, 2 = paired, 3=all)
@@ -180,8 +180,8 @@ class FourierBasisModel(BasisModel):
         return torch.stack(bat)
 
 class GaussianBasisModel(BasisModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
-        super(GaussianBasisModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None, param_dim=-1):
+        super(GaussianBasisModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None, param_dim=param_dim)
         '''
         factor is the order
         layers defines the variate (1 = univariate, 2 = paired, 3=all)
@@ -229,8 +229,8 @@ class GaussianBasisModel(BasisModel):
         return torch.stack(bat)
 
 class GaussianMultilayerModel(GaussianBasisModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax,sess = sess)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None, param_dim=-1):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax,sess = sess, param_dim=param_dim)
         '''
         num_population is used as the size of the last layer (don't mix evolutionary and gaussian basis for now)        
         '''
@@ -291,8 +291,8 @@ class GaussianMultilayerModel(GaussianBasisModel):
         return values, dist_entropy, probs, Qvals
 
 def GaussianDistributionModel(GaussianBasisModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None, param_dim=-1):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess, param_dim=param_dim)
         self.l1 = nn.Linear(self.basis_size, args.num_population)
         self.value_bounds = args.value_bounds
         self.num_value_atoms = args.num_value_atoms

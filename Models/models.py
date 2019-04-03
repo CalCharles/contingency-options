@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
-import copy
+import copy, os
 
 class pytorch_model():
     def __init__(self, combiner=None, loss=None, reducer=None, cuda=True):
@@ -32,7 +32,7 @@ class pytorch_model():
         return torch.cat(data, dim=axis)
 
 class Model(nn.Module):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
         super(Model, self).__init__()
         num_inputs = int(num_inputs)
         num_outputs = int(num_outputs)
@@ -113,7 +113,7 @@ class Model(nn.Module):
     def normalize(self, x):
         return (x - self.minmax[0]) / (abs(self.minmax[1] - self.minmax[0]) + 1e-10)
 
-    def forward(self, x):
+    def last_layer(self, x):
         '''
         TODO: make use of time_estimator?, link up Q vals and action probs
         TODO: clean up cuda = True to something that is actually true
@@ -129,8 +129,19 @@ class Model(nn.Module):
         dist_entropy = -(log_probs * probs).sum(-1).mean()
         return values, dist_entropy, probs, Q_vals
 
+
+    def forward(self, x):
+        '''
+        TODO: make use of time_estimator?, link up Q vals and action probs
+        TODO: clean up cuda = True to something that is actually true
+        input: [batch size, state size] (TODO: no multiple processes)
+        output [batch size, 1], [batch size, 1], [batch_size, num_actions], [batch_size, num_actions]
+        '''
+        values, dist_entropy, probs, Q_vals = self.last_layer(x)
+        return values, dist_entropy, probs, Q_vals
+
     def save(self, pth):
-        torch.save(self, pth + self.name + ".pt")
+        torch.save(self, os.path.join(pth, self.name + ".pt"))
 
     def get_parameters(self):
         params = []
@@ -167,10 +178,18 @@ class Model(nn.Module):
             self.parameter_count += np.prod(param.size())
         return self.parameter_count
 
+    # TODO: write code to remove last layer if unnecessary
+    def remove_last(self):
+        self.critic_linear = None
+        self.time_estimator = None
+        self.QFunction = None
+        self.action_probs = None
+        self.layers = self.layers[4:]
+
 
 class BasicModel(Model):    
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
-        super(BasicModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None, param_dim=-1):
+        super(BasicModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None, param_dim=param_dim)
         factor = int(args.factor)
         self.hidden_size = self.num_inputs*factor*factor // min(2,factor)
         print("Network Sizes: ", self.num_inputs, self.insize, self.hidden_size)
@@ -222,6 +241,8 @@ class BasicModel(Model):
         #     print("total", x.sum().detach(), self.l1.weight.abs().sum().detach(), self.action_probs.weight.abs().sum().detach())
         return x
 
+
+
     def forward(self, x):
         '''
         TODO: make use of time_estimator, link up Q vals and action probs
@@ -260,8 +281,8 @@ class BasicModel(Model):
         return layer_outputs
 
 class DistributionalModel(BasicModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess)
+    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
+        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess, param_dim=param_dim)
         self.value_bounds = args.value_bounds
         self.num_value_atoms = args.num_value_atoms
         self.dz = (self.value_bounds[1] - self.value_bounds[0]) / (self.num_value_atoms - 1)
@@ -328,6 +349,13 @@ class DistributionalModel(BasicModel):
 from Models.basis_models import FourierBasisModel, GaussianBasisModel, GaussianMultilayerModel, GaussianDistributionModel
 from Models.tabular_models import TabularQ, TileCoding
 from Models.image_models import ObjectSumImageModel
-models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel, "sumimage": ObjectSumImageModel}
+models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, 
+            "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel,
+            "sumimage": ObjectSumImageModel}
+from Models.parameterized_models import ParameterizedOneHotModel, ParameterizedContinuousModel
+models["paramhot"] = ParameterizedOneHotModel
+models["paramcont"] = ParameterizedContinuousModel
+from Models.adjustment_models import AdjustmentModel
+models["adjust"] = AdjustmentModel
 from Models.multi_models import PopulationModel
 models["population"] = PopulationModel

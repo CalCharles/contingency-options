@@ -45,8 +45,12 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         train_models.initialize(args, len(reward_classes), state_class)
         proxy_environment.set_models(train_models)
     else:
-        proxy_environment.duplicate()
+        train_models.initialize(args, len(reward_classes), state_class)
+        train_models.session(args)
+        proxy_environment.duplicate(args)
+    proxy_environment.set_save(0, args.save_dir, args.save_recycle)
     learning_algorithm.initialize(args, train_models)
+    print(proxy_environment.get_names())
     state = pytorch_model.wrap(proxy_environment.getState(), cuda = args.cuda)
     hist_state = pytorch_model.wrap(proxy_environment.getHistState(), cuda = args.cuda)
     raw_state = base_env.getState()
@@ -84,7 +88,6 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0))
                 v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
                 action = behavior_policy.take_action(ap, qv)
-                # print(ap, action)
                 cp_state = proxy_environment.changepoint_state([raw_state])
                 # print(state, action)
                 rollouts.insert(total_steps, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state[0], pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda))
@@ -92,6 +95,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
                 trace_queue.append((current_state.clone().detach(), action.clone().detach()))
                 state, raw_state, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
+                # print(action_list, action)
                 # print("step check (al, s)", action_list, state)
                 #### logging
                 option_actions[train_models.currentName()][int(pytorch_model.unwrap(action.squeeze()))] += 1

@@ -47,6 +47,7 @@ class OptionChain():
                     proxy_env = load_from_pickle(os.path.join(save_path, d, "env.pkl"))
                     proxy_env.set_models(models)
                     proxy_env.set_test() # changes behavior policy to testing mode (no random actions)
+                    proxy_env.name = d
                     print(proxy_env.__dict__)
                     self.environments[edge] = proxy_env
                 elif d == train_edge and args.load_weights:
@@ -54,17 +55,17 @@ class OptionChain():
                     model_path = os.path.join(save_path, d)
                     models = MultiOption()
                     models.load(args, model_path)
-                    proxy_env = ProxyEnvironment()
+                    proxy_env = ProxyEnvironment(d)
                     self.environments[edge] = proxy_env
                     proxy_env.set_models(models)
                 else:
-                    self.environments[edge] = ProxyEnvironment()
+                    self.environments[edge] = ProxyEnvironment(d)
         # in the case that the train edge does not have directories set up
         tedge = (train_edge.split("->")[0], train_edge.split("->")[1])
         if tedge not in self.edges:
             os.makedirs(os.path.join(save_path, train_edge))
             self.add_edge(tedge)
-            self.environments[tedge] = ProxyEnvironment()
+            self.environments[tedge] = ProxyEnvironment(tedge)
         self.save_dir = os.path.join(save_path, train_edge) +"/"
 
     def initialize(self, args):

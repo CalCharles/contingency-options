@@ -77,7 +77,7 @@ class LearningOptimizer():
     def updateModel(self):
         # TODO: unclear whether this function should actually be inside optimizer, possibly moved to a manager class
         if self.step_counter == self.num_update_model:
-            self.models.option_index = np.random.randint(len(self.models.models))
+            self.models.option_index = np.random.randint(self.models.num_options)
             self.step_counter = 0
 
     def compute_weights(self, possible_indexes, rollouts, weights, reward_index):
@@ -700,7 +700,7 @@ class Evolutionary_optimizer(LearningOptimizer):
         self.OoO_eval = args.OoO_eval # out of order evaluation
         self.num_population = train_models.models[0].num_population
         self.reset_current_duration(args.sample_duration, args.reward_check)
-        self.sample_indexes = [[[] for j in range(train_models.models[0].num_population)] for i in range(len(train_models.models))]
+        self.sample_indexes = [[[] for j in range(train_models.models[0].num_population)] for i in range(self.models.num_options)]
         self.last_swap = 0
         if args.reassess_num > 0:
             self.reassess_pool = []
@@ -713,8 +713,8 @@ class Evolutionary_optimizer(LearningOptimizer):
                 self.reentered_list[1].append([])
 
     def reset_current_duration(self, sample_duration, reward_check):
-        self.current_duration = sample_duration * len(self.models.models) * self.models.currentModel().num_population * self.retest  // reward_check
-        self.max_duration = sample_duration * len(self.models.models) * self.models.currentModel().num_population * self.retest // reward_check
+        self.current_duration = sample_duration * self.models.num_options * self.models.currentModel().num_population * self.retest  // reward_check
+        self.max_duration = sample_duration * self.models.num_options * self.models.currentModel().num_population * self.retest // reward_check
         self.sample_duration = sample_duration
 
     def interUpdateModel(self, step, rewards):
@@ -729,23 +729,24 @@ class Evolutionary_optimizer(LearningOptimizer):
         if duration_check or early_stop:
             # update to next model
             ridx = step
+            print(self.models.option_index, self.models.currentModel().current_network_index, duration_check, early_stop, self.last_swap, step, ridx)
             if early_stop:
                 ridx = step - pytorch_model.unwrap((self.reward_check - torch.argmax(rewards.sum(dim=0))))
             self.sample_indexes[self.models.option_index][self.models.currentModel().current_network_index].append((self.last_swap, ridx))
             self.last_swap = step
             if self.OoO_eval:
                 total_count = np.sum([np.sum([ len(poplist) for poplist in sample_lengths]) for sample_lengths in self.sample_indexes])
-                if self.retest * self.num_population * len(self.models.models) - total_count == 0:
+                if self.retest * self.num_population * self.models.num_options - total_count == 0:
                     self.last_swap = 0
                     return True
-                option_weights = [(self.retest * self.num_population - np.sum([ len(poplist) for poplist in sample_lengths])) / (self.retest * self.num_population * len(self.models.models) - total_count) for sample_lengths in self.sample_indexes] # total possible number
+                option_weights = [(self.retest * self.num_population - np.sum([ len(poplist) for poplist in sample_lengths])) / (self.retest * self.num_population * self.models.num_options - total_count) for sample_lengths in self.sample_indexes] # total possible number
                 # print(self.retest * self.num_population, np.sum([np.sum([ len(poplist) for poplist in sample_lengths]) for sample_lengths in self.sample_indexes]), self.sample_indexes, option_weights)
-                self.models.option_index = np.random.choice(list(range(len(self.models.models))), p=option_weights)
+                self.models.option_index = np.random.choice(list(range(self.models.num_options)), p=option_weights)
             else:
-                if self.models.currentModel().current_network_index == self.num_population:
+                if self.models.currentModel().current_network_index == self.num_population - 1:
                     self.models.currentModel().current_network_index = 0
                     self.models.option_index += 1
-                if self.models.option_index == len(self.models.models):
+                if self.models.option_index == self.models.num_options:
                     self.models.option_index = 0
                     self.last_swap = 0
                     return True
@@ -760,7 +761,7 @@ class Evolutionary_optimizer(LearningOptimizer):
 
     def updateModel(self):
         self.models.currentModel().current_network_index = 0
-        self.sample_indexes = [[[] for j in range(self.models.models[0].num_population)] for i in range(len(self.models.models))]
+        self.sample_indexes = [[[] for j in range(self.models.models[0].num_population)] for i in range(self.models.num_options)]
 
     def alter_reentry_list(self, returns):
         oi = self.models.option_index
@@ -781,23 +782,26 @@ class Evolutionary_optimizer(LearningOptimizer):
     def get_corresponding_returns(self, returns):
         # all returns of the form [num options, num population, num options] ( the return for each option)
         all_returns = []
-        for i in range(len(self.models.models)):
+        for i in range(self.models.num_options):
             option_returns = []
             for j in range(self.models.models[0].num_population):
                 total_ret = []
-                for k in range(len(self.models.models)):
+                for k in range(self.models.num_options):
                     total_value = 0
                     for (s,e) in self.sample_indexes[i][j]:
-                        # print(s,e,np.sqrt(e-s), returns[k, s:e].sum(), returns.shape)
-                        if returns[k, s:e].sum() < .5: # TODO: negative rewards not hardcoded
-                            total_value += returns[k, s:e].sum() + (-(e-s) / self.sample_duration * 5)
+                        # print(i,j,s,e,returns[k, s:e].sum())
+                        if self.reward_stopping: # specialized stopping return
+                            if returns[k, s:e].sum() < .5: # TODO: negative rewards not hardcoded
+                                total_value += returns[k, s:e].sum() + (-(e-s) / self.sample_duration * .3)
+                            else:
+                                # total_value += returns[k, s:e].sum() * self.sample_duration / (e-s)
+                                total_value += returns[k, s:e].sum() * np.power((self.sample_duration - (e-s)) / self.sample_duration, 4)
                         else:
-                            total_value += returns[k, s:e].sum() / np.sqrt((e-s))
+                            total_value += returns[k, s:e].sum()
                     total_value /= self.retest
                     total_ret.append(pytorch_model.unwrap(total_value).tolist())
                 option_returns.append(total_ret)
             all_returns.append(option_returns)
-        print("all_returns", np.array(all_returns))
         return np.array(all_returns)
 
     def single_option_returns(self, all_returns, oidx):
@@ -808,7 +812,7 @@ class Evolutionary_optimizer(LearningOptimizer):
 
     def single_option_best(self, all_returns, oidx):
         returns = []
-        for i in range(len(self.models.models)):
+        for i in range(self.models.num_options):
             for j in range(self.num_population):
                 returns.append(all_returns[i, j, oidx].tolist())
         idxes = np.argsort(np.array(returns))
@@ -818,6 +822,16 @@ class Evolutionary_optimizer(LearningOptimizer):
         for idx in idxes:
             indexes.append([idx // self.num_population, idx % self.num_population])
         return np.array(returns)[idxes], np.array(indexes)
+
+    def multi_option_returns(self, all_returns):
+        returns = []
+        for j in range(self.num_population):
+            pop_returns = []
+            for i in range(self.models.num_options):
+                pop_returns.append(all_returns[i, j, i].tolist())
+            returns.append(float(np.array(pop_returns).mean()))
+        return np.array(returns)
+
 
 
     def step(self, args, train_models, rollouts, usebuffer =False):
@@ -974,6 +988,7 @@ class SteinVariational_optimizer(LearningOptimizer):
         self.optimizer.initialize(args, train_models)
         self.optimizer.RL = 3 # sets the step function to only perform backward (manually apply gradient)
         self.optimizers = self.optimizer.optimizers
+        self.weight_sharing = args.weight_sharing
 
     def compute_pairwise_distances(self):
         all_thetas = [self.models.currentModel().networks[j].get_parameters().clone().detach() for j in range(self.models.currentModel.num_population)]
@@ -1021,11 +1036,12 @@ class CMAES_optimizer(Evolutionary_optimizer):
         super().initialize(args, train_models)
         self.optimizers = []
         self.solutions = []
-        for i in range(len(train_models.models)):
-            if args.load_weights: # TODO: initialize from non-population model
+        self.weight_sharing = args.weight_sharing
+        for i in range(len(self.models.models)):
+            if args.load_weights and not args.freeze_initial: # TODO: initialize from non-population model
                 xinit = pytorch_model.unwrap(train_models.models[i].mean.get_parameters())
                 # TODO: parameter for sigma?
-                sigma = .5#pytorch_model.unwrap(torch.stack([train_models.models[i].networks[j].get_parameters() for j in range(train_models.models[i].num_population)]).var(dim=1).mean())
+                sigma = 0.6#pytorch_model.unwrap(torch.stack([train_models.models[i].networks[j].get_parameters() for j in range(train_models.models[i].num_population)]).var(dim=1).mean())
                 print(xinit, sigma)
             else:
                 xinit = (np.random.rand(train_models.currentModel().networks[0].count_parameters())-0.5)*2 # initializes [-1,1]
@@ -1034,7 +1050,7 @@ class CMAES_optimizer(Evolutionary_optimizer):
             cmaes = cma.CMAEvolutionStrategy(xinit, sigma, cmaes_params)
             self.optimizers.append(cmaes)
             self.solutions.append(cmaes.ask())
-        for i in range(len(train_models.models)):
+        for i in range(len(self.models.models)):
             self.assign_solutions(train_models, i)
 
     def assign_solutions(self, train_models, i):
@@ -1045,16 +1061,22 @@ class CMAES_optimizer(Evolutionary_optimizer):
         sample_duration = self.max_duration
         if args.buffer_steps > 0:
             sample_duration = -1
-        for oidx in range(len(self.models.models)):
-            train_models.option_index = oidx
-            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, full_rollout_returns = self.get_rollouts_state(sample_duration, rollouts, self.models.option_index, last_states=args.buffer_steps <= 0, last_buffer = True)    
-            if args.weight_sharing:
-                returns, indexes = self.single_option_best(self.get_corresponding_returns(full_rollout_returns), oidx)
+        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, full_rollout_returns = self.get_rollouts_state(sample_duration, rollouts, 0, last_states=args.buffer_steps <= 0, last_buffer = True)    
+        all_returns = self.get_corresponding_returns(full_rollout_returns)
+        print(all_returns)
+        for midx in range(len(self.models.models)):
+            train_models.option_index = midx
+            if args.parameterized_option > 0:
+                returns = self.multi_option_returns(all_returns)
+                solutions = self.solutions[train_models.option_index]
+            elif self.weight_sharing > 0: # TODO: only support by CMAES at the moment
+                returns, indexes = self.single_option_best(all_returns, midx)
                 solutions = [] 
                 for idx in indexes:
                     solutions.append(self.solutions[idx[0]][idx[1]])
+                self.weight_sharing -= 1
             else:
-                returns = self.single_option_returns(self.get_corresponding_returns(full_rollout_returns), oidx)
+                returns = self.single_option_returns(all_returns, midx)
                 solutions = self.solutions[train_models.option_index]
             # returns = torch.stack([rollout_returns[self.sample_duration * i:self.sample_duration * (i+1)].sum() / self.sample_duration for i in range(args.num_population)])
             cmaes = self.optimizers[train_models.option_index]

@@ -30,8 +30,42 @@ def get_states(args, true_environment):
         num_actions = environments[-1].num_actions
     state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
     state_class.minmax = compute_minmax(state_class, dataset_path)
-    states = load_states(state_class.get_state, dataset_path)
+    states = load_states(state_class.get_state, dataset_path, length_constraint = 50000)
     return states, num_actions, state_class
+
+def get_option_actions(pth, train_edge, length_constraint = 50000):
+    action_file = open(os.path.join(pth, train_edge + "_actions.txt"), 'r')
+    actions = []
+    for act in action_file:
+        actions.append(int(act))
+        if len(actions) > length_constraint:
+            actions.pop(0)
+    return actions
+
+def get_option_rewards(dataset_path, reward_fns, actions):
+    states = load_states(reward_fns[0].get_state, dataset_path)
+    rewards = []
+    for reward_fn in reward_fns:
+        reward = compute_reward(states, actions)
+        rewards.append(reward.tolist())
+    return rewards
+
+def generate_trace_training(actions, rewards, states, num_steps):
+    trace_actions = [[] for i in len(rewards)]
+    trace_states = [[] for i in len(rewards)]
+    trace_distance = [[] for i in len(rewards)]
+    states = states.tolist()
+    recording = 0
+    for i in range(len(rewards)):
+        for a, r, s in zip(reversed(actions[i]), reversed(rewards[i]), reversed(states[i])):
+            if r == 1:
+                recording = num_steps
+            if recording > 0: # TODO: recording as an unordered collection, could keep as trajectories
+                trace_actions[i].append(a)
+                trace_states[i].append(s)
+                trace_distance[i].append(num_steps - recording)
+                recording -= 1
+    return trace_actions, trace_states
 
 def random_actions(args, true_environment):
     states, num_actions, state_class = get_states(args, true_environment)
@@ -47,13 +81,21 @@ def range_Qvals(args, true_environment, minmax):
     states = np.array([states[i-args.num_stack:i].flatten().tolist() for i in range(args.num_stack, len(states))])
     return np.array(Qvals), states, num_actions, state_class
 
+def supervised_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizers, true_values):
+    loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(desired_actions[idxes], cuda=args.cuda).squeeze())
+    for optimizer in optimizers:
+        optimizer.zero_grad()
+    loss.backward()
+    for optimizer in optimizers:
+        optimizer.step()
+    return loss
+
 def action_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizers, true_values):
     dist_ent = -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean()
     batch_mean = action_probs.squeeze().mean(dim=0)
     batch_ent = -((batch_mean + 1e-10) * torch.log(batch_mean + 1e-10)).sum()
     print(batch_ent, dist_ent, batch_mean, action_probs[0][0])
     loss = dist_ent - batch_ent
-    # loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(desired_actions[idxes], cuda=args.cuda).squeeze())
     for optimizer in optimizers:
         optimizer.zero_grad()
     loss.backward()
