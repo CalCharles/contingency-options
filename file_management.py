@@ -1,4 +1,4 @@
-import pickle
+import pickle, os
 import numpy as np
 import ChangepointDetection.DynamicsModels as DynamicsModels
 
@@ -9,6 +9,10 @@ def load_from_pickle(pth):
     return save_dict
 
 def save_to_pickle(pth, val):
+    try:
+        os.makedirs(os.path.join(*pth.split("/")[:-1]))
+    except OSError:
+        pass
     fid = open(pth, 'wb')
     pickle.dump(val, fid)
     fid.close()

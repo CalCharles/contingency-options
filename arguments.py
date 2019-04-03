@@ -121,8 +121,8 @@ def get_args():
                         help='if getting a reward causes a stopping behavior, (default False)')
     parser.add_argument('--OoO-eval', action='store_true', default=False,
                         help='out of order execution of networks, (default False)')
-    parser.add_argument('--weight-sharing', action='store_true', default=False,
-                        help='out of order execution of networks, (default False)')
+    parser.add_argument('--weight-sharing', type=int, default=-1,
+                        help='uses the best networks for weight sharing for n steps, (default -1 for not used)')
     # Evolution Gradient parameters
     parser.add_argument('--sample-steps', type=int, default=2000,
                     help='number of time steps to run to evaluate full population (default: 2000)')
@@ -210,8 +210,10 @@ def get_args():
                         help='log interval, one log per n updates (default: 10)')
     parser.add_argument('--save-interval', type=int, default=100,
                         help='save interval, one save per n updates (default: 10)')
-    parser.add_argument('--save-dir', default='./trained_models/',
+    parser.add_argument('--save-dir', default='',
                         help='directory to save data when adding edges')
+    parser.add_argument('--save-graph', default='graph',
+                        help='directory to save graph data. Use "graph" to let the graph specify target dir, empty does not train')
     parser.add_argument('--save-recycle', type=int, default=-1,
                         help='only saves the last n timesteps (-1 if not used)')
     parser.add_argument('--record-rollouts', default="",
@@ -259,6 +261,16 @@ def get_args():
     # load variables
     parser.add_argument('--load-weights', action ='store_true', default=False,
                         help='load the options for the existing network')
+    parser.add_argument('--adjustment-form', default='basic',
+                        help='has the same inputs as model-form, the model for the base')
+    parser.add_argument('--freeze-initial', action ='store_true', default=False,
+                        help='freeze the weights of the loaded network, do not use with no-adjustment')
+    # parametrized options parameters
+    parser.add_argument('--parameterized-option', type=int, default=0,
+                        help='parametrization enumerator,as defined in multioption, default no parametrization (default: 0)')
+    parser.add_argument('--parameterized-form', default='basic',
+                        help='has the same inputs as model-form, the model for the base')
+
     # parser.add_argument('--load-networks', default=[], nargs='+',
     #                     help='load weights from the network')
     # DP-GMM parameters

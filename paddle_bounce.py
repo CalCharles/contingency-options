@@ -76,5 +76,9 @@ if __name__ == "__main__":
     reward_classes = new_reward_classes
     behavior_policy = behavior_policies[args.behavior_policy]()
     # behavior_policy = EpsilonGreedyProbs()
-    trainRL(args, option_chain.save_dir, true_environment, train_models, learning_algorithm, proxy_environment,
+    save_graph = args.save_graph
+    if args.save_dir == "graph":
+        save_graph = option_chain.save_dir
+
+    trainRL(args, save_graph, true_environment, train_models, learning_algorithm, proxy_environment,
             proxy_chain, reward_classes, state_class, behavior_policy=behavior_policy)
