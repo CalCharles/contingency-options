@@ -16,8 +16,8 @@ class ConnectionModel(Model): # TODO: make ConnectionModel handle progressive-ne
         self.init_form = args.init_form
         self.iscuda = args.cuda
 
-    def forward(self, x):
-        x = self.model.hidden(x)
+    def forward(self, x, resp):
+        x = self.model.hidden(x, resp)
         x = self.connections(x)
         return x
 
@@ -26,12 +26,13 @@ class ConnectionModel(Model): # TODO: make ConnectionModel handle progressive-ne
         self.model.reset_parameters()
 
 class AdjustmentModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None, param_dim=-1):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None, param_dim=param_dim)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         factor = int(args.factor)
         # initial_model, base_model right now is a dummy, must call load_base
-        self.initial_model = models[args.adjustment_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess, param_dim=param_dim)
-        model = models[args.adjustment_form](args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=sess, param_dim=param_dim)
+        self.initial_model = models[args.adjustment_form](**kwargs)
+        model = models[args.adjustment_form](**kwargs)
         model.remove_last()
         correct = nn.Linear(self.insize, self.insize)
         self.adjusted_model = ConnectionModel(args, model, correct)
@@ -42,10 +43,10 @@ class AdjustmentModel(Model):
         self.option_index = 0
         # self.l1 = nn.Linear(self.num_inputs, self.num_inputs*factor*factor)
 
-    def hidden(self, x):
+    def hidden(self, x, resp):
         # print(x.shape)
-        base = self.initial_model.hidden(x)
-        x = self.adjusted_model(x)
+        base = self.initial_model.hidden(x, resp)
+        x = self.adjusted_model(x, resp)
         return self.acti(x + base) # TODO: multiple ways to combine
 
     def load_base(self, initial_model):
@@ -83,13 +84,13 @@ class AdjustmentModel(Model):
         self.adjusted_model.reset_parameters()
         print ("resetting: ", self.parameter_count)
 
-    def forward(self, x):
-        '''
-        TODO: make use of time_estimator, link up Q vals and action probs
-        '''
-        x = self.hidden(x)
-        values, dist_entropy, probs, Q_vals = self.initial_model.last_layer(x)
-        return values, dist_entropy, probs, Q_vals
+    # def forward(self, x, resp):
+    #     '''
+    #     TODO: make use of time_estimator, link up Q vals and action probs
+    #     '''
+    #     x = self.hidden(x, resp)
+    #     values, dist_entropy, probs, Q_vals = self.initial_model.last_layer(x)
+    #     return values, dist_entropy, probs, Q_vals
 
     def compute_layers(self, x):
         layer_outputs = self.initial_model.compute_layers(x) + self.base_model.compute_layers(x)

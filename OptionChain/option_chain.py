@@ -37,6 +37,7 @@ class OptionChain():
             print(dirs)
             for d in dirs:
                 # TODO: only single tail edges currently
+                print(d, args.load_weights, train_edge)
                 edge = (d.split("->")[0], d.split("->")[1])
                 self.add_edge(edge)
                 if d != train_edge or self.test: # the train edge does not need to load, unless testing, in which case train-edge is the test edge

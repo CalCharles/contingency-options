@@ -24,13 +24,17 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
     print(base_env.save_path)
     behavior_policy.initialize(args, state_class.action_num)
     train_models = proxy_environment.models
-
+    train_models.initialize(args, len(reward_classes), state_class)
+    proxy_environment.duplicate(args)
+    proxy_environment.set_save(0, args.save_dir, args.save_recycle)
     state = pytorch_model.wrap(proxy_environment.getState(), cuda = args.cuda)
+    resp = proxy_environment.getResp()
     print(state.shape)
     raw_state = base_env.getState()
-    hist_state = pytorch_model.wrap(proxy_environment.getHistState(), cuda = args.cuda)
+    cs, cr = proxy_environment.getHistState()
+    hist_state = pytorch_model.wrap(cs, cuda = args.cuda)
     cp_state = proxy_environment.changepoint_state([raw_state])
-    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, 
+    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, cr.flatten().shape[0], 
         state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, args.trace_len, 
         args.trace_queue_len, train_models.num_options, cp_state[0].shape, args.lag_num, args.cuda)
     option_actions = {option.name: collections.Counter() for option in train_models.models}
@@ -53,20 +57,23 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
             fcnt += 1
             raw_actions = []
             rollouts.cuda()
-            current_state = proxy_environment.getHistState()
-            values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0))
+            current_state, current_resp = proxy_environment.getHistState()
+            values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0), current_resp.unsqueeze(0))
             v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
             cp_state = proxy_environment.changepoint_state([raw_state])
             # print(ap, qv)
             action = behavior_policy.take_action(ap, qv)
-            rollouts.insert(j, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state[0], pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda))
-            state, raw_state, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
+            rollouts.insert(j, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state[0], pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), current_resp)
+            state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
             raw_states[train_models.currentName()].append(raw_state)
             option_actions[train_models.currentName()][int(pytorch_model.unwrap(action.squeeze()))] += 1
             if done:
                 pass
                 # print("reached end")
+            proxy_environment.determine_swaps(length, needs_rewards=True) # doesn't need to generate rewards
+
         print(args.num_iters)
+        print(action_probs)
         rewards = proxy_environment.computeReward(rollouts, args.num_iters)
         # print(rewards.shape)
         print(rewards.sum())

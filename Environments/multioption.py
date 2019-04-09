@@ -28,12 +28,17 @@ class MultiOption():
             state_dim = state_dim + parameter_minmax[0].shape[0]
             minmax = (np.hstack((minmax[0], parameter_minmax[0])) , np.hstack((minmax[1], parameter_minmax[1])))
         if model_class is None:
-            model = self.option_class(args, state_class.flat_state_size() * args.num_stack, 
-                state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess)
+            print(self.option_class)
+            model = self.option_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, 
+                num_outputs=state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess)
         else:
-            model = model_class(args, state_class.flat_state_size() * args.num_stack, state_class.action_num, 
-                factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
+            model = model_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, 
+                num_outputs=state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
         return model
+
+    def train(self):
+        for model in self.models:
+            model.train()
 
     def initialize(self, args, num_options, state_class, parameter_minmax = None):
         '''
@@ -72,7 +77,7 @@ class MultiOption():
 
     def determine_step(self, state, reward):
         '''
-        output: 
+        output: what is this function?
         '''
         actions = []
         for i in range(self.num_options):
@@ -85,7 +90,7 @@ class MultiOption():
             self.models[0].option_input = parameter
 
 
-    def determine_action(self, state):
+    def determine_action(self, state, resp):
         '''
         output: 4 x [batch_size, num_options, num_actions/1]
         '''
@@ -93,7 +98,7 @@ class MultiOption():
         for i in range(self.num_options):
             if self.parameterized_option == 1: # TODO: parametrized options only has one option (possibly a combination)
                 self.models[0].option_index = i
-            v, de, p, Q = self.models[i](state)
+            v, de, p, Q = self.models[i](state, resp)
             values.append(v)
             dist_entropy.append(de)
             probs.append(p)
@@ -125,6 +130,11 @@ class MultiOption():
         return self.models[self.option_index]
 
     def save(self, pth):
+        print(os.path.join(*pth.split("/")))
+        try:
+            os.makedirs(os.path.join(*pth.split("/")))
+        except OSError:
+            pass
         for i, model in enumerate(self.models):
             model.save(pth)
 

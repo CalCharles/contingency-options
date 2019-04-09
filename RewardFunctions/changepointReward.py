@@ -54,12 +54,13 @@ class ChangepointReward():
         if self.tail[0] == "Action":
             # print(obj_dumps, self.tail[0])
             merged = hstate
+            corr_state = []
             # correlate_trajectory = get_individual_data(self.tail[0], obj_dumps, pos_val_hash=2)
         else:
             corr_state = get_individual_data(self.tail[0], [state[1]], pos_val_hash=1)[0]
             merged = np.concatenate([hstate, corr_state])
             # print(pytorch_model.wrap(merged))
-        return merged
+        return merged, [len(hstate), len(corr_state)]
 
 
     def get_trajectories(self, full_states):
@@ -82,7 +83,7 @@ class ChangepointReward():
 
 class ChangepointDetectionReward(ChangepointReward):
     def __init__(self, model, args, desired_mode):
-        super(ChangepointDetectionReward, self).__init__(model, args)
+        super().__init__(model, args)
         # self.traj_dim = args.traj_dim
         self.desired_mode = desired_mode
         self.seg_reward = args.segment

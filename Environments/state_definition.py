@@ -107,6 +107,7 @@ class StateGet():
 		''' 
 		state is as defined in the environment class, that is, a tuple of
 			(raw_state, factor_state)
+		returns: raw_state, responsibility (number of values associated with input pair)
 		'''
 		pass
 
@@ -131,15 +132,20 @@ class GetState(StateGet):
 		# TODO: does not work on combination of higher dimensions
 		# TODO: order of input matters/ must be fixed
 		self.shape = np.sum([self.state_shape[state_form[1]] for state_form in state_forms])
+		self.shapes = {(state_form[0], state_form[1]): self.state_shape[state_form[1]] for state_form in state_forms} # dimensionality for each component
+		self.fnames = [state_form[1] for state_form in state_forms]
 		self.names = [state_form[0] for state_form in state_forms]
 		self.name = "-".join([s[0] for s in state_forms] + [s[1] for s in state_forms])
 		self.functions = [self.state_functions[state_form[1]] for state_form in state_forms]
 
 	def get_state(self, state):
 		estate = []
+		resp = []
 		for name, f in zip(self.names, self.functions):
-			estate += f.compute_comparison(state, self.target, name)
-		return np.array(estate)
+			comp = f.compute_comparison(state, self.target, name)
+			resp.append(len(comp))
+			estate += comp
+		return np.array(estate), resp 
 
 class GetRaw(StateGet):
 	'''
@@ -153,32 +159,38 @@ class GetRaw(StateGet):
 		self.shape = np.sum(state_shape)		
 
 	def get_state(self, state):
-		return state[0].flatten()
+		raw = state[0].flatten()
+		return raw, [len(raw)]
 
-def load_states(state_function, pth, length_constraint=50000):
+def load_states(state_function, pth, length_constraint=50000, use_raw = False):
 	raw_files = []
-	for root, dirs, files in os.walk(pth, topdown=False):
-		dirs.sort(key=lambda x: int(x))
-		print(pth, dirs)
-		for d in dirs:
-			try:
-				for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
-					raw_files.append(imio.imread(p))
-					if len(raw_files) > length_constraint:
-						raw_files.pop(0)
-			except OSError as e:
-				# reached the end of the file
-				pass
+	if use_raw:
+		for root, dirs, files in os.walk(pth, topdown=False):
+			dirs.sort(key=lambda x: int(x))
+			print(pth, dirs)
+			for d in dirs:
+				try:
+					for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
+						raw_files.append(imio.imread(p))
+						if len(raw_files) > length_constraint:
+							raw_files.pop(0)
+				except OSError as e:
+					# reached the end of the file
+					pass
 	dumps = read_obj_dumps(pth, i=-1, rng = length_constraint)
 	print(len(raw_files), len(dumps))
 	if len(raw_files) < len(dumps):
 		# raw files not saved for some reason, which means use a dummy array of the same length
 		raw_files = list(range(len(dumps)))
 	states = []
+	resps = []
 	for state in zip(raw_files, dumps):
-		states.append(state_function(state))
+		sv, resp = state_function(state)
+		states.append(sv)
+		resps.append(np.array(resp))
 	states = np.stack(states, axis=0)
-	return states
+	resps = np.stack(resps, axis=0)
+	return states, resps
 
 
 def compute_minmax(state_function, pth):
@@ -189,10 +201,12 @@ def compute_minmax(state_function, pth):
 	saved_minmax_pth = os.path.join(pth, state_function.name + "_minmax.npy")
 	print(saved_minmax_pth)
 	try:
+		print("loaded minmax from: ", saved_minmax_pth)
 		minmax = np.load(saved_minmax_pth)
 	except FileNotFoundError as e:
 		print("not loaded", saved_minmax_pth)
-		states = load_states(state_function.get_state, pth)
+		use_raw = 'raw' in state_function.names
+		states, resps = load_states(state_function.get_state, pth, use_raw = use_raw) # TODO: no normalization for raw states (not implemented)
 		minmax = (np.min(states, axis=0), np.max(states, axis=0))
 		np.save(saved_minmax_pth, minmax)
 	print(minmax)

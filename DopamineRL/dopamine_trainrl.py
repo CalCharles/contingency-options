@@ -66,11 +66,11 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
         rollouts.cuda()
         for step in range(args.num_steps):
             fcnt += 1
-            current_state = proxy_environment.getHistState()
+            current_state, current_resp = proxy_environment.getHistState()
             estate = proxy_environment.getState()
             reward = proxy_environment.computeReward(rollouts, 1)
             # print(current_state, reward[train_models.option_index])
-            action = train_models.currentModel().forward(current_state, pytorch_model.unwrap(reward[train_models.option_index]))
+            action = train_models.currentModel().forward(current_state, current_resp, pytorch_model.unwrap(reward[train_models.option_index]))
             # print("ap", action)
             action = pytorch_model.wrap([action])
             cp_state = proxy_environment.changepoint_state([raw_state])
@@ -79,7 +79,7 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
             # print("step states (cs, s, cps, act)", current_state, estate, cp_state, action) 
             # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
 
-            state, raw_state, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
+            state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
             # print("step check (al, s)", action_list, state)
             # learning_algorithm.interUpdateModel(step)
             #### logging

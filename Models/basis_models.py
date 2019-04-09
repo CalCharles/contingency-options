@@ -7,13 +7,15 @@ import torch.optim as optim
 from Models.models import Model, pytorch_model
 
 class BasisModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, addbias=False, param_dim=-1):
+    def __init__(self, **kwargs):
         ''' 
         initializes parameters and basis relations. 1 is fully independent (factor+1 * num_inputs) number of bases
         2 implies either time correlated (12), or state correlated(22), or both (02) (using tens place) (if input dim 4, around 40 is max order)
         3 implies fully correlated (factor+1 ^ num_inputs)
         '''
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None, param_dim=param_dim)
+        super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
+        addbias = default_val_arg(kwargs, 'addbias', False)
         self.num_stack = args.num_stack
         self.dim = num_inputs // self.num_stack
         self.order = args.order + 1 # include zero order
@@ -124,24 +126,24 @@ class BasisModel(Model):
         x = torch.mm(x, self.basis_matrix)
         return x
 
-    def forward(self, inputs):
-        x = self.hidden(inputs)
-        # print("xbasis", x.shape)
-        Qvals = self.QFunction(x)
-        aprobs = self.action_probs(x)
-        values = Qvals.max(dim=1)[0]
-        probs = F.softmax(aprobs, dim=1)
-        # print("probs", probs)
-        log_probs = F.log_softmax(aprobs, dim=1)
+    # def forward(self, inputs):
+    #     x = self.hidden(inputs)
+    #     # print("xbasis", x.shape)
+    #     Qvals = self.QFunction(x)
+    #     aprobs = self.action_probs(x)
+    #     values = Qvals.max(dim=1)[0]
+    #     probs = F.softmax(aprobs, dim=1)
+    #     # print("probs", probs)
+    #     log_probs = F.log_softmax(aprobs, dim=1)
 
-        dist_entropy = -(log_probs * probs).sum(-1).mean()
+    #     dist_entropy = -(log_probs * probs).sum(-1).mean()
 
-        # print("xval", x)
-        return values, dist_entropy, aprobs, Qvals
+    #     # print("xval", x)
+    #     return values, dist_entropy, aprobs, Qvals
 
 class FourierBasisModel(BasisModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = None, param_dim=param_dim)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         '''
         factor is the order
         layers defines the variate (1 = univariate, 2 = paired, 3=all)
@@ -180,8 +182,8 @@ class FourierBasisModel(BasisModel):
         return torch.stack(bat)
 
 class GaussianBasisModel(BasisModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None, param_dim=-1):
-        super(GaussianBasisModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None, param_dim=param_dim)
+    def __init__(self, **kwargs):
+        super(GaussianBasisModel, self).__init__(**kwargs)
         '''
         factor is the order
         layers defines the variate (1 = univariate, 2 = paired, 3=all)
@@ -208,9 +210,9 @@ class GaussianBasisModel(BasisModel):
 
     def basis_fn(self, inputs):
         # print("minmax", self.min_, self.max_)
-        if self.minmax is not None and self.use_normalize:
-            # print(inputs)
-            inputs = self.normalize(inputs)
+        # if self.minmax is not None and self.use_normalize:
+        #     # print(inputs)
+        #     inputs = self.normalize(inputs)
             # print(inputs)
         # for loops are supposed to be bad practice, but we will just keep these for now
         bat = []
@@ -229,11 +231,12 @@ class GaussianBasisModel(BasisModel):
         return torch.stack(bat)
 
 class GaussianMultilayerModel(GaussianBasisModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None, param_dim=-1):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax,sess = sess, param_dim=param_dim)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         '''
         num_population is used as the size of the last layer (don't mix evolutionary and gaussian basis for now)        
         '''
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         print("basis size", self.basis_size)
         # TODO: merge with single basis model
         if args.num_layers == 0:
@@ -258,7 +261,7 @@ class GaussianMultilayerModel(GaussianBasisModel):
         self.reset_parameters()
         # print("done initializing")
 
-    def hidden(self, inputs):
+    def hidden(self, inputs, resp):
         x = self.basis_fn(inputs) # TODO: dimension
         # print(self.basis_matrix.shape, x.shape)
         # print("xprebasis", x, self.basis_matrix)
@@ -275,24 +278,25 @@ class GaussianMultilayerModel(GaussianBasisModel):
             x = self.acti(x)
         return x
 
-    def forward(self, inputs):
-        x = self.hidden(inputs)
-        Qvals = self.QFunction(x)
-        aprobs = self.action_probs(x)
-        # print("after", aprobs)
-        values = self.critic_linear(x) #Qvals.max(dim=1)[0]
-        probs = F.softmax(aprobs, dim=1)
-        # print("probs", probs)
-        log_probs = F.log_softmax(aprobs, dim=1)
+    # def forward(self, inputs, resp):
+    #     x = self.hidden(inputs, resp)
+    #     Qvals = self.QFunction(x)
+    #     aprobs = self.action_probs(x)
+    #     # print("after", aprobs)
+    #     values = self.critic_linear(x) #Qvals.max(dim=1)[0]
+    #     probs = F.softmax(aprobs, dim=1)
+    #     # print("probs", probs)
+    #     log_probs = F.log_softmax(aprobs, dim=1)
 
-        dist_entropy = -(log_probs * probs).sum(-1).mean()
-        # print(probs)
-        # print("xval", x)
-        return values, dist_entropy, probs, Qvals
+    #     dist_entropy = -(log_probs * probs).sum(-1).mean()
+    #     # print(probs)
+    #     # print("xval", x)
+    #     return values, dist_entropy, probs, Qvals
 
 def GaussianDistributionModel(GaussianBasisModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None,sess = None, param_dim=-1):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess, param_dim=param_dim)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.l1 = nn.Linear(self.basis_size, args.num_population)
         self.value_bounds = args.value_bounds
         self.num_value_atoms = args.num_value_atoms
@@ -300,7 +304,7 @@ def GaussianDistributionModel(GaussianBasisModel):
         self.value_support = pytorch_model.wrap([self.value_bounds[0] + (i * self.dz) for i in range(self.num_value_atoms)], cuda = args.cuda)
         self.value_support.requires_grad = False
 
-    def forward(self, x):
+    def forward(self, x, resp):
         x = self.basis_fn(x) # TODO: dimension
         # print(self.basis_matrix.shape, x.shape)
         # print("xprebasis", x, self.basis_matrix)

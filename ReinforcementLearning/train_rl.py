@@ -48,17 +48,20 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         train_models.initialize(args, len(reward_classes), state_class)
         train_models.session(args)
         proxy_environment.duplicate(args)
+    train_models.train()
     proxy_environment.set_save(0, args.save_dir, args.save_recycle)
     learning_algorithm.initialize(args, train_models)
     print(proxy_environment.get_names())
     state = pytorch_model.wrap(proxy_environment.getState(), cuda = args.cuda)
-    hist_state = pytorch_model.wrap(proxy_environment.getHistState(), cuda = args.cuda)
+    cs, cr = proxy_environment.getHistState()
+    hist_state = pytorch_model.wrap(cs, cuda = args.cuda)
     raw_state = base_env.getState()
+    resp = proxy_environment.getResp()
     cp_state = proxy_environment.changepoint_state([raw_state])
     # print("initial_state (s, hs, rs, cps)", state, hist_state, raw_state, cp_state)
     # print(cp_state.shape, state.shape, hist_state.shape, state_class.shape)
     print(args.trace_len, args.trace_queue_len)
-    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, 
+    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, cr.flatten().shape[0],
         state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, args.trace_len, 
         args.trace_queue_len, len(train_models.models), cp_state[0].shape, args.lag_num, args.cuda)
     option_actions = {option.name: collections.Counter() for option in train_models.models}
@@ -73,6 +76,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     option_counter = collections.Counter()
     option_value = collections.Counter()
     trace_queue = [] # keep the last states until end of trajectory (or until a reset), and dump when a reward is found
+    swap = True
     for j in range(args.num_iters):
         rollouts.set_parameters(learning_algorithm.current_duration * args.reward_check + 1)            
         raw_actions = []
@@ -83,18 +87,18 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             for m in range(args.reward_check):
                 fcnt += 1
                 total_steps += 1
-                current_state = proxy_environment.getHistState()
+                current_state, current_resp = proxy_environment.getHistState()
                 estate = proxy_environment.getState()
-                values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0))
+                values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0), current_resp.unsqueeze(0))
                 v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
                 action = behavior_policy.take_action(ap, qv)
                 cp_state = proxy_environment.changepoint_state([raw_state])
                 # print(state, action)
-                rollouts.insert(total_steps, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state[0], pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda))
+                rollouts.insert(total_steps, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state[0], pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), current_resp)
                 # print("step states (cs, ns, cps, act)", current_state, estate, cp_state, action) 
                 # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
                 trace_queue.append((current_state.clone().detach(), action.clone().detach()))
-                state, raw_state, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
+                state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
                 # print(action_list, action)
                 # print("step check (al, s)", action_list, state)
                 #### logging
@@ -110,7 +114,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                         trace_queue = rollouts.insert_trace(trace_queue)
                         trace_queue = []
             # print(m, args.reward_check)
-            rewards = proxy_environment.computeReward(rollouts, m+1)
+            rewards = proxy_environment.computeReward(m+1)
+            proxy_environment.determine_swaps(m+1, needs_rewards=False) # doesn't need to generate rewards
             # print("reward time", time.time() - start)
             # print("rewards", torch.sum(rewards))
             rollouts.insert_rewards(rewards, last_total_steps)
@@ -127,8 +132,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
 
             # print("steptime", time.time() - start)
         # start = time.time()
-        current_state = proxy_environment.getHistState()
-        values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0))
+        current_state, current_resp = proxy_environment.getHistState()
+        values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0), current_resp.unsqueeze(0))
         v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
         action = behavior_policy.take_action(ap, qv)
         trace_queue.append((current_state.clone().detach(), action.clone().detach()))
@@ -137,7 +142,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
 
         cp_state = proxy_environment.changepoint_state([raw_state])
-        rollouts.insert(total_steps + 1, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), done=done) # inserting the last state and unused action
+        rollouts.insert(total_steps + 1, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), current_resp, done=done) # inserting the last state and unused action
         rollouts.cut_current(total_steps + 1)
         # print("rew, state", rollouts.rewards[0,-50:], rollouts.extracted_state[-50:])
         # print("inserttime", time.time() - start)
@@ -165,7 +170,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         final_rewards.append(reward_total)
         #### logging
         # start = time.time()
-        if step != 0 and j >= args.warm_up:
+        if step != 0 and j >= args.warm_up: # TODO: clean up this to learning algorithm?
             value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = learning_algorithm.step(args, train_models, rollouts)
             if args.dist_interval != -1 and j % args.dist_interval == 0:
                 learning_algorithm.distibutional_sparcity_step(args, train_models, rollouts)
@@ -229,3 +234,5 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             final_rewards = list()
             total_duration = 0
         #### logging
+
+    proxy_environment.close_files()

@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 
 
 class ImageModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess, param_dim=param_dim)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         # TODO: assumes images of size 84x84, make general
         self.conv1 = nn.Conv2d(1, 2 * factor, 8, stride=4)
         self.conv2 = nn.Conv2d(2 * factor, 4 * factor, 4, stride=2)
@@ -24,7 +25,7 @@ class ImageModel(Model):
         self.layers.append(self.linear1)
         self.reset_parameters()
 
-    def hidden(self, inputs):
+    def hidden(self, inputs, resp):
         norm_term = 1.0
         if self.use_normalize:
             norm_term =  255.0
@@ -43,14 +44,15 @@ class ImageModel(Model):
         x = self.acti(x)
         return x
 
-    def forward(self, inputs):
-        x = self.hidden(inputs)
-        values, dist_entropy, probs, Q_vals = super().forward(x)
-        return values, dist_entropy, probs, Q_vals
+    # def forward(self, inputs, resp):
+    #     x = self.hidden(inputs, resp)
+    #     values, dist_entropy, probs, Q_vals = super().forward(x)
+    #     return values, dist_entropy, probs, Q_vals
 
 class ObjectSumImageModel(ImageModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess, param_dim=param_dim)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         # TODO: assumes images of size 84x84
         # TODO: only handles bounds as input, and no object shape. If useful, we would need both
         # TODO: valid input orders: 83, 75, 67, 59, 51, 43, 35
@@ -80,7 +82,7 @@ class ObjectSumImageModel(ImageModel):
 
     def create_image(self, inputs): # currently, the stack is essentially a motion blurred image
         # print(inputs.shape)
-        inputs = self.normalize(inputs)
+        # inputs = self.normalize(inputs)
         batch = []
         for dpt in inputs:
             image = torch.zeros(self.order ** 2)
@@ -97,13 +99,13 @@ class ObjectSumImageModel(ImageModel):
         im = torch.stack(batch, dim=0)
         return im.unsqueeze(1)
 
-    def hidden(self, inputs):
+    def hidden(self, inputs, resp):
         x = self.create_image(inputs)
         return super().hidden(x)
 
-    def forward(self, inputs):
-        x = self.create_image(inputs)
-        values, dist_entropy, probs, Q_vals = super().forward(x)
-        return values, dist_entropy, probs, Q_vals
+    # def forward(self, inputs, resp):
+    #     x = self.hidden(inputs)
+    #     values, dist_entropy, probs, Q_vals = super().forward(x, resp)
+    #     return values, dist_entropy, probs, Q_vals
 
 

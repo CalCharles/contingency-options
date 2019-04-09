@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
 import copy, os
+from file_management import default_value_arg
 
 class pytorch_model():
     def __init__(self, combiner=None, loss=None, reducer=None, cuda=True):
@@ -31,9 +32,15 @@ class pytorch_model():
     def concat(data, axis=0):
         return torch.cat(data, dim=axis)
 
+
+
 class Model(nn.Module):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
+    def __init__(self, **kwargs):
         super(Model, self).__init__()
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
+        self.minmax = default_value_arg(kwargs, 'minmax', None)
+        self.name = default_value_arg(kwargs, 'name', 'option')
+        self.no_preamble = default_value_arg(kwargs, 'no_preamble', False)
         num_inputs = int(num_inputs)
         num_outputs = int(num_outputs)
         self.num_layers = args.num_layers
@@ -41,10 +48,9 @@ class Model(nn.Module):
             self.insize = num_inputs
         else:
             self.insize = max(num_outputs * factor * factor, num_outputs)
-        self.minmax = minmax
         print("MINMAX", self.minmax)
-        if minmax is not None:
-            self.minmax = (torch.cat([pytorch_model.wrap(minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
+        if self.minmax is not None:
+            self.minmax = (torch.cat([pytorch_model.wrap(self.minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(self.minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
             for mm in self.minmax:
                 mm.requires_grad = False
         print("MINMAX", self.minmax)
@@ -57,7 +63,6 @@ class Model(nn.Module):
         self.QFunction = nn.Linear(self.insize, num_outputs)
         self.action_probs = nn.Linear(self.insize, num_outputs)
         self.layers = [self.critic_linear, self.time_estimator, self.QFunction, self.action_probs]
-        self.name = name
         self.iscuda = args.cuda # TODO: don't just set this to true
         self.use_normalize = args.normalize
         self.init_form = args.init_form 
@@ -72,6 +77,8 @@ class Model(nn.Module):
             self.acti = F.tanh
         self.test = not args.train # testing mode for evaluation
             
+    def get_args(self, kwargs):
+        return kwargs['args'], kwargs['num_inputs'], kwargs['num_outputs'], kwargs['factor']
 
     def reset_parameters(self):
         relu_gain = nn.init.calculate_gain('relu')
@@ -90,7 +97,14 @@ class Model(nn.Module):
                     torch.nn.init.eye_(layer.weight.data)
                 if layer.bias is not None:                
                     nn.init.uniform_(layer.bias.data, 0.0, 1e-6)
-        self.count_parameters(reuse=False)
+        print("parameter number", self.count_parameters(reuse=False))
+
+    def preamble(self, x, resp):
+        # if self.no_preamble:
+        if self.minmax is not None and self.use_normalize:
+            x = self.normalize(x)
+        x = x * self.scale
+        return x
 
         # nn.init.uniform_(self.critic_linear.weight.data, .9 / self.insize, 1.1 / self.insize)
         # nn.init.uniform_(self.time_estimator.weight.data, .9 / self.insize, 1.1 / self.insize)
@@ -129,14 +143,13 @@ class Model(nn.Module):
         dist_entropy = -(log_probs * probs).sum(-1).mean()
         return values, dist_entropy, probs, Q_vals
 
-
-    def forward(self, x):
+    def forward(self, x, resp):
         '''
-        TODO: make use of time_estimator?, link up Q vals and action probs
+        TODO: make use of time_estimator, link up Q vals and action probs
         TODO: clean up cuda = True to something that is actually true
-        input: [batch size, state size] (TODO: no multiple processes)
-        output [batch size, 1], [batch size, 1], [batch_size, num_actions], [batch_size, num_actions]
         '''
+        x = self.preamble(x, resp)
+        x = self.hidden(x, resp)
         values, dist_entropy, probs, Q_vals = self.last_layer(x)
         return values, dist_entropy, probs, Q_vals
 
@@ -188,9 +201,9 @@ class Model(nn.Module):
 
 
 class BasicModel(Model):    
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None, param_dim=-1):
-        super(BasicModel, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None, param_dim=param_dim)
-        factor = int(args.factor)
+    def __init__(self, **kwargs):
+        super(BasicModel, self).__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.hidden_size = self.num_inputs*factor*factor // min(2,factor)
         print("Network Sizes: ", self.num_inputs, self.insize, self.hidden_size)
         # self.l1 = nn.Linear(self.num_inputs, self.num_inputs*factor*factor)
@@ -212,11 +225,11 @@ class BasicModel(Model):
         self.train()
         self.reset_parameters()
 
-    def hidden(self, x):
+    def hidden(self, x, resp):
         # print(x.shape)
-        if self.minmax is not None and self.use_normalize:
-            x = self.normalize(x)
-        x = x * self.scale
+        # if self.minmax is not None and self.use_normalize:
+        #     x = self.normalize(x)
+        # x = x * self.scale
         # if torch.isnan(x.sum()):
         #     print("in", x)
         # inp = x
@@ -241,30 +254,6 @@ class BasicModel(Model):
         #     print("total", x.sum().detach(), self.l1.weight.abs().sum().detach(), self.action_probs.weight.abs().sum().detach())
         return x
 
-
-
-    def forward(self, x):
-        '''
-        TODO: make use of time_estimator, link up Q vals and action probs
-        TODO: clean up cuda = True to something that is actually true
-        '''
-        x = self.hidden(x)
-        values, dist_entropy, probs, Q_vals = super().forward(x)
-        # print(self.l2.weight)
-        # print(x.shape)
-        # action_probs = self.action_probs(x)
-        # # print(action_probs)
-        # Q_vals = self.QFunction(x)
-        # # print(self.action_probs.weight)
-        # values = self.critic_linear(x)
-        # probs = F.softmax(action_probs, dim=1)
-        # log_probs = F.log_softmax(action_probs, dim=1)
-        # dist_entropy = -(log_probs * probs).sum(-1).mean()
-        # print("lp, p", action_probs, log_probs, probs)
-        # print(values.shape, probs.shape, dist_entropy.shape, Q_vals.shape)
-
-        return values, dist_entropy, probs, Q_vals
-
     def compute_layers(self, x):
         layer_outputs = []
         if self.minmax is not None and self.use_normalize:
@@ -281,8 +270,9 @@ class BasicModel(Model):
         return layer_outputs
 
 class DistributionalModel(BasicModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess = None, param_dim=-1):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess = sess, param_dim=param_dim)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.value_bounds = args.value_bounds
         self.num_value_atoms = args.num_value_atoms
         self.dz = (self.value_bounds[1] - self.value_bounds[0]) / (self.num_value_atoms - 1)
@@ -292,8 +282,8 @@ class DistributionalModel(BasicModel):
         self.layers.append(value_distribution)
 
     def forward(self, x):
-        if self.minmax is not None and self.use_normalize:
-            x = self.normalize(x)
+        # if self.minmax is not None and self.use_normalize:
+        #     x = self.normalize(x)
         # print("normin", x)
         if self.num_layers > 0:
             x = self.l1(x)

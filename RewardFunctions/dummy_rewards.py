@@ -9,7 +9,7 @@ class BounceReward(ChangepointReward):
     def __init__(self, vel, args):
         super().__init__(None, args)
         self.anybounce = False
-        self.desired_vels = [torch.tensor([-2.,-1.]).cuda(), torch.tensor([-1.,-1.]).cuda(), torch.tensor([-1.,1.]).cuda(), torch.tensor([-2.,1.]).cuda()]
+        self.desired_vels = [pytorch_model.wrap([-2.,-1.], cuda=args.cuda), pytorch_model.wrap([-1.,-1.], cuda=args.cuda), pytorch_model.wrap([-1.,1.], cuda=args.cuda), pytorch_model.wrap([-2.,1.], cuda=args.cuda)]
         if vel == -1:
             self.anybounce = True
         self.desired_vel = self.desired_vels[0]
@@ -71,7 +71,7 @@ class BounceReward(ChangepointReward):
                         rewards.append(-1)
                     else:
                         rewards.append(0)
-        return pytorch_model.wrap(rewards, cuda=True)
+        return pytorch_model.wrap(rewards, cuda=self.cuda)
 
 class Xreward(ChangepointReward):
     def __init__(self, args): 
