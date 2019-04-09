@@ -92,3 +92,9 @@ def get_individual_data(name, obj_dumps, pos_val_hash=3):
         else:
             data.append(time_dict[name])
     return np.array(data)
+
+def default_value_arg(kwargs, key, value):
+    if key in kwargs:
+        return kwargs[key]
+    else:
+        return value

@@ -135,6 +135,9 @@ def get_args():
                         help='the learning rate for the stein steps (default .05, not used)')
     parser.add_argument('--kernel-form',  default="",
                         help='name of kernel function used (defined in ReinforcementLearning.kernels')
+    # option time determination
+    parser.add_argument('--swap-form', default="dense",
+                    help='choose how often to check for new actions, where dense is every time step, and "reward" is when the proxy environment gets reward')
 
     # basis function parameters
     parser.add_argument('--period', type=float, default=1,
@@ -145,6 +148,14 @@ def get_args():
                         help='decides order of the basis functions (related to number of basis functions)')
     parser.add_argument('--connectivity', type=int, default=1,
                         help='decides the amount the basis functions are connected (1, 2, 12, 22, 3)')
+    # Transformer Network parameters
+    parser.add_argument('--key-dim', type=int, default=1,
+                        help='decides the amount the basis functions are connected (1, 2, 12, 22, 3)')
+    parser.add_argument('--value-dim', type=int, default=1,
+                        help='decides the amount the basis functions are connected (1, 2, 12, 22, 3)')
+    parser.add_argument('--post-transform-form', default='basic',
+                        help='has the same inputs as model-form, the model after the transform')
+
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,
                     help='percentage of random actions in epsilon greedy')
@@ -155,10 +166,11 @@ def get_args():
     parser.add_argument('--behavior-policy', default='',
                         help='defines the behavior policy, as defined in BehaviorPolicies.behavior_policies')
 
-
     # pretraining arguments TODO: not implemented
     parser.add_argument('--pretrain-iterations', type=int, default=-1,
                     help='number of time steps to run the pretrainer using PPO on optimal demonstration data, -1 means not used (default: -1)')
+    parser.add_argument('--pretrain-target', type=int, default=0,
+                    help='pretrain either with actions (0) or outputs (1) (default: -1)')
     # Reinforcement model settings
     parser.add_argument('--optimizer-form', default="",
                         help='choose the optimizer form, which is defined in ReinforcementLearning.learning_algorithms')
@@ -246,9 +258,9 @@ def get_args():
     parser.add_argument('--changepoint-name', default='changepoint',
                         help='name to save changepoint related values')
     parser.add_argument('--champ-parameters', default=["Paddle"], nargs='+',
-                    help='parameters for champ in the order len_mean, len_sigma, min_seg_len, max_particles, model_sigma, dynamics model enum (0 is position, 1 is velocity, 2 is displacement). Pre built Paddle and Ball can be input as "paddle", "ball"')
+                        help='parameters for champ in the order len_mean, len_sigma, min_seg_len, max_particles, model_sigma, dynamics model enum (0 is position, 1 is velocity, 2 is displacement). Pre built Paddle and Ball can be input as "paddle", "ball"')
     parser.add_argument('--window', type=int, default=3,
-                help='A window over which to compute changepoint statistics')
+                        help='A window over which to compute changepoint statistics')
     # environmental variables
     parser.add_argument('--gpu', type=int, default=0,
                         help='gpu number to use (default: 0)')
