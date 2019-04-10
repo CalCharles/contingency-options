@@ -99,6 +99,40 @@ def generate_trace_training(actions, rewards, states, resps, num_steps):
     trace_distance = [np.array(vec) for vec in trace_distance]
     return trace_actions, trace_states, trace_resps
 
+def generate_distilled_training(rewards):
+    indexes = []
+    all_rewards = np.sum(rewards, axis=0)
+    all_indexes = np.where(all_rewards > .5)
+    match_indexes = [np.where((all_rewards + rewards[i]) > 1.0) for i in range(len(rewards))]
+    actions = []
+    ris = [0 for i in range(len(rewards))]
+    while True:
+        idxes = []
+        for i in range(len(rewards)):
+            if ris[i] < len(match_indexes[i])
+                idxes.append(match_indexes[i][ris[i]])
+            else:
+                idxes.append(len(rewards[0]) + 1) # a maximum value
+        action = np.argmin()
+        ris[action] += 1
+        actions.append(action)
+        if np.sum(ris) == len(all_indexes):
+            break
+    return np.array(actions), all_indexes
+
+def generate_target_training(actions, indexes, states, resps, state_class, num_steps):
+    train_states = []
+    train_actions = []
+    parameter_targets = []
+    indexes.append(len(states))
+    for a, idx1, idx2 in zip(actions, indexes[:-1], indexes[1:]):
+        param_target = state_class.determine_target(states[idx1:idx2])
+        train_states += states[idx1:idx2][:num_steps].tolist() # first 10 states after contact
+        train_resps += resps[idx1:idx2][:num_steps].tolist()
+        train_actions += [a] * len(states[idx1:idx2][:num_steps])
+        param_targets += [param_target] * len(states[idx1:idx2][:num_steps])
+    return np.array(train_actions), trace_states, trace_resps
+
 def generate_soft_dataset(states, resps, true_environment, reward_fns, args):
     pre_load_weights = args.load_weights
     args.load_weights = True

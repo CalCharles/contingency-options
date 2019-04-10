@@ -56,8 +56,8 @@ class RolloutOptionStorage(object):
             self.lag_masks = self.lag_masks.cuda()
             self.lag_resps = self.lag_resps.cuda()
 
-
         if buffer_steps > 0:
+            self.dilation_buffer_indexes = []
             self.state_queue = torch.zeros(buffer_steps, *self.extracted_shape).detach()
             self.current_state_queue = torch.zeros(buffer_steps, *self.current_shape).detach()
             self.action_probs_queue = torch.zeros(num_options, buffer_steps, action_space).detach()
@@ -277,16 +277,28 @@ class RolloutOptionStorage(object):
         self.epsilon[step].copy_(epsilon.squeeze())
         self.resp[step].copy_(resp.squeeze())
 
+    def insert_dilation(self, swap, step):
+        if swap:
+            self.dilation_buffer_indexes.append(self.buffer_at)
+            self.dilation_indexes.append(step)
+
+
     def insert_rewards(self, rewards, rewards_at):
         if self.buffer_steps > 0:
-            for oidx in range(rewards.size(0)):
-                for i, reward in enumerate(rewards[oidx]):
-                    self.reward_queue[oidx, (self.buffer_at + i - rewards.size(1)) % self.buffer_steps].copy_(reward)
+            # for oidx in range(rewards.size(0)):
+            #     for i, reward in enumerate(rewards[oidx]):
+            #         self.reward_queue[oidx, (self.buffer_at + i - rewards.size(1)) % self.buffer_steps].copy_(reward)
+            bef_zero = max(rewards.size(1) - self.buffer_at, 0)
+            if bef_zero:
+                self.reward_queue[:, -bef_zero:] = rewards[:, :bef_zero].detach()
+            self.reward_queue[:, max(self.buffer_at - rewards.size(1), 0):self.buffer_at] = rewards[:, bef_zero:].detach()
+
         num_rewards = rewards.size(1)
         if len(self.rewards) != len(rewards):
             self.rewards = torch.zeros(len(rewards), *tuple(self.rewards.shape[1:]))
         if (self.rewards[:, rewards_at:rewards_at + num_rewards].shape[1] != rewards.shape[1]):
             print(rewards_at, num_rewards, self.rewards.shape, self.rewards[:, rewards_at:rewards_at + num_rewards].shape[1], rewards.shape[1])
+        
         self.rewards[:, rewards_at:rewards_at + num_rewards] = rewards.detach()
         if self.iscuda:
             self.rewards = self.rewards.cuda()

@@ -129,9 +129,9 @@ class ProxyEnvironment():
         self.insert_extracted()
         self.changepoint_queue_len = args.changepoint_queue_len
         self.changepoint_shape = self.reward_fns[0].get_trajectories([proxy_chain[0].getState()]).shape[1:]
-        self.changepoint_queue = torch.zeros(self.changepoint_queue_len, *self.changepoint_shape)
-        self.changepoint_resp_queue = torch.zeros(self.changepoint_queue_len, *self.resp.shape)
-        self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long() # TODO: add responsibility to changepoints
+        self.changepoint_queue = torch.zeros(self.changepoint_queue_len, *self.changepoint_shape).detach()
+        self.changepoint_resp_queue = torch.zeros(self.changepoint_queue_len, *self.resp.shape).detach()
+        self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long().detach() # TODO: add responsibility to changepoints
         if self.iscuda:
             self.changepoint_queue = self.changepoint_queue.cuda()
             self.changepoint_action_queue = self.changepoint_action_queue.cuda()

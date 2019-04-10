@@ -47,7 +47,10 @@ class ChangepointReward():
 
     def get_state(self, state): # copy of get_trajectories, but for a single state
         # print(self.head)
-        hstate = get_individual_data(self.head, [state[1]], pos_val_hash=1)[0]
+        if self.head[0] == "Block": # TODO: make not hard coded
+            hstate = get_individual_data(self.head, [state[1]], pos_val_hash=3)[0]
+        else:
+            hstate = get_individual_data(self.head, [state[1]], pos_val_hash=1)[0]
         # TODO: automatically determine if correlate pos_val_hash is 1 or 2
         # TODO: multiple tail support
         # TODO: Separation of Interference and Contingent objects

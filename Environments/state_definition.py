@@ -52,6 +52,17 @@ class Acceleration(): # prox
 		self.lastpos = np.array(state[1][correlate][0])
 		return rval
 
+class BinaryExistence():
+	def compute_comparison(self, state, target, correlate):
+		obj_dump = state[1]
+		names = list(obj_dump.keys())
+		names.sort()
+		states = []
+		for name in names:
+			if name.find(correlate) != -1:
+				if obj_dump[name][1]:
+					states += obj_dump[name][1]
+		return states
 
 
 class Proximity(): # prox
@@ -65,6 +76,16 @@ class Full(): # full
 class Bounds(): # bounds
 	def compute_comparison(self, state, target, correlate):
 		return list(state[1][correlate][0])
+
+class MultiVisibleBounds(): # multi-object bounds
+	def compute_comparison(self, state, target, correlate):
+		states = []
+		obj_dump = state[1]
+		for name in obj_dump.keys():
+			if name.find(correlate) != -1:
+				if obj_dump[name][1]:
+					states += obj_dump[name][0]
+		return states
 
 class XProximity(): # bounds
 	def compute_comparison(self, state, target, correlate):
@@ -147,6 +168,62 @@ class GetState(StateGet):
 			estate += comp
 		return np.array(estate), resp 
 
+	def determine_delta_target(self, states, resps):
+		'''
+		given a set of values, determine if any of them changed. assumes target is the last resp
+		returns index of difference (assumes only 1), and index in the state of difference (assumes only 1)
+		'''
+		last_shape = self.shapes[(self.names[-1], self.fnames[-1])]
+		change_index = -1
+		for i, (s1, s2) in enumerate(zip(states[:-1], states[1:])):
+			diff = s1[-last_resp:] - s2[-last_resp:]
+			mag = np.linalg.norm(diff)
+			if mag > 0:
+				lidx = np.where(diff != 0)
+				at = (lidx + 1) // 3 # 2 and 3 hard coded as the x,y,attribute
+				state = s1[-last_resp:][lidx-2:lidx]
+				change_index = i
+		return change_index, at, state
+
+	def determine_target(self, states, resps):
+		'''
+		given a set of states, return the locations of the states for which the target disappeared
+		assumes only one change index, returns the first, -1 if no index
+		returns change index and changed state
+		'''
+		last_resp = np.sum(resps[0])
+		change_index = -1
+		for i, resp in enumerate(resps[1:]):
+			r = np.sum(resp)
+			if last_resp != r:
+				change_index = i + 1
+				break
+			last_resp = r
+		return_state = None
+		if change_index != -1:
+			r1, r2 = resps[change_index - 1], resps[change_index]
+			s1, s2 = states[change_index - 1], states[change_index]
+			rat = 0
+			for i, (rv1, rv2) in enumerate(zip(r1, r2)):
+				if rv1 != rv2: # assumes only one component of state has changed
+					s1, s2 = s1[rat:rat + rv1], s2[rat:rat+rv2]
+					break
+				else:
+					rat += rv1
+			shpe = self.shapes[(self.names[i], self.fnames[i])][0] # assumes 1D shape
+			s1, s2 = s1.reshape(len(sl) // shpe, shpe), s2.reshape(len(s2) // shpe, shpe) # hopefully reshape does as desired
+			l1, l2 = s1.shape[0], s2.shape[0]
+			sm1, sm2 = np.stack([s1 for s1 in s2.shape[0]]), np.stack([s2 for s2 in s1.shape[0]])
+			diff_mat = np.linalg.norm(sm1 - sm2.T, axis=2)
+			if l1 > l2: # an object disappeared
+				closest = np.argmin(np.min(diff_mat, axis=1))
+				return_state = s1[closest]
+			else: # an object appeared, there should never be l1 == l2
+				closest = np.argmin(np.min(diff_mat, axis=0))
+				return_state = s2[closest]
+		return change_index, closest, return_state
+
+
 class GetRaw(StateGet):
 	'''
 	gets a state with components as defined above
@@ -215,7 +292,7 @@ def compute_minmax(state_function, pth):
 
 
 
-state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), "vel": Velocity(), "acc": Acceleration(), "xprox": XProximity(),
+state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), 'vismulti': MultiVisibleBounds(), "vel": Velocity(), "acc": Acceleration(), "xprox": XProximity(),
 							"feature": Feature(), "raw": Raw(), "sub": Sub()}
 # TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ
 state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "acc": [2], "feature": [1], "raw": [64, 64], "sub": [4,4]}

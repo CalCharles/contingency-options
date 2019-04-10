@@ -796,10 +796,10 @@ class Evolutionary_optimizer(LearningOptimizer):
                         # print(i,j,s,e,returns[k, s:e].sum())
                         if self.reward_stopping: # specialized stopping return
                             if returns[k, s:e].sum() < .5: # TODO: negative rewards not hardcoded
-                                total_value += returns[k, s:e].sum() + (-(e-s) / self.sample_duration * .3)
+                                total_value += returns[k, s:e].sum() + (-(e-s) / self.sample_duration)
                             else:
                                 # total_value += returns[k, s:e].sum() * self.sample_duration / (e-s)
-                                total_value += returns[k, s:e].sum() * np.power((self.sample_duration - (e-s)) / self.sample_duration, 4)
+                                total_value += returns[k, s:e].sum() * (self.sample_duration - (e-s)) / self.sample_duration
                         else:
                             total_value += returns[k, s:e].sum()
                     total_value /= self.retest
@@ -1092,6 +1092,30 @@ class CMAES_optimizer(Evolutionary_optimizer):
             self.models.currentModel().best.set_parameters(best)
             self.models.currentModel().mean.set_parameters(mean)
         return None, None, None, None, None, None
+
+class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implement this
+    def initialize(self, args, train_models):
+        super().initialize(args, train_models)
+        for model in train_models.models:
+            self.optimizers.append(initialize_optimizer(args, model))
+
+    def step(self, args, train_models, rollouts):
+        self.step_counter += 1
+        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(sample_duration, rollouts, self.models.option_index, last_states=args.buffer_steps <= 0, last_buffer = True)    
+        values, dist_entropy, action_probs, qv = train_models.determine_action(current_state_eval)
+        values, action_probs, _ = train_models.get_action(values, action_probs, qv)
+        # print(state_eval, next_state_eval, rollout_rewards)
+        log_output_probs = torch.log(action_probs + 1e-10).gather(1, action_eval)
+        # print(torch.log(action_probs).gather(1, action_eval), torch.log(action_probs), action_eval)         
+        output_entropy = compute_output_entropy(args, action_probs, log_output_probs)
+        action_loss = (Variable(rollout_returns) * log_output_probs.squeeze()).mean()
+        # print(dist_entropy, output_entropy, action_probs, torch.sum(action_probs, dim=0))
+        entropy_loss = (dist_entropy - output_entropy) * args.entropy_coef
+        # entropy_loss = dist_entropy * args.entropy_coef
+        self.step_optimizer(self.optimizers[self.models.option_index], self.models.models[self.models.option_index],
+                action_loss + entropy_loss, RL=0)
+        return None, action_loss, dist_entropy, None, entropy_loss, log_output_probs
+
 
 # class SupervisedLearning_optimizer(LearningOptimizer): # TODO: implement this
 #     def initialize(self, args, train_models):
