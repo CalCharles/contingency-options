@@ -10,7 +10,7 @@ from Models.models import pytorch_model
 class RolloutOptionStorage(object):
     def __init__(self, num_processes, obs_shape, action_space, resp_len,
      extracted_shape, current_shape, buffer_steps, changepoint_queue_len,
-     trace_len, trace_queue_len, dilated_len, num_options, changepoint_shape, lag_num, cuda):
+     trace_len, trace_queue_len, num_options, changepoint_shape, lag_num, cuda):
         # TODO: storage does not currently support multiple processes, can be implemented
         self.num_processes = num_processes
         self.obs_shape = obs_shape
