@@ -727,7 +727,7 @@ class Evolutionary_optimizer(LearningOptimizer):
         reward of the form: [option num, batch size, 1]
         '''
         duration_check = ((step - self.last_swap) % self.sample_duration == 0 and step != 0)
-        early_stop = rewards.sum() > 0 and self.reward_stopping
+        early_stop = rewards.abs().sum() > 0 and self.reward_stopping
         # print((step - self.last_stop) % self.sample_duration)
         # late_stop = rewards.sum() > 0 and self.reward_stopping and duration_check
         if duration_check or early_stop:
@@ -735,7 +735,7 @@ class Evolutionary_optimizer(LearningOptimizer):
             ridx = step
             print(self.models.option_index, self.models.currentModel().current_network_index, duration_check, early_stop, self.last_swap, step, ridx)
             if early_stop:
-                ridx = step - pytorch_model.unwrap((self.reward_check - torch.argmax(rewards.sum(dim=0))))
+                ridx = step - pytorch_model.unwrap((self.reward_check - torch.argmax(rewards.abs().sum(dim=0))))
             self.sample_indexes[self.models.option_index][self.models.currentModel().current_network_index].append((self.last_swap, ridx))
             self.last_swap = step
             if self.OoO_eval:
@@ -1108,7 +1108,7 @@ class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implem
     def step(self, args, train_models, rollouts):
         self.step_counter += 1
         hindsight_indexes = self.get_hindsight_indexes(rollouts)
-        
+
         values, dist_entropy, action_probs, qv = train_models.determine_action(current_state_eval)
         values, action_probs, _ = train_models.get_action(values, action_probs, qv)
         # print(state_eval, next_state_eval, rollout_rewards)
