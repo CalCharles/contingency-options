@@ -69,6 +69,15 @@ class Proximity(): # prox
 	def compute_comparison(self, state, target, correlate):
 		return midpoint_separation((np.array(state[1][target][0]), np.array(state[1][correlate][0])))
 
+class MultiFull(): # multi-object bounds
+	def compute_comparison(self, state, target, correlate):
+		states = []
+		obj_dump = state[1]
+		for name in obj_dump.keys():
+			if name.find(correlate) != -1:
+				states += list(obj_dump[name][0]) + list(obj_dump[name][1])
+		return states
+
 class Full(): # full
 	def compute_comparison(self, state, target, correlate):
 		return list(state[1][correlate][0]) + list(state[1][correlate][1])
@@ -168,22 +177,24 @@ class GetState(StateGet):
 			estate += comp
 		return np.array(estate), resp 
 
-	def determine_delta_target(self, states, resps):
+	def determine_delta_target(self, states):
 		'''
 		given a set of values, determine if any of them changed. assumes target is the last resp
 		returns index of difference (assumes only 1), and index in the state of difference (assumes only 1)
 		'''
-		last_shape = self.shapes[(self.names[-1], self.fnames[-1])]
-		change_index = -1
+		last_shape = self.shapes[(self.names[-1], self.fnames[-1])][0] # assumes 1D
+		change_indexes,ats,rstates = [], [], []
 		for i, (s1, s2) in enumerate(zip(states[:-1], states[1:])):
-			diff = s1[-last_resp:] - s2[-last_resp:]
+			diff = s1[:last_shape] - s2[:last_shape]
 			mag = np.linalg.norm(diff)
+			# print(s1[:last_shape], s2[:last_shape], diff, mag)
+			# error
 			if mag > 0:
-				lidx = np.where(diff != 0)
-				at = (lidx + 1) // 3 # 2 and 3 hard coded as the x,y,attribute
-				state = s1[-last_resp:][lidx-2:lidx]
-				change_index = i
-		return change_index, at, state
+				lidx = np.where(diff != 0)[0][0]
+				ats.append((lidx + 1) // 3) # 2 and 3 hard coded as the x,y,attribute
+				rstates.append(s1[:last_shape][lidx-2:lidx])
+				change_indexes.append(i)
+		return change_indexes, ats, rstates
 
 	def determine_target(self, states, resps):
 		'''
@@ -292,10 +303,11 @@ def compute_minmax(state_function, pth):
 
 
 
-state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), 'vismulti': MultiVisibleBounds(), "vel": Velocity(), "acc": Acceleration(), "xprox": XProximity(),
-							"feature": Feature(), "raw": Raw(), "sub": Sub()}
-# TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ
-state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "acc": [2], "feature": [1], "raw": [64, 64], "sub": [4,4]}
+state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), 'vismulti': MultiVisibleBounds(), 
+					"vel": Velocity(), "acc": Acceleration(), "xprox": XProximity(), 'bin': BinaryExistence(),
+					"feature": Feature(), "raw": Raw(), "sub": Sub(), "multifull": MultiFull()}
+# TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ, bin has hardcoded size, as does multifull
+state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "acc": [2], 'bin': [100], "multifull": [300], "feature": [1], "raw": [64, 64], "sub": [4,4]}
 # class GetRaw(StateGet):
 # 	'''
 # 	Returns the raw_state

@@ -4,8 +4,9 @@ from arguments import get_args
 import numpy as np
 from Models.pretrain_models import random_actions, action_criteria, pretrain, range_Qvals,\
                                  Q_criteria, get_states, get_option_actions, get_option_rewards, \
-                                 generate_trace_training, generate_soft_dataset, supervised_criteria
-from RewardFunctions.dummy_rewards import BounceReward, Xreward
+                                 generate_trace_training, generate_soft_dataset, supervised_criteria, \
+                                 get_option_rewards, generate_distilled_training, generate_target_training
+from RewardFunctions.dummy_rewards import BounceReward, Xreward, BlockReward
 
 
 
@@ -35,15 +36,18 @@ if __name__ == "__main__":
         reward_classes = [BounceReward(-1, args)]
     elif args.reward_form == 'dir':
         reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
+    if args.reward_form == 'block':
+        reward_classes = [BlockReward(args)]
     true_environment = Paddle()
     if args.pretrain_target == 0:
-        states, resps, num_actions, state_class = get_states(args, true_environment, length_constraint = args.num_frames)
+        states, resps, num_actions, state_class, proxy_chain = get_states(args, true_environment, length_constraint = args.num_frames)
         actions = get_option_actions(args.record_rollouts, args.train_edge, num_actions, args.weighting_lambda, length_constraint = args.num_frames)
         rewards = get_option_rewards(args.record_rollouts, reward_classes, actions, length_constraint = args.num_frames)
         actions, states, resps = generate_trace_training(actions, rewards, states, resps, args.trace_len)
+        targets = None
         criteria = supervised_criteria
     elif args.pretrain_target == 1:
-        states, resps, num_actions, state_class = get_states(args, true_environment, length_constraint = args.num_frames)
+        states, resps, num_actions, state_class, proxy_chain = get_states(args, true_environment, length_constraint = args.num_frames)
         try:
             actions = np.load("actions.npy") # delete this in filesystem when you need new actions
         except FileNotFoundError as e:
@@ -51,6 +55,15 @@ if __name__ == "__main__":
             np.save("actions.npy", actions)
         states, resps = [states.copy() for _ in range(len(reward_classes))], [resps.copy() for _ in range(len(reward_classes))]
         criteria = supervised_criteria
+        targets = None
+    elif args.pretrain_target == 2:
+        states, resps, num_actions, state_class, proxy_chain = get_states(args, true_environment, length_constraint = args.num_frames)
+        actions = get_option_actions(args.record_rollouts, proxy_chain[-1].name.split("->")[0], 3, args.weighting_lambda, length_constraint = args.num_frames)
+        rewards = get_option_rewards(args.record_rollouts, [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)], actions, length_constraint=args.num_frames)
+        actions, indexes = generate_distilled_training(rewards)
+        num_actions = 4
+        actions, states, resps, targets = generate_target_training(actions, indexes, states, resps, state_class, reward_classes, args.record_rollouts, args.trace_len, num_actions, length_constraint= args.num_frames)
+        criteria = supervised_criteria
     # elif args.optimizer_form in ["DQN", "SARSA", "Dist"]: # dist might have mode collapse to protect against
     #     pass # TODO: implement
-    pretrain(args, true_environment, actions, num_actions, state_class, states, resps, criteria, reward_classes)
+    pretrain(args, true_environment, actions, num_actions, state_class, states, resps, targets, criteria, reward_classes)

@@ -1093,6 +1093,12 @@ class CMAES_optimizer(Evolutionary_optimizer):
             self.models.currentModel().mean.set_parameters(mean)
         return None, None, None, None, None, None
 
+def get_hindsight_indexes(rollouts):
+    if rollouts.buffer_steps > 0:
+        return rollouts.dilation_buffer_indexes
+    else:
+        return rollouts.dilation_indexes
+
 class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implement this
     def initialize(self, args, train_models):
         super().initialize(args, train_models)
@@ -1101,7 +1107,8 @@ class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implem
 
     def step(self, args, train_models, rollouts):
         self.step_counter += 1
-        state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(sample_duration, rollouts, self.models.option_index, last_states=args.buffer_steps <= 0, last_buffer = True)    
+        hindsight_indexes = self.get_hindsight_indexes(rollouts)
+        
         values, dist_entropy, action_probs, qv = train_models.determine_action(current_state_eval)
         values, action_probs, _ = train_models.get_action(values, action_probs, qv)
         # print(state_eval, next_state_eval, rollout_rewards)

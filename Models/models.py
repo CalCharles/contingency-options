@@ -47,7 +47,7 @@ class Model(nn.Module):
         if args.num_layers == 0:
             self.insize = num_inputs
         else:
-            self.insize = max(num_outputs * factor * factor, num_outputs)
+            self.insize = factor * factor // 2
         print("MINMAX", self.minmax)
         if self.minmax is not None:
             self.minmax = (torch.cat([pytorch_model.wrap(self.minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(self.minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
@@ -204,7 +204,7 @@ class BasicModel(Model):
     def __init__(self, **kwargs):
         super(BasicModel, self).__init__(**kwargs)
         args, num_inputs, num_outputs, factor = self.get_args(kwargs)
-        self.hidden_size = self.num_inputs*factor*factor // min(2,factor)
+        self.hidden_size = factor*factor*factor // min(4,factor)
         print("Network Sizes: ", self.num_inputs, self.insize, self.hidden_size)
         # self.l1 = nn.Linear(self.num_inputs, self.num_inputs*factor*factor)
         if args.num_layers == 1:

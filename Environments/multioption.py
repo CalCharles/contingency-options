@@ -1,4 +1,5 @@
 import glob, os, torch, copy
+import numpy as np
 from Models.models import pytorch_model, models
 
 # parameterized options argument: 0: no parametrization, 1: discrete parameters, 2: continuous parameters, 3: combination of discrete and continuous (not implemented)
@@ -26,11 +27,12 @@ class MultiOption():
         state_dim = state_class.flat_state_size() * args.num_stack
         if args.parameterized_option == 2:
             state_dim = state_dim + parameter_minmax[0].shape[0]
-            minmax = (np.hstack((minmax[0], parameter_minmax[0])) , np.hstack((minmax[1], parameter_minmax[1])))
+            if args.normalize:
+                minmax = (np.hstack((minmax[0], parameter_minmax[0])) , np.hstack((minmax[1], parameter_minmax[1])))
         if model_class is None:
             print(self.option_class)
             model = self.option_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, 
-                num_outputs=state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess)
+                num_outputs=state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
         else:
             model = model_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, 
                 num_outputs=state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
@@ -52,7 +54,7 @@ class MultiOption():
                 param = num_options
                 if args.parameterized_option == 2:
                     param = parameter_minmax[0].shape[0]
-                model = self.create_model(args, state_class, parameter_minmax, i, parameter=param)
+                model = self.create_model(args, state_class, parameter_minmax, 0, parameter=param)
                 # since name is args.unique_id + str(i), this means that unique_id should be the edge, in form head_tail
                 if args.cuda:
                     model = model.cuda()

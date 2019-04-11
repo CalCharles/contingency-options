@@ -41,11 +41,12 @@ def get_states(args, true_environment, length_constraint=50000):
         num_actions = len(environments[-1].reward_fns)
     else:
         num_actions = environments[-1].num_actions
+    print(environments[0], environments[1].name)
     state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
     use_raw = 'raw' in args.state_forms
     state_class.minmax = compute_minmax(state_class, dataset_path)
     states, resps = load_states(state_class.get_state, dataset_path, length_constraint = length_constraint, use_raw = use_raw)
-    return states, resps, num_actions, state_class
+    return states, resps, num_actions, state_class, environments
 
 def get_option_actions(pth, train_edge, num_actions, weighting_lambda, length_constraint = 50000):
     action_file = open(os.path.join(pth, train_edge + "_actions.txt"), 'r')
@@ -102,36 +103,48 @@ def generate_trace_training(actions, rewards, states, resps, num_steps):
 def generate_distilled_training(rewards):
     indexes = []
     all_rewards = np.sum(rewards, axis=0)
-    all_indexes = np.where(all_rewards > .5)
-    match_indexes = [np.where((all_rewards + rewards[i]) > 1.0) for i in range(len(rewards))]
+    all_indexes = np.where(all_rewards > .5)[0]
+    match_indexes = [np.where((all_rewards + rewards[i]) > 1.0)[0] for i in range(len(rewards))]
+    # print(all_rewards, rewards)
     actions = []
     ris = [0 for i in range(len(rewards))]
+    print(all_indexes.shape, [m.shape for m in match_indexes])
     while True:
         idxes = []
         for i in range(len(rewards)):
-            if ris[i] < len(match_indexes[i])
+            if ris[i] < len(match_indexes[i]):
                 idxes.append(match_indexes[i][ris[i]])
             else:
                 idxes.append(len(rewards[0]) + 1) # a maximum value
-        action = np.argmin()
+        action = np.argmin(idxes)
         ris[action] += 1
         actions.append(action)
         if np.sum(ris) == len(all_indexes):
             break
     return np.array(actions), all_indexes
 
-def generate_target_training(actions, indexes, states, resps, state_class, num_steps):
+def generate_target_training(actions, indexes, states, resps, state_class, reward_fns, dataset_path, num_steps, num_actions, length_constraint=50000):
     train_states = []
     train_actions = []
-    parameter_targets = []
+    train_resps = []
+    param_targets = []
+    indexes = indexes.tolist()
+    indexes = [0] + indexes
     indexes.append(len(states))
+    rstates, resps = load_states(reward_fns[0].get_state, dataset_path, length_constraint=length_constraint)
+    change_indexes, param_idx, hindsight_targets = reward_fns[0].state_class.determine_delta_target(rstates)
+    i = 0
+    ci = change_indexes[i]
     for a, idx1, idx2 in zip(actions, indexes[:-1], indexes[1:]):
-        param_target = state_class.determine_target(states[idx1:idx2])
-        train_states += states[idx1:idx2][:num_steps].tolist() # first 10 states after contact
-        train_resps += resps[idx1:idx2][:num_steps].tolist()
-        train_actions += [a] * len(states[idx1:idx2][:num_steps])
-        param_targets += [param_target] * len(states[idx1:idx2][:num_steps])
-    return np.array(train_actions), trace_states, trace_resps
+        while ci < idx1:
+            i += 1
+            ci = change_indexes[i]
+        if ci < idx2: # we hit a block
+            train_states += states[idx1:idx2][:num_steps].tolist() # first 10 states after contact
+            train_resps += resps[idx1:idx2][:num_steps].tolist()
+            train_actions += hot_actions([a], num_actions) * len(states[idx1:idx2][:num_steps])
+            param_targets += [hindsight_targets[i].tolist()] * len(states[idx1:idx2][:num_steps])
+    return np.array([train_actions]), np.array([train_states]), np.array([train_resps]), np.array(param_targets)
 
 def generate_soft_dataset(states, resps, true_environment, reward_fns, args):
     pre_load_weights = args.load_weights
@@ -174,14 +187,14 @@ def generate_soft_dataset(states, resps, true_environment, reward_fns, args):
 
 def random_actions(args, true_environment):
     # desired = pytorch_model.wrap(np.stack([desired[:] for i in range(len(train_models.models))], axis=1)) # replicating for different policies
-    states, num_actions, state_class = get_states(args, true_environment)
+    states, num_actions, state_class, proxy_chain = get_states(args, true_environment)
     actions = [np.random.randint(num_actions) for _ in range(args.num_stack, len(states))]
     actions = hot_actions(actions, num_actions)
     states = np.array([states[i-args.num_stack:i].flatten().tolist() for i in range(args.num_stack, len(states))])
     return np.array(actions), states, num_actions, state_class
 
 def range_Qvals(args, true_environment, minmax):
-    states, num_actions, state_class = get_states(args, true_environment)
+    states, num_actions, state_class, proxy_chain = get_states(args, true_environment)
     minr, maxr = minmax
     Qvals = [[minr + (maxr - minr) * np.random.rand()] * num_actions for _ in range(args.num_stack, len(states))]
     states = np.array([states[i-args.num_stack:i].flatten().tolist() for i in range(args.num_stack, len(states))])
@@ -261,7 +274,7 @@ def Q_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, tr
     optimizer.step()
     return loss
 
-def pretrain(args, true_environment, desired, num_actions, state_class, states, resps, criteria, reward_fns):
+def pretrain(args, true_environment, desired, num_actions, state_class, states, resps,  targets, criteria, reward_fns):
     # args = get_args()
     # true_environment = Paddle()
     # true_environment = PaddleNoBlocks()
@@ -283,19 +296,25 @@ def pretrain(args, true_environment, desired, num_actions, state_class, states, 
     if args.save_graph == "graph":
         save_dir = option_chain.save_dir
     proxy_environment.initialize(args, proxy_chain, reward_fns, state_class, behavior_policy=None)
-    fit(args, save_dir, true_environment, train_models, state_class, desired, states, resps, num_actions, criteria, proxy_environment, reward_fns)
+    fit(args, save_dir, true_environment, train_models, state_class, desired, states, resps, targets, num_actions, criteria, proxy_environment, reward_fns)
 
-def fit(args, save_dir, true_environment, train_models, state_class, desired, states, resps, num_actions, criteria, proxy_environment, reward_classes):
+def fit(args, save_dir, true_environment, train_models, state_class, desired, states, resps, targets, num_actions, criteria, proxy_environment, reward_classes):
+    parameter_minmax = None
+    if args.model_form.find("param") != -1:
+        parameter_minmax = (np.min(targets, axis=0), np.max(targets, axis=0))
+    print(parameter_minmax)
     if not args.load_weights:
-        train_models.initialize(args, len(reward_classes), state_class)
+        state_class.action_num = num_actions
+        train_models.initialize(args, len(reward_classes), state_class, parameter_minmax=parameter_minmax)
         proxy_environment.set_models(train_models)
     else:
-        train_models.initialize(args, len(reward_classes), state_class)
+        train_models.initialize(args, len(reward_classes), state_class, parameter_minmax=parameter_minmax)
         train_models.session(args)
         proxy_environment.duplicate(args)
     train_models.train()    
     # print(len([desired_actions[:] for i in range(len(train_models.models))]))
     print("train_models", len(train_models.models))
+    print("num states", len(states[0]))
     # desired = pytorch_model.wrap(np.stack([desired[:] for i in range(len(train_models.models))], axis=1)) # replicating for different policies
     optimizers = []
     min_batch = 10
@@ -316,7 +335,10 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
         total_loss = 0.0
         for i in range(args.num_iters):
             idxes = np.random.choice(list(range(len(odesired))), (batch_size,), replace=False)
-            start = np.random.randint(len(odesired))
+            param_vals = targets[idxes]
+            if args.model_form.find("param") != -1:
+                train_models.currentModel().option_values = pytorch_model.wrap(param_vals, cuda=args.cuda)
+            # start = np.random.randint(len(odesired))
             # idxes = [(idx + start) % len(odesired) for idx in range(batch_size)]
             # print(pytorch_model.wrap(ostates[idxes], cuda=args.cuda), pytorch_model.wrap(oresps[idxes], cuda=args.cuda))
             values, dist_entropy, action_probs, Q_vals = train_models.determine_action(pytorch_model.wrap(ostates[idxes], cuda=args.cuda), pytorch_model.wrap(oresps[idxes], cuda=args.cuda))

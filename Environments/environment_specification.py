@@ -162,6 +162,8 @@ class ProxyEnvironment():
                 pass
             self.save_files = []
             for name in self.get_names():
+                if name.find("->") != -1:
+                    name = name.split("->")[0] # use the base
                 f = open(os.path.join(self.save_path, name + "_actions.txt"), 'w')
                 print(os.path.join(self.save_path, name + "_actions.txt"))
                 self.save_files.append(f)
