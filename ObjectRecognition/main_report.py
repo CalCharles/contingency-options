@@ -53,6 +53,7 @@ def plot_model_filter(model, save_path=None):
         print('saved weight at', save_path)
     else:
         plt.show()
+    plt.close()
 
 
 def load_model(prefix, model_id, net_params, *args, **kwargs):
@@ -109,6 +110,7 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
         imsave(file_path, img)
     print('saved under', save_path)
 
+    pos_cnt = np.zeros(dataset.get_shape()[-2:])
     cp_mask = np.zeros(len(all_focus), dtype=bool)
     cp_mask[changepoints] = True
     save_subpath = util.get_dir(os.path.join(save_path, 'marker'))
@@ -121,8 +123,15 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
         img[0, :, marker_pos[1]] = 1
         if cp_mask[i]:
             img = 1 - img
+        pos_cnt[marker_pos[0], marker_pos[1]] += 1
         imsave(marker_file_path, img[0])
     print('focus by marker saved under', save_subpath)
+
+    if np.sum(pos_cnt) > 0:
+        pos_cnt = np.sqrt(1.0 - (pos_cnt / np.max(pos_cnt) - 1)**2)
+        pos_cnt_file_path = os.path.join(save_path, 'counter_pos.png')
+        imsave(pos_cnt_file_path, pos_cnt)
+        print('position count saved at', pos_cnt_file_path)
 
 
 def report_model(save_path, dataset, model, prefix, plot_flags, cpd):
@@ -197,7 +206,7 @@ if __name__ == '__main__':
             offset_fix=args.offset_fix,  # offset of episode number
         )  # 10.0, 0.1, 1.0, 0.0005
     elif args.game == 'atari':
-        actor = partial(RotatePolicy, hold_count=5)
+        actor = partial(RotatePolicy, hold_count=10)
         dataset = DatasetAtari(
             'BreakoutNoFrameskip-v4',  # atari game name
             actor,  # mock actor

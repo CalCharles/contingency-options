@@ -88,3 +88,60 @@ def cheat_init_center(dim, extra, mode):
 def feature_normalize(arr):
     mi, mx = np.min(arr), np.max(arr)
     return (arr - mi) / (mx - mi)
+
+
+# compute confusion matrix metrics
+def confuse_metrics(tp, fp, fn, tn):
+    if isinstance(tp, list):
+        valid = np.logical_or.reduce((tp > 0, fp > 0, fn > 0))
+        print(np.sum(valid))
+        tp = tp[valid]
+        fp = fp[valid]
+        fn = fn[valid]
+        tn = tn[valid]
+
+    p = tp + fn
+    n = fp + tn
+
+    tpr = np.mean(tp / p)
+    tnr = np.mean(tn / n)
+    ppv = np.mean(tp / (tp + fp))
+    npv = np.mean(tn / (tn + fn))
+    fnr = np.mean(fn / p)
+    fpr = np.mean(fp / n)
+    fdr = np.mean(fp / (fp + tp))
+    foR = np.mean(fn / (fn + tn))
+    acc = np.mean((tp + tn) / (p + n))
+    f1 = np.mean((2*tp) / (2*tp + fp + fn))
+    mcc = np.mean((tp*tn - fp-fn) / ((tp+fp) * (tp+fn) * (tn+fp) * (tn+fn))**0.5)
+    bm = np.mean(tpr + tnr - 1)
+    mk = np.mean(ppv + npv - 1)
+
+    # print('tpr=', tpr)
+    # print('tnr=', tnr)
+    # print('ppv=', ppv)
+    # print('npv=', npv)
+    # print('fnr=', fnr)
+    # print('fpr=', fpr)
+    # print('fdr=', fdr)
+    # print('foR=', foR)
+    # print('acc=', acc)
+    # print('f1=', f1)
+    # print('mcc=', mcc)
+    # print('bm=', bm)
+    # print('mk=', mk)
+
+    print('tpr= %.3f'%tpr, end=', ')
+    print('tnr= %.3f'%tnr, end=', ')
+    print('ppv= %.3f'%ppv, end=', ')
+    print('npv= %.3f'%npv, end=', ')
+    print('fnr= %.3f'%fnr, end=', ')
+    print('fpr= %.3f'%fpr, end=', ')
+    print('fdr= %.3f'%fdr, end=', ')
+    print('foR= %.3f'%foR, end=', ')
+    print('acc= %.3f'%acc, end=', ')
+    print('f1= %.3f'%f1, end=', ')
+    print('mcc= %.3f'%mcc, end=', ')
+    print('bm= %.3f'%bm, end=', ')
+    print('mk= %.3f'%mk)
+    print()

@@ -32,11 +32,11 @@ game = DatasetSelfBreakout(
 dmiloss = SaliencyLoss(
     game,
     c_fn_2=partial(util.hinged_mean_square_deviation, 
-                   alpha_d=0.2),  # TODO: parameterize this
+                   alpha_d=0.3),  # TODO: parameterize this
     frame_dev_coeff= 0.0,
-    focus_dev_coeff= 8.0,
+    focus_dev_coeff= 50.0,
     frame_var_coeff= 0.0,
-    belief_dev_coeff= 0.5,
+    belief_dev_coeff= 0.0,
     nb_size= (10, 10),
     verbose=True,
 )
@@ -76,9 +76,10 @@ comp_model.set_parameters(np.load('results/cmaes_soln/focus_self/42068_40.npy'))
 premise_micploss = PremiseMICPLoss(
     game,
     paddle_model,
-    mi_match_coeff= 1.0,
-    mi_diffs_coeff= 0.05,
-    mi_valid_coeff= 0.1,
+    mi_match_coeff= 0.0,
+    mi_diffs_coeff= 0.0,
+    mi_valid_coeff= 0.0,
+    mi_cndcp_coeff= 1.0,
     prox_dist= 0.1,
     verbose=True,
 )
@@ -106,6 +107,8 @@ random_focus = np.random.rand(LIMIT, 2)
 paddle_model_focus = paddle_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float())
 ball_model_focus = ball_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float())
 comp_model_focus = comp_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float())
+fix_jump_focus = np.zeros((LIMIT, 2))
+fix_jump_focus[[LIMIT//6, LIMIT//4, LIMIT//2]] = paddle_model_focus[[LIMIT//6, LIMIT//4, LIMIT//2]]
 
 # plot tracking paddle
 if False:
@@ -121,6 +124,7 @@ if False:
 print('Ideal Paddle Loss:', loss_fn(ideal_paddle[:LIMIT]))
 print('Ideal Ball Loss:', loss_fn(ideal_ball[:LIMIT]))
 print('Random Loss:', loss_fn(random_focus[:LIMIT]))
+print('Fix Jump Loss:', loss_fn(fix_jump_focus[:LIMIT]))
 print('Model Paddle Loss:', loss_fn(paddle_model_focus[:LIMIT]))
 print('Model Ball Loss:', loss_fn(ball_model_focus[:LIMIT]))
 print('Model Compared Loss:', loss_fn(comp_model_focus[:LIMIT]))

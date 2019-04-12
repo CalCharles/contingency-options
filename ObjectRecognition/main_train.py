@@ -201,7 +201,8 @@ if __name__ == '__main__':
                 mi_match_coeff=args.premise_micp[0],  # 1.0
                 mi_diffs_coeff=args.premise_micp[1],  # 0.2
                 mi_valid_coeff=args.premise_micp[2],  # 0.1
-                prox_dist=args.premise_micp[3],  # 0.1
+                mi_cndcp_coeff=args.premise_micp[3],  # 1.0
+                prox_dist=args.premise_micp[4],  # 0.1
                 batch_size=500,
                 verbose=args.verbose,
             )
@@ -246,5 +247,5 @@ if __name__ == '__main__':
         dataset, 
         model, 
         loss.forward,
-        verbose=verbose
+        verbose=args.verbose,
     ).evaluate_model(result)

@@ -47,8 +47,8 @@ def add_loss_argument(parser):
     parser.add_argument('--action_micp', type=float, nargs=2, default=None,
                         metavar=('MATCH', 'DIFFS'),
                         help='coefficients for action MICP loss (2)')
-    parser.add_argument('--premise_micp', type=float, nargs=4, default=None,
-                        metavar=('MATCH', 'DIFFS', 'VALID', 'PROX-DIST'),
+    parser.add_argument('--premise_micp', type=float, nargs=5, default=None,
+                        metavar=('MATCH', 'DIFFS', 'VALID', 'CNDCP', 'PROX-DIST'),
                         help='coefficients for premise MICP loss (4)')
     parser.add_argument('--premise_path', type=str,
                         default='results/cmaes_soln/focus_self/paddle.npy',
