@@ -836,8 +836,6 @@ class Evolutionary_optimizer(LearningOptimizer):
             returns.append(float(np.array(pop_returns).mean()))
         return np.array(returns)
 
-
-
     def step(self, args, train_models, rollouts, usebuffer =False):
         sample_duration = self.max_duration
         if not usebuffer:
@@ -1108,6 +1106,9 @@ class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implem
     def step(self, args, train_models, rollouts):
         self.step_counter += 1
         hindsight_indexes = self.get_hindsight_indexes(rollouts)
+        hit_indexes = self.get_hit_indexes(rollouts)
+        distilled_states, distilled_actions, distilled_resps, distilled_targets = self.get_values(rollouts)
+        hit_states, hit_indexes = self.get_targets(rollouts)
 
         values, dist_entropy, action_probs, qv = train_models.determine_action(current_state_eval)
         values, action_probs, _ = train_models.get_action(values, action_probs, qv)

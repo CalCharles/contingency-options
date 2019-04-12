@@ -6,6 +6,180 @@ import torch.nn.functional as F
 import collections
 from Models.models import pytorch_model
 
+class ReinforcementStorage(object):
+    def __init__(self, num_options, save_length, extracted_shape, current_shape, changepoint_shape, action_space, resp_len):
+        self.extracted_state = torch.zeros(save_length, *self.extracted_shape).detach()
+        self.current_state = torch.zeros(save_length, *self.current_shape).detach()
+        self.epsilon = torch.zeros(save_length, 1).detach()
+        self.masks = torch.zeros(save_length, 1).detach()
+
+        self.resps = torch.zeros(save_length, resp_len).detach().long()
+        self.actions = torch.zeros(save_length, 1).detach().long()
+        self.changepoint_states = torch.zeros(save_length, *changepoint_shape)
+        self.option_agnostic = [self.extracted_state, self.current_state, self.epsilon, self.masks, self.resps, self.actions, self.changepoint_states]
+
+        self.rewards = torch.zeros(num_options, save_length).detach()
+        self.returns = torch.zeros(num_options, save_length, 1).detach()
+        self.action_probs = torch.zeros(num_options, save_length, action_space).detach()
+        self.Qvals = torch.zeros(num_options, save_length, action_space).detach()
+        self.value_preds = torch.zeros(num_options, save_length, 1).detach()
+        self.option_specific = [self.rewards, self.returns, self.action_probs, self.Qvals, self.value_preds]
+
+    def cuda(self):
+        self.extracted_state = self.extracted_state.cuda()
+        self.current_state = self.current_state.cuda()
+        self.rewards = self.rewards.cuda()
+        self.returns = self.returns.cuda()
+        self.action_probs = self.action_probs.cuda()
+        self.Qvals = self.Qvals.cuda()
+        self.value_preds = self.value_preds.cuda()
+        self.actions = self.actions.cuda()
+        self.epsilon = self.epsilon.cuda()
+        self.masks = self.masks.cuda()
+        self.resps = self.resps.cuda()
+        self.changepoint_states = self.changepoint_states.cuda()
+
+    def cpu(self):
+        self.current_state = self.current_state.cpu()
+        self.extracted_state = self.extracted_state.cpu()
+        self.action_probs = self.action_probs.cpu()
+        self.Qvals = self.Qvals.cpu()
+        self.rewards = self.rewards.cpu()
+        self.value_preds = self.value_preds.cpu()
+        self.returns = self.returns.cpu()
+        self.actions = self.actions.cpu()
+        self.masks = self.masks.cpu()
+        self.epsilon = self.epsilon.cpu()
+        self.resps = self.resps.cpu()
+        self.changepoint_states = self.changepoint_states.cpu()
+
+    def insert(self, reenter, extracted_state, current_state, action_probs, action, q_vals, value_preds, option_no, changepoint_state, epsilon, resp, done=False): # got rid of masks... might be useful though
+        if reenter:
+            self.buffer_at = (self.buffer_at - 1) % self.buffer_steps
+        self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
+        self.state_queue[self.buffer_at].copy_(extracted_state.squeeze().detach())
+        self.changepoint_buffer[self.buffer_at].copy_(changepoint_state.squeeze().detach())
+        self.current_state_queue[self.buffer_at].copy_(current_state.squeeze().detach())
+        self.option_queue[self.buffer_at].copy_(pytorch_model.wrap(option_no, cuda=self.iscuda))
+        self.action_queue[self.buffer_at].copy_(action.squeeze().detach())
+        self.epsilon_queue[self.buffer_at].copy_(epsilon.squeeze().detach())
+        self.done_queue[self.buffer_at].copy_(pytorch_model.wrap(int(done), cuda=self.iscuda))
+        self.resp_queue[self.buffer_at].copy_(resp.squeeze().detach())
+        for oidx in range(self.num_options):
+            self.values_queue[oidx, self.buffer_at].copy_(value_preds[oidx].squeeze().detach())
+            self.Qvals_queue[oidx, self.buffer_at].copy_(q_vals[oidx].squeeze().detach())
+            self.action_probs_queue[oidx, self.buffer_at].copy_(action_probs[oidx].squeeze().detach())
+        if self.buffer_at == self.buffer_steps - 1:
+            self.buffer_at = 0
+        else:
+            self.buffer_at += 1
+
+    def insert_rewards(self, args, rewards, rewards_at):
+        bef_zero = max(rewards.size(1) - self.buffer_at, 0)
+        if bef_zero:
+            self.reward_queue[:, -bef_zero:] = rewards[:, :bef_zero].detach()
+        self.reward_queue[:, max(self.buffer_at - rewards.size(1), 0):self.buffer_at] = rewards[:, bef_zero:].detach()
+        self.compute_returns(args, rewards, self.values_queue[buffer_at], segmented_duration)
+
+    def buffer_get_last(self, i, n, changepoint=False):
+        # TODO: choose values to get from the queue
+        # TODO: add responsibility
+        # i is the starting index (0 from the most recent)
+        # n is the number taken
+        # changepoint is getting from the changepoint queue
+        if self.buffer_filled == self.buffer_steps:
+            # print(self.buffer_steps - max(n - self.buffer_at - i,0), max(self.buffer_at - i-n,0),self.buffer_at - i)
+            states = torch.cat([self.changepoint_buffer[self.buffer_steps - max(n - self.buffer_at - i,0):], self.changepoint_buffer[max(self.buffer_at - i - n,0):self.buffer_at - i]])
+            actions = torch.cat([self.action_queue[self.buffer_steps - max(n - self.buffer_at - i,0):], self.action_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]])
+            current_states = torch.cat([self.current_state_queue[self.buffer_steps - max(n- self.buffer_at - i,0):], self.current_state_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]])
+            returns = torch.cat([self.return_queue[self.buffer_steps - max(n- self.buffer_at - i,0):], self.return_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]])
+            # current_probs = torch.cat([self.action_probs_queue[train_models.option_index, self.buffer_steps - max(self.buffer_at - i-n,0):], self.action_queue[max(self.buffer_at - i-n,0):self.buffer_at - i]])
+        else:
+            states = self.changepoint_buffer[max(self.buffer_at - i - n,0):self.buffer_at - i]
+            actions = self.action_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]
+            current_states = self.current_state_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]
+            returns = self.return_queue[max(self.buffer_at - i - n,0):self.buffer_at - i]
+        return states, actions, current_states, returns
+
+    def compute_returns(self, args, rewards, next_value, segmented_duration=-1):
+        gamma = args.gamma
+        tau = args.tau
+        return_format = args.return_enum
+        return_at = (self.buffer_at - rewards.size(1)) % self.buffer_steps
+        for idx in range(self.num_options):
+            # if return_format == 1: # use_gae is True
+            #     self.value_preds[idx, -1] = next_value
+            #     gae = 0
+            #     # removed masks because I'm not sure what they are for...
+            #     for step in reversed(range(self.rewards.size(1))):
+            #         delta = self.rewards[idx, step] + gamma * self.value_preds[idx, step + 1] - self.value_preds[idx, step]
+            #         gae = delta + gamma * tau * gae
+            #         self.returns[idx, step] = gae + self.value_preds[idx, step]
+            #     # print("return_queue", self.rewards)
+            # elif return_format == 2: # segmented returns
+            #     for i in range(self.rewards.size(1) // segmented_duration):
+            #         # print(i)
+            #         self.returns[idx, (i+1) * segmented_duration] = 0 # last value
+            #         for step in reversed(range(segmented_duration)):
+            #             # print(self.rewards[(i * segmented_duration) + step], (i * segmented_duration) + step)
+            #             self.returns[idx, (i * segmented_duration) + step] = self.returns[idx, (i * segmented_duration) + step + 1] * gamma + self.rewards[idx, (i * segmented_duration) + step]
+            #     # print(self.returns)
+            # else:
+                # self.returns[idx, -1] = 0 #next_value
+                # print(self.returns.shape, self.rewards.shape)
+                # for step in reversed(range(self.rewards.size(1))):
+                #     self.returns[idx, step] = self.returns[idx, step + 1] * gamma + self.rewards[idx, step]
+                # # print(self.returns.sum(), self.returns.shape)
+                # if self.buffer_steps > 0:
+            update_last = args.buffer_clip # imposes an artificial limit on Gamma
+            if self.iscuda:
+                last_values = torch.arange(start=update_last-1, end = -1, step=-1).float().cuda().detach()
+            else:
+                last_values = torch.arange(start=update_last-1, end = -1, step=-1).float().detach()
+            for i, rew in enumerate(reversed(rewards[idx])):
+                # update the last ten returns
+                # print(i, 11-i)
+                i = rewards.size(1) - i
+                # updates = torch.tensor(np .power(gamma,j)).cuda() * rew
+                split_point = update_last - ((return_at + i) % self.buffer_steps)
+                if split_point <= 0: # enough buffer space
+                    # print(last_values.shape, self.return_at + i - update_last,self.return_at + i, split_point)
+                    self.returns[idx, return_at + i - update_last:return_at + i] += (torch.pow(gamma,last_values) * rew).unsqueeze(1)
+                else:
+                    # print(split_point, update_last - split_point, self.return_at + i)
+                    last_values = last_values[split_point:]
+                    self.returns[idx, :update_last - split_point] += (torch.pow(gamma,last_valuese) * rew).unsqueeze(1)
+                    if self.buffer_filled == self.buffer_steps:
+                        last_valuesb = last_values[:split_point]
+                        self.returns[idx, -(split_point):] += (torch.pow(gamma,last_valuesb) * rew).unsqueeze(1)
+
+
+                        # for j in range(update_last+1): #1, 2, 3, 4 ... 2, 3, 4 ... 3, 4, 
+                        #     # print(self.returns.shape, self.rewards.shape)
+                        #     # print(self.returns[0], self.return_queue[-6+j])
+                        #     # print(self.return_at)
+                        #     update_idx = (self.return_at - j + i) % self.buffer_steps
+                        #     # print(update_idx, torch.tensor(np.power(gamma, j)).cuda() * rew, self.return_queue[idx, update_idx])
+                        #     # if self.done_queue[update_idx] or (self.buffer_filled < self.buffer_steps and update_idx > self.buffer_filled): # end of episode or wrapping around before buffer is filled
+                        #     #     break # break out of done values
+                        #     self.return_queue[idx, update_idx] += torch.tensor(np.power(gamma,j)).cuda() * rew
+                        
+                # for i, ret in enumerate(self.returns[idx][:-1]):
+                #     # print('copying', self.return_at + i)
+                #     self.return_queue[idx, (self.return_at + i) % self.buffer_steps].copy_(ret)
+                # print(self.return_queue)
+                # if torch.sum(self.return_queue) > 0:
+                #     error
+        # self.return_at = (self.return_at + self.returns.size(1) - 1) % self.buffer_steps
+        # print(self.state_queue)
+    def compute_full_returns(self, next_value, gamma):
+        self.returns = torch.zeros(self.num_options, self.rewards.size(1) + 1, 1).cuda()
+        for idx in range(self.num_options):
+            self.returns[idx, -1] = 0 #next_value
+            for step in reversed(range(self.rewards.size(1))):
+                self.returns[idx, step] = self.returns[idx, step + 1] * gamma + self.rewards[idx, step]
+
+
 # TODO: clean up the rollouts
 class RolloutOptionStorage(object):
     def __init__(self, num_processes, obs_shape, action_space, resp_len,
