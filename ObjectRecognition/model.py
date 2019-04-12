@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -77,19 +78,64 @@ class ModelFocusInterface(nn.Module):
         raise NotImplementedError
 
 
+# load parameter from file
+def get_param_path(directory, name, ext=None):
+    if ext is None:
+        # try numpy (npy) and torch (pth)
+        np_path = os.path.join(directory, '%s.npy'%name)
+        t_path = os.path.join(directory, '%s.pth'%name)
+        if os.path.isfile(np_path):
+            ext = 'npy'
+        elif os.path.isfile(t_path):
+            ext = 'pth'
+        else:
+            raise FileNotFoundError('no param file %s found in directory %s'%
+                                    (name, directory))
+
+    # param wrt file extension
+    return os.path.join(directory, '%s.%s'%(name, ext))
+
+
+# load parameter from file
+def load_param(param_path, ext=None):
+    if isinstance(param_path, tuple):
+        param_path = get_param_path(param_path[0], param_path[1], ext)
+    if ext is None: ext = os.path.splitext(param_path)[1][1:]
+    if ext == 'npy':
+        return np.load(param_path)
+    elif ext == 'pth':
+        return torch.load(param_path)
+    raise ValueError('file extension %s not supported'%(ext))
+
+
 class ModelFocus(ModelFocusInterface):
 
-    # set parameters in order of name-size pair, param_val is a indicable list
-    def set_parameters(self, param_val):
-        if len(param_val) != self.count_parameters():
+    # set parameter corresponding to given param type
+    def set_parameters(self, param):
+        if isinstance(param, np.ndarray):
+            # numpy array
+            self.set_parameters_np(param)
+        elif isinstance(param, dict):
+            # torch state dict
+            self.set_parameters_torch(param)
+
+
+    # set parameters in order of name-size pair, param_np is a indicable list
+    def set_parameters_np(self, param_np):
+        if len(param_np) != self.count_parameters():
             raise ValueError('invalid number of parameters to set')
         pval_idx = 0
         for param in self.parameters():
             param_size = np.prod(param.size())
-            cur_param_val = param_val[pval_idx : pval_idx+param_size]
-            param.data = torch.from_numpy(cur_param_val) \
+            cur_param_np = param_np[pval_idx : pval_idx+param_size]
+            param.data = torch.from_numpy(cur_param_np) \
                               .reshape(param.size()).float()
             pval_idx += param_size
+
+
+    # set parameters from torch state dict
+    def set_parameters_torch(self, param_dict):
+        self.load_state_dict(param_dict)
 
 
 # gaussian pdf centered at (0, 0) with signma
@@ -416,7 +462,7 @@ class ModelAttentionCNN(nn.Module):
     # train with focus model (smoothening)
     def from_focus_model(self, focus_model, dataset, *args, **kwargs):
         print('WARNING: processing whole dataset in one batch!')
-        lr = kwargs.get('lr', 1e-4)
+        lr = kwargs.get('lr', 1e-3)
         n_iter = kwargs.get('n_iter', 100)
 
         # get target attention
@@ -429,7 +475,7 @@ class ModelAttentionCNN(nn.Module):
         focus_attn = torch.from_numpy(focus_attn).float()
 
         # train
-        lda_1 = 1 # attention regularization
+        lda_1 = 2 # attention regularization
         optimizer = optim.Adam(self.parameters(), lr=lr)
         for t in range(n_iter):
             output = self(frames)

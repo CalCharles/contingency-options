@@ -368,3 +368,31 @@ class CombinedLoss(FocusLoss):
         return prefix + 'CombinedLoss: agg_fn= %s\n%s'%(
             self.agg_fn.__str__(),
             '\n'.join(loss.__str__(prefix=prefix+'\t') for loss in self.losses))
+
+
+# abstracted class to measure focus
+class AttentionLoss:
+
+    def forward(self, attn):
+        raise NotImplemented
+
+    def __call__(self, attn):
+        return self.forward(attn)
+
+
+# changepoint loss
+class AttentionMICPLoss(AttentionLoss):
+
+    def __init__(self, frame_source, premise, *args, **kwargs):
+        self.frame_source = frame_source
+
+
+    # evaluate focus loss
+    def forward(self, focus):
+        pass
+
+
+    # pretty print
+    def __str__(self, prefix=''):
+        return prefix + 'AttentionMICPLoss'
+

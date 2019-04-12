@@ -36,7 +36,7 @@ from SelfBreakout.breakout_screen import RandomConsistentPolicy, RotatePolicy
 from ChangepointDetection.LinearCPD import LinearCPD
 from ChangepointDetection.CHAMP import CHAMPDetector
 from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
-from ObjectRecognition.model import ModelFocusCNN, ModelFocusBoost
+from ObjectRecognition.model import ModelFocusCNN, ModelFocusBoost, load_param
 from ObjectRecognition.optimizer import CMAEvolutionStrategyWrapper
 from ObjectRecognition.train import Trainer, recognition_train
 from ObjectRecognition.loss import (
@@ -133,7 +133,7 @@ if __name__ == '__main__':
         pmodel_weight_path = args.premise_path
         pmodel_net_params_text = open(args.premise_net).read()
         pmodel_net_params = json.loads(pmodel_net_params_text)
-        pmodel_params = np.load(pmodel_weight_path)
+        pmodel_params = load_param(pmodel_weight_path)
         pmodel = ModelFocusCNN(
             image_shape=(84, 84),
             net_params=pmodel_net_params,
@@ -146,7 +146,7 @@ if __name__ == '__main__':
         # a model to be boosted
         b_net_params_path, b_weight_path = args.boost
         b_net_params = json.loads(open(b_net_params_path).read())
-        b_params = np.load(b_weight_path)
+        b_params = load_param(b_weight_path)
         b_model = ModelFocusCNN(
             image_shape=(84, 84),
             net_params=b_net_params,
