@@ -1,6 +1,9 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
+
+import ObjectRecognition.util as util
 
 
 ACTIVATIONS = {
@@ -343,3 +346,104 @@ class ModelFocusBoost(ModelFocus):
         return prefix + 'FocusCPBoost:\n%s'%('\n'.join(
             model.__str__(prefix=prefix+'\t')
             for model in self.models))
+
+
+"""
+Attention models: given a image, return a same-size attention intensity
+    image_shape:    (width, height)
+    image:          array of size (width, height), each element in [0, 1]
+    focus:          array of two integers, in domain [0, width) x [0, height)
+"""
+# TODO: refactor focus into attention
+
+class ModelAttentionCNN(nn.Module):
+    def __init__(self, image_shape, net_params):
+        super(ModelAttentionCNN, self).__init__()
+
+        # interface parameters
+        if len(image_shape) == 2:
+            self.input_shape = image_shape
+            self.input_channel = 1
+        elif len(image_shape) == 3:
+            self.input_shape = (image_shape[0], image_shape[1])
+            self.input_channel = image_shape[2]
+        else:
+            raise ValueError("only support duplet or triplet image_shape")
+        self.input_shape_flat = np.prod(self.input_shape)
+
+        # network construction parameters
+        self.net_params = net_params
+        self.init_net()
+
+
+    # initialize network propeties
+    def init_net(self):
+        # convolutional layers
+        cur_channel = self.input_channel
+        sublayers = []
+        for i in range(self.net_params['filter']):
+            c = self.net_params['channel'][i]
+            k = self.net_params['kernel_size'][i]
+            s = self.net_params['stride'][i]
+            p = self.net_params['padding'][i]
+            a = self.net_params['activation_fn'][i]
+            sublayers.append(nn.Conv2d(cur_channel, c, kernel_size=k, stride=s, padding=p))
+            sublayers.append(nn.BatchNorm2d(c))
+            sublayers.append(ACTIVATIONS[a]())
+            sublayers.append(nn.MaxPool2d(kernel_size=k, stride=s))
+            cur_channel = c
+        self.layers = nn.Sequential(*sublayers)
+
+
+    # push input forward
+    def forward(self, img, ret_numpy=False):
+        out = img
+        for layer in self.layers:
+            out = layer(out)
+        return out if not ret_numpy else out.detach().numpy()
+
+
+    # input size of this network
+    def input_size(self):
+        return (self.input_channel,) + self.input_shape
+
+
+    # output size of this network
+    def output_size(self):
+        return self.input_size(self)
+
+
+    # train with focus model (smoothening)
+    def from_focus_model(self, focus_model, dataset, *args, **kwargs):
+        print('WARNING: processing whole dataset in one batch!')
+        lr = kwargs.get('lr', 1e-4)
+        n_iter = kwargs.get('n_iter', 100)
+
+        # get target attention
+        frames = dataset.get_frame(0, dataset.n_state)
+        if isinstance(frames, np.ndarray):
+            frames = torch.from_numpy(frames).float()
+        focus = focus_model.forward(frames)
+        focus_attn = util.focus2attn(focus, self.input_shape)
+        focus_attn = 10 * focus_attn - 1  # rescale
+        focus_attn = torch.from_numpy(focus_attn).float()
+
+        # train
+        lda_1 = 1 # attention regularization
+        optimizer = optim.Adam(self.parameters(), lr=lr)
+        for t in range(n_iter):
+            output = self(frames)
+            loss = (output - focus_attn).pow(2).mean() \
+                   + (lda_1 + 1) * output.abs().mean()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            print('iteration %4d: loss= %f'%(t, loss.item()))
+
+
+    # pretty print
+    def __str__(self, prefix=''):
+        return prefix + 'AttentionCNN: ' \
+            'input shape= %s, channel= %d, flat= %d, net_params= %s'%(
+            str(self.input_shape), self.input_channel, self.input_shape_flat,
+            self.net_params)
