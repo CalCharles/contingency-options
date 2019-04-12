@@ -4,11 +4,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
-from ReinforcementLearning.models import Model, pytorch_model
+from Models.models import Model, pytorch_model
 
 class TabularModel(Model):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None):
-        super().__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.Qtable = dict()
         self.action_prob_table = dict()
         self.initial_value = 1.0 # need to set this
@@ -20,7 +21,7 @@ class TabularModel(Model):
     def get_Qval(self, hsh):
         pass
 
-    def forward(self, x):
+    def forward(self, x, resp):
         '''
         TODO: make use of time_estimator, link up Q vals and action probs
         TODO: clean up cuda = True to something that is actually true
@@ -51,8 +52,9 @@ class TabularModel(Model):
 
 
 class TabularQ(TabularModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None):
-        super(TabularQ, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax)
+    def __init__(self, **kwargs):
+        super(TabularQ, self).__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.Qtable = dict()
         self.action_prob_table = dict()
         self.initial_value = 1.0 # need to set this
@@ -74,8 +76,9 @@ class TabularQ(TabularModel):
         return tuple(int(v) for v in xv)
 
 class TileCoding(TabularModel):
-    def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None):
-        super(TileCoding, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax)
+    def __init__(self, **kwargs):
+        super(TileCoding, self).__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.factor = args.factor
         minvs, maxvs = self.minmax
         self.tile_vectors = []

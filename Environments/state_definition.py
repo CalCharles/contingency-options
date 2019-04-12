@@ -27,9 +27,56 @@ class Relationship():
 		'''
 		pass
 
+class Velocity(): # prox
+	def __init__(self):
+		self.lastpos = None
+
+	def compute_comparison(self, state, target, correlate):
+		if self.lastpos is None:
+			self.lastpos = np.array(state[1][correlate][0])
+		rval= (np.array(state[1][correlate][0]) - self.lastpos).tolist()
+		self.lastpos = np.array(state[1][correlate][0])
+		return rval
+
+class Acceleration(): # prox
+	def __init__(self):
+		self.llpos = None
+		self.lastpos = None
+
+	def compute_comparison(self, state, target, correlate):
+		if self.lastpos is None:
+			self.lastpos = np.array(state[1][correlate][0])
+			self.llpos = np.array(state[1][correlate][0])
+		rval= ((np.array(state[1][correlate][0]) - self.lastpos) - (self.lastpos - self.llpos)).tolist()
+		self.llpos = self.lastpos
+		self.lastpos = np.array(state[1][correlate][0])
+		return rval
+
+class BinaryExistence():
+	def compute_comparison(self, state, target, correlate):
+		obj_dump = state[1]
+		names = list(obj_dump.keys())
+		names.sort()
+		states = []
+		for name in names:
+			if name.find(correlate) != -1:
+				if obj_dump[name][1]:
+					states += obj_dump[name][1]
+		return states
+
+
 class Proximity(): # prox
 	def compute_comparison(self, state, target, correlate):
 		return midpoint_separation((np.array(state[1][target][0]), np.array(state[1][correlate][0])))
+
+class MultiFull(): # multi-object bounds
+	def compute_comparison(self, state, target, correlate):
+		states = []
+		obj_dump = state[1]
+		for name in obj_dump.keys():
+			if name.find(correlate) != -1:
+				states += list(obj_dump[name][0]) + list(obj_dump[name][1])
+		return states
 
 class Full(): # full
 	def compute_comparison(self, state, target, correlate):
@@ -38,6 +85,16 @@ class Full(): # full
 class Bounds(): # bounds
 	def compute_comparison(self, state, target, correlate):
 		return list(state[1][correlate][0])
+
+class MultiVisibleBounds(): # multi-object bounds
+	def compute_comparison(self, state, target, correlate):
+		states = []
+		obj_dump = state[1]
+		for name in obj_dump.keys():
+			if name.find(correlate) != -1:
+				if obj_dump[name][1]:
+					states += obj_dump[name][0]
+		return states
 
 class XProximity(): # bounds
 	def compute_comparison(self, state, target, correlate):
@@ -80,6 +137,7 @@ class StateGet():
 		''' 
 		state is as defined in the environment class, that is, a tuple of
 			(raw_state, factor_state)
+		returns: raw_state, responsibility (number of values associated with input pair)
 		'''
 		pass
 
@@ -104,14 +162,78 @@ class GetState(StateGet):
 		# TODO: does not work on combination of higher dimensions
 		# TODO: order of input matters/ must be fixed
 		self.shape = np.sum([self.state_shape[state_form[1]] for state_form in state_forms])
+		self.shapes = {(state_form[0], state_form[1]): self.state_shape[state_form[1]] for state_form in state_forms} # dimensionality for each component
+		self.fnames = [state_form[1] for state_form in state_forms]
 		self.names = [state_form[0] for state_form in state_forms]
+		self.name = "-".join([s[0] for s in state_forms] + [s[1] for s in state_forms])
 		self.functions = [self.state_functions[state_form[1]] for state_form in state_forms]
 
 	def get_state(self, state):
 		estate = []
+		resp = []
 		for name, f in zip(self.names, self.functions):
-			estate += f.compute_comparison(state, self.target, name)
-		return np.array(estate)
+			comp = f.compute_comparison(state, self.target, name)
+			resp.append(len(comp))
+			estate += comp
+		return np.array(estate), resp 
+
+	def determine_delta_target(self, states):
+		'''
+		given a set of values, determine if any of them changed. assumes target is the last resp
+		returns index of difference (assumes only 1), and index in the state of difference (assumes only 1)
+		'''
+		last_shape = self.shapes[(self.names[-1], self.fnames[-1])][0] # assumes 1D
+		change_indexes,ats,rstates = [], [], []
+		for i, (s1, s2) in enumerate(zip(states[:-1], states[1:])):
+			diff = s1[:last_shape] - s2[:last_shape]
+			mag = np.linalg.norm(diff)
+			# print(s1[:last_shape], s2[:last_shape], diff, mag)
+			# error
+			if mag > 0:
+				lidx = np.where(diff != 0)[0][0]
+				ats.append((lidx + 1) // 3) # 2 and 3 hard coded as the x,y,attribute
+				rstates.append(s1[:last_shape][lidx-2:lidx])
+				change_indexes.append(i)
+		return change_indexes, ats, rstates
+
+	def determine_target(self, states, resps):
+		'''
+		given a set of states, return the locations of the states for which the target disappeared
+		assumes only one change index, returns the first, -1 if no index
+		returns change index and changed state
+		'''
+		last_resp = np.sum(resps[0])
+		change_index = -1
+		for i, resp in enumerate(resps[1:]):
+			r = np.sum(resp)
+			if last_resp != r:
+				change_index = i + 1
+				break
+			last_resp = r
+		return_state = None
+		if change_index != -1:
+			r1, r2 = resps[change_index - 1], resps[change_index]
+			s1, s2 = states[change_index - 1], states[change_index]
+			rat = 0
+			for i, (rv1, rv2) in enumerate(zip(r1, r2)):
+				if rv1 != rv2: # assumes only one component of state has changed
+					s1, s2 = s1[rat:rat + rv1], s2[rat:rat+rv2]
+					break
+				else:
+					rat += rv1
+			shpe = self.shapes[(self.names[i], self.fnames[i])][0] # assumes 1D shape
+			s1, s2 = s1.reshape(len(sl) // shpe, shpe), s2.reshape(len(s2) // shpe, shpe) # hopefully reshape does as desired
+			l1, l2 = s1.shape[0], s2.shape[0]
+			sm1, sm2 = np.stack([s1 for s1 in s2.shape[0]]), np.stack([s2 for s2 in s1.shape[0]])
+			diff_mat = np.linalg.norm(sm1 - sm2.T, axis=2)
+			if l1 > l2: # an object disappeared
+				closest = np.argmin(np.min(diff_mat, axis=1))
+				return_state = s1[closest]
+			else: # an object appeared, there should never be l1 == l2
+				closest = np.argmin(np.min(diff_mat, axis=0))
+				return_state = s2[closest]
+		return change_index, closest, return_state
+
 
 class GetRaw(StateGet):
 	'''
@@ -125,44 +247,67 @@ class GetRaw(StateGet):
 		self.shape = np.sum(state_shape)		
 
 	def get_state(self, state):
-		return state[0].flatten()
+		raw = state[0].flatten()
+		return raw, [len(raw)]
+
+def load_states(state_function, pth, length_constraint=50000, use_raw = False):
+	raw_files = []
+	if use_raw:
+		for root, dirs, files in os.walk(pth, topdown=False):
+			dirs.sort(key=lambda x: int(x))
+			print(pth, dirs)
+			for d in dirs:
+				try:
+					for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
+						raw_files.append(imio.imread(p))
+						if len(raw_files) > length_constraint:
+							raw_files.pop(0)
+				except OSError as e:
+					# reached the end of the file
+					pass
+	dumps = read_obj_dumps(pth, i=-1, rng = length_constraint)
+	print(len(raw_files), len(dumps))
+	if len(raw_files) < len(dumps):
+		# raw files not saved for some reason, which means use a dummy array of the same length
+		raw_files = list(range(len(dumps)))
+	states = []
+	resps = []
+	for state in zip(raw_files, dumps):
+		sv, resp = state_function(state)
+		states.append(sv)
+		resps.append(np.array(resp))
+	states = np.stack(states, axis=0)
+	resps = np.stack(resps, axis=0)
+	return states, resps
+
 
 def compute_minmax(state_function, pth):
 	'''
 	assumes pth leads to folder containing folders with raw images, and object_dumps file
 	uses the last 50000 data points, or less
 	'''
-	raw_files = []
-	for root, dirs, files in os.walk(pth, topdown=False):
-		dirs.sort(key=lambda x: int(x))
-		print(pth, dirs)
-		for d in dirs:
-			try:
-				for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
-					raw_files.append(imio.imread(p))
-					if len(raw_files) > 50000:
-						raw_files.pop(0)
-			except OSError as e:
-				# reached the end of the file
-				pass
-	dumps = read_obj_dumps(pth, i=-1, rng = 50000)
-	print(len(raw_files), len(dumps))
-	if len(raw_files) < len(dumps):
-		# raw files not saved for some reason, which means use a dummy array of the same length
-		raw_files = list(range(len(dumps)))
-	states = []
-	for state in zip(raw_files, dumps):
-		states.append(state_function.get_state(state))
-	states = np.stack(states, axis=0)
-	return np.min(states, axis=0), np.max(states, axis=0)
+	saved_minmax_pth = os.path.join(pth, state_function.name + "_minmax.npy")
+	print(saved_minmax_pth)
+	try:
+		print("loaded minmax from: ", saved_minmax_pth)
+		minmax = np.load(saved_minmax_pth)
+	except FileNotFoundError as e:
+		print("not loaded", saved_minmax_pth)
+		use_raw = 'raw' in state_function.names
+		states, resps = load_states(state_function.get_state, pth, use_raw = use_raw) # TODO: no normalization for raw states (not implemented)
+		minmax = (np.min(states, axis=0), np.max(states, axis=0))
+		np.save(saved_minmax_pth, minmax)
+	print(minmax)
+	return minmax
 
 
 
 
-state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), "xprox": XProximity(),
-							"feature": Feature(), "raw": Raw(), "sub": Sub()}
-# TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ
-state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "feature": [1], "raw": [64, 64], "sub": [4,4]}
+state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), 'vismulti': MultiVisibleBounds(), 
+					"vel": Velocity(), "acc": Acceleration(), "xprox": XProximity(), 'bin': BinaryExistence(),
+					"feature": Feature(), "raw": Raw(), "sub": Sub(), "multifull": MultiFull()}
+# TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ, bin has hardcoded size, as does multifull
+state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "acc": [2], 'bin': [100], "multifull": [300], "feature": [1], "raw": [64, 64], "sub": [4,4]}
 # class GetRaw(StateGet):
 # 	'''
 # 	Returns the raw_state

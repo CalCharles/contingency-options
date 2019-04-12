@@ -75,4 +75,4 @@ if __name__ == "__main__":
             reward_function.generate_training_set(combined, models, np.array(changepoints))
             reward_function.train_rewards(20000)
 
-        save_to_pickle(os.path.join(args.changepoint_dir, args.train_edge, "reward_function_" + str(i) +"_rwd.pkl"), reward_function)
+        save_to_pickle(os.path.join(args.changepoint_dir, args.train_edge, "reward__function__" + str(i) +"__rwd.pkl"), reward_function)

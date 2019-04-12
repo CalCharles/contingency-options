@@ -1,14 +1,19 @@
 import torch
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 import numpy as np
 from RewardFunctions.changepointReward import ChangepointReward
 from file_management import get_edge
+from Environments.state_definition import GetState
 
 
 class BounceReward(ChangepointReward):
-    def __init__(self, vel, args): 
+    def __init__(self, vel, args):
+        super().__init__(None, args)
+        self.name = "Paddle->Ball"
+        self.head, self.tail = "Ball", "Paddle"
+
         self.anybounce = False
-        self.desired_vels = [torch.tensor([-2.,-1.]).cuda(), torch.tensor([-1.,-1.]).cuda(), torch.tensor([-1.,1.]).cuda(), torch.tensor([-2.,1.]).cuda()]
+        self.desired_vels = [pytorch_model.wrap([-2.,-1.], cuda=args.cuda), pytorch_model.wrap([-1.,-1.], cuda=args.cuda), pytorch_model.wrap([-1.,1.], cuda=args.cuda), pytorch_model.wrap([-2.,1.], cuda=args.cuda)]
         if vel == -1:
             self.anybounce = True
         self.desired_vel = self.desired_vels[0]
@@ -20,8 +25,6 @@ class BounceReward(ChangepointReward):
             self.desired_vel = self.desired_vels[2]
         elif vel == 3:
             self.desired_vel = self.desired_vels[3]
-        self.traj_dim = 2 # SET THIS
-        self.head, self.tail = get_edge(args.train_edge)
         self.form = args.reward_form
 
 
@@ -48,26 +51,38 @@ class BounceReward(ChangepointReward):
             rewarded = False
             if v1[0] > 0 and state_second[0] > 65: # was moving down, below the blocks
                 if torch.norm(v2 - self.desired_vel) == 0:
-                    rewards.append(10)
+                    rewards.append(1)
                     rewarded = True
                 elif self.anybounce:
                     for v in self.desired_vels:
                         if torch.norm(v2 - v) == 0:
                             # print ("REWARD", v1, v2)
-                            rewards.append(10)
+                            rewards.append(1)
                             rewarded = True
             if not rewarded:
                 if self.form == 'dense':
-                    rewards.append(-abs(proximity[0] / (proximity[1] + .1) * .1))
+                    # rewards.append(-abs(proximity[1] / (proximity[0] + .1) * .1))
+                    rewards.append(-abs(proximity[0] + proximity[1]) * 0.001)
+                if self.form.find('xdense') != -1:
+                    if proximity[0] == 3 and self.form.find('neg') != -1:
+                        rewards.append(-1)
+                    # rewards.append(-abs(proximity[1] / (proximity[0] + .1) * .1))
+                    else:
+                        rewards.append(-abs(proximity[1]) * 0.001)
                 else:
-                    rewards.append(0)
-        return pytorch_model.wrap(rewards, cuda=True)
+                    # print(proximity[0])
+                    if proximity[0] == 3:# and self.form == 'neg' or self.form == 'dir':
+                        rewards.append(-1)
+                    else:
+                        rewards.append(0)
+        return pytorch_model.wrap(rewards, cuda=self.cuda)
 
 class Xreward(ChangepointReward):
     def __init__(self, args): 
+        super().__init__(None, args)
         self.traj_dim = 2 # SET THIS
         self.head, self.tail = get_edge(args.train_edge)
-
+        self.name = "x"
 
     def compute_reward(self, states, actions):
         '''
@@ -86,7 +101,24 @@ class Xreward(ChangepointReward):
             rewards.append(-abs(int(state[1])))
         return pytorch_model.wrap(rewards, cuda=True)
 
+class BlockReward(ChangepointReward):
+    def __init__(self, args): 
+        super().__init__(None, args)
+        self.form = args.reward_form
+        self.state_class = GetState(action_num=4, target="Block", state_forms=[("Ball", "bounds"), ("Block", "multifull")]) # should be a block state class
+        self.parameters = np.array([0,0])
+        self.max_dist = np.linalg.norm([30, 20])
+        self.cuda = args.cuda
 
+    def compute_reward(self, states, actions):
+        rewards = torch.zeros(len(states))
+        change_indexes, ats, states = self.state_class.determine_delta_target(pytorch_model.unwrap(states))
+        if len(change_indexes) > 0:
+            dists = np.linalg.norm(self.parameters - states[change_indexes])
+            rewards[change_indexes] = (self.max_dist - dists) / self.max_dist
+        if self.cuda:
+            rewards = rewards.cuda()
+        return rewards
 
 class RewardRight(ChangepointReward):
     def compute_reward(self, states, actions):

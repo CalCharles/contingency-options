@@ -1,6 +1,7 @@
 import os, glob
 from Environments.multioption import MultiOption
 from file_management import load_from_pickle
+from Environments.environment_specification import ProxyEnvironment
 
 
 class OptionNode():
@@ -36,6 +37,7 @@ class OptionChain():
             print(dirs)
             for d in dirs:
                 # TODO: only single tail edges currently
+                print(d, args.load_weights, train_edge)
                 edge = (d.split("->")[0], d.split("->")[1])
                 self.add_edge(edge)
                 if d != train_edge or self.test: # the train edge does not need to load, unless testing, in which case train-edge is the test edge
@@ -46,15 +48,25 @@ class OptionChain():
                     proxy_env = load_from_pickle(os.path.join(save_path, d, "env.pkl"))
                     proxy_env.set_models(models)
                     proxy_env.set_test() # changes behavior policy to testing mode (no random actions)
+                    proxy_env.name = d
+                    print(proxy_env.__dict__)
                     self.environments[edge] = proxy_env
+                elif d == train_edge and args.load_weights:
+                    print("training", d)
+                    model_path = os.path.join(save_path, d)
+                    models = MultiOption()
+                    models.load(args, model_path)
+                    proxy_env = ProxyEnvironment(d)
+                    self.environments[edge] = proxy_env
+                    proxy_env.set_models(models)
                 else:
-                    self.environments[edge] = None
+                    self.environments[edge] = ProxyEnvironment(d)
         # in the case that the train edge does not have directories set up
         tedge = (train_edge.split("->")[0], train_edge.split("->")[1])
         if tedge not in self.edges:
             os.makedirs(os.path.join(save_path, train_edge))
             self.add_edge(tedge)
-            self.environments[tedge] = None
+            self.environments[tedge] = ProxyEnvironment(tedge)
         self.save_dir = os.path.join(save_path, train_edge) +"/"
 
     def initialize(self, args):

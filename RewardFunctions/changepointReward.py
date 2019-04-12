@@ -1,15 +1,32 @@
 import numpy as np
-import copy
-from ReinforcementLearning.models import pytorch_model
+import copy, os
+from Models.models import pytorch_model
 from file_management import get_edge, get_individual_data
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from Environments.state_definition import load_states
+
+def compute_cp_minmax(reward_class, pth):
+    '''
+    assumes pth leads to folder containing folders with raw images, and object_dumps file
+    uses the last 50000 data points, or less
+    '''
+    saved_minmax_pth = os.path.join(pth, reward_class.name + "_minmax.npy")
+    print(saved_minmax_pth)
+    try:
+        minmax = np.load(saved_minmax_pth)
+    except FileNotFoundError as e:
+        print("not loaded", saved_minmax_pth)
+        states = load_states(reward_class.get_state, pth)
+        minmax = (np.min(states, axis=0), np.max(states, axis=0))
+        np.save(saved_minmax_pth, minmax)
+    return minmax
 
 
 class ChangepointReward():
-    def __init__(self, model,args):
+    def __init__(self, model, args):
         '''
         model is a changepoint model
         '''
@@ -18,6 +35,7 @@ class ChangepointReward():
         self.model = model
         self.cuda = args.cuda
         self.traj_dim = 2 #TODO: the dimension of the input trajectory is currently pre-set at 2, the dim of a location. Once we figure out dynamic setting, this can change
+        self.parameter_minmax = None
 
     def compute_reward(self, states, actions):
         '''
@@ -27,12 +45,34 @@ class ChangepointReward():
         '''
         pass
 
+    def get_state(self, state): # copy of get_trajectories, but for a single state
+        # print(self.head)
+        if self.head == "Block": # TODO: make not hard coded
+            hstate = get_individual_data(self.head, [state[1]], pos_val_hash=3)[0]
+        else:
+            hstate = get_individual_data(self.head, [state[1]], pos_val_hash=1)[0]
+        # TODO: automatically determine if correlate pos_val_hash is 1 or 2
+        # TODO: multiple tail support
+        # TODO: Separation of Interference and Contingent objects
+        if self.tail[0] == "Action":
+            # print(obj_dumps, self.tail[0])
+            merged = hstate
+            corr_state = []
+            # correlate_trajectory = get_individual_data(self.tail[0], obj_dumps, pos_val_hash=2)
+        else:
+            corr_state = get_individual_data(self.tail[0], [state[1]], pos_val_hash=1)[0]
+            merged = np.concatenate([hstate, corr_state])
+            # print(pytorch_model.wrap(merged))
+        return merged, [len(hstate), len(corr_state)]
+
+
     def get_trajectories(self, full_states):
         # print(self.head)
         obj_dumps = [s[1] for s in full_states]
         trajectory = get_individual_data(self.head, obj_dumps, pos_val_hash=1)
         # TODO: automatically determine if correlate pos_val_hash is 1 or 2
         # TODO: multiple tail support
+        # TODO: Separation of Interference and Contingent objects
         if self.tail[0] == "Action":
             # print(obj_dumps, self.tail[0])
             merged = trajectory
@@ -40,12 +80,13 @@ class ChangepointReward():
         else:
             correlate_trajectory = get_individual_data(self.tail[0], obj_dumps, pos_val_hash=1)
             merged = np.concatenate([trajectory, correlate_trajectory], axis=1)
+            # print(pytorch_model.wrap(merged))
         return pytorch_model.wrap(merged).cuda()
 
 
 class ChangepointDetectionReward(ChangepointReward):
     def __init__(self, model, args, desired_mode):
-        super(ChangepointDetectionReward, self).__init__(model, args)
+        super().__init__(model, args)
         # self.traj_dim = args.traj_dim
         self.desired_mode = desired_mode
         self.seg_reward = args.segment

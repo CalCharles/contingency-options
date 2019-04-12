@@ -1,5 +1,11 @@
 # contingency-options
 
+Dependencies:
+  * CMA: http://cma.gforge.inria.fr/apidocs-pycma/cma.html
+  * pytorch: https://pytorch.org/
+  * openAI gym
+  * tensorflow
+
 Description of folders and files:
   * Behavior Policies: contains policies that take in action probabilities or Q values, and returns actions to be taken, and files that might be useful for this
     * behavior_policies.: contains some basic behavior policies

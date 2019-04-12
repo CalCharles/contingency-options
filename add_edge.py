@@ -1,7 +1,7 @@
 from SelfBreakout.breakout_screen import Screen
 from file_management import load_from_pickle, get_edge
 import glob, os
-from ReinforcementLearning.models import models
+from Models.models import models
 from Environments.multioption import MultiOption
 from ReinforcementLearning.learning_algorithms import learning_algorithms
 from OptionChain.option_chain import OptionChain
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     # learning_algorithm = DDPG_optimizer()
     environments = option_chain.initialize(args)
     print(environments)
-    environments.pop(-1)
+    proxy_environment = environments.pop(-1)
     proxy_chain = environments
     if len(environments) > 1: # there is a difference in the properties of a proxy environment and the true environment
         num_actions = len(environments[-1].reward_fns)
@@ -52,5 +52,5 @@ if __name__ == "__main__":
     state_class.minmax = compute_minmax(state_class, dataset_path)
     behavior_policy = behavior_policies[args.behavior_policy]()
     # behavior_policy = EpsilonGreedyProbs()
-    trainRL(args, option_chain.save_dir, true_environment, train_models, learning_algorithm, 
+    trainRL(args, option_chain.save_dir, true_environment, train_models, learning_algorithm, proxy_environment,
             proxy_chain, reward_classes, state_class, behavior_policy=behavior_policy)

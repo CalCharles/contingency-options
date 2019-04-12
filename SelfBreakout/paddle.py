@@ -14,11 +14,13 @@ class Paddle(RawEnvironment):
         self.save_path = ""
         self.screen = Screen()
 
-    def set_save(self, itr, save_dir):
+    def set_save(self, itr, save_dir, recycle):
         self.save_path=save_dir
         self.itr = itr
+        self.recycle = recycle
         self.screen.save_path=save_dir
         self.screen.itr = itr
+        self.screen.recycle = recycle
 
         try:
             os.makedirs(save_dir)
@@ -26,6 +28,8 @@ class Paddle(RawEnvironment):
             pass
 
     def step(self, action):
+        # TODO: action is tenor, might not be safe assumption
+        action = action.clone()
         if action == 1:
             action[0] = 2
         elif action == 2:

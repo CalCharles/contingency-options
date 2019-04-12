@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
-from ReinforcementLearning.models import pytorch_model
+from Models.models import pytorch_model
 import numpy as np
 from ReinforcementLearning.train_rl import sample_actions
 

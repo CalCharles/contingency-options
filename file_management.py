@@ -1,4 +1,4 @@
-import pickle
+import pickle, os
 import numpy as np
 import ChangepointDetection.DynamicsModels as DynamicsModels
 
@@ -9,6 +9,10 @@ def load_from_pickle(pth):
     return save_dict
 
 def save_to_pickle(pth, val):
+    try:
+        os.makedirs(os.path.join(*pth.split("/")[:-1]))
+    except OSError:
+        pass
     fid = open(pth, 'wb')
     pickle.dump(val, fid)
     fid.close()
@@ -76,15 +80,25 @@ def get_individual_data(name, obj_dumps, pos_val_hash=3):
     pos_val_hash gets either position (1), value (2), full position and value (3)
     '''
     data = []
+    if len(obj_dumps) > 0:
+        names = list(obj_dumps[0].keys())
+        relevant_names = [n for n in names if n.find(name) != -1]
+        relevant_names.sort() # sorting procedure should be fixed between this and state getting
     for time_dict in obj_dumps:
         # print("td1", time_dict[name][1])
         if pos_val_hash == 1:
-            data.append(list(time_dict[name][0]))
+            data.append(sum([list(time_dict[name][0]) for name in relevant_names], []))
         elif pos_val_hash == 2:
             # print("td2", list(time_dict[name][1]))
-            data.append(list(time_dict[name][1]))
+            data.append(sum([list(time_dict[name][1]) for name in relevant_names], []))
         elif pos_val_hash == 3:
-            data.append(list(time_dict[name][0]) + list(time_dict[name][1]))
+            data.append(sum([list(time_dict[name][0]) + list(time_dict[name][1]) for name in relevant_names], []))
         else:
-            data.append(time_dict[name])
+            data.append(sum([list(time_dict[name]) for name in relevant_names], []))
     return np.array(data)
+
+def default_value_arg(kwargs, key, value):
+    if key in kwargs:
+        return kwargs[key]
+    else:
+        return value

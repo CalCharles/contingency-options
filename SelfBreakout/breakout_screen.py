@@ -15,6 +15,7 @@ class Screen(RawEnvironment):
         self.average_points_per_life = 0
         self.itr = 0
         self.save_path = ""
+        self.recycle = -1
 
     def reset(self):
         vel= np.array([np.random.randint(1,2), np.random.choice([-1,1])])
@@ -103,7 +104,12 @@ class Screen(RawEnvironment):
         return self.frame, extracted_state, done
 
     def write_objects(self, object_dumps, save_path):
-        state_path = os.path.join(save_path, str(self.itr//2000))
+        if self.recycle > 0:
+            state_path = os.path.join(save_path, str((self.itr % self.recycle)//2000))
+            count = self.itr % self.recycle
+        else:
+            state_path = os.path.join(save_path, str(self.itr//2000))
+            count = self.itr
         try:
             os.makedirs(state_path)
         except OSError:
@@ -111,8 +117,8 @@ class Screen(RawEnvironment):
         for i, obj in enumerate(self.objects):
             self.obj_rec[i].append([obj.name, obj.pos, obj.attribute])
             object_dumps.write(obj.name + ":" + " ".join(map(str, obj.getMidpoint())) + " " + str(float(obj.attribute)) + "\t") # TODO: attributes are limited to single floats
-        object_dumps.write("\n")
-        imio.imsave(os.path.join(state_path, "state" + str(self.itr % 2000) + ".png"), self.frame)
+        object_dumps.write("\n") # TODO: recycling does not stop object dumping
+        imio.imsave(os.path.join(state_path, "state" + str(count % 2000) + ".png"), self.frame)
 
 
     def run(self, policy, iterations = 10000, render=False, save_path = "runs/", duplicate_actions=1):

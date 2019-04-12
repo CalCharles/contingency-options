@@ -1,36 +1,106 @@
-import glob, os, torch
+import glob, os, torch, copy
+import numpy as np
+from Models.models import pytorch_model, models
+
+# parameterized options argument: 0: no parametrization, 1: discrete parameters, 2: continuous parameters, 3: combination of discrete and continuous (not implemented)
+
+
 class MultiOption():
-    def __init__(self, num_options=0, option_class=None): 
+    def __init__(self, num_options=0, option_class=None):
         self.option_index = 0
         self.num_options = num_options
         self.option_class = option_class
         self.models = []
 
-    def initialize(self, args, num_options, state_class):
-        self.models = []
-        for i in range(num_options):
-            if not args.normalize:
-                minmax = None
+    def session(self, args):
+        if args.model_form.find("dope") != -1:
+            self.sess= tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))
+        else:
+            self.sess = None
+
+
+    def create_model(self, args, state_class, parameter_minmax, i, model_class=None, parameter=-1):
+        if not args.normalize:
+            minmax = None
+        else:
+            minmax = state_class.get_minmax()
+        state_dim = state_class.flat_state_size() * args.num_stack
+        if args.parameterized_option == 2:
+            state_dim = state_dim + parameter_minmax[0].shape[0]
+            if args.normalize:
+                minmax = (np.hstack((minmax[0], parameter_minmax[0])) , np.hstack((minmax[1], parameter_minmax[1])))
+        if model_class is None:
+            print(self.option_class)
+            model = self.option_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, 
+                num_outputs=state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
+        else:
+            model = model_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, 
+                num_outputs=state_class.action_num, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
+        return model
+
+    def train(self):
+        for model in self.models:
+            model.train()
+
+    def initialize(self, args, num_options, state_class, parameter_minmax = None):
+        '''
+        Naming for models is based on double underscore __
+        parameterized options argument: 0: no parametrization, 1: discrete parameters, 2: continuous parameters, 3: combination of discrete and continuous (not implemented)
+        '''
+        self.session(args)
+        if not args.load_weights:
+            self.models = []
+            if args.parameterized_option > 0:
+                param = num_options
+                if args.parameterized_option == 2:
+                    param = parameter_minmax[0].shape[0]
+                model = self.create_model(args, state_class, parameter_minmax, 0, parameter=param)
+                # since name is args.unique_id + str(i), this means that unique_id should be the edge, in form head_tail
+                if args.cuda:
+                    model = model.cuda()
+                self.models.append(model) # make this an argument controlled parameter
             else:
-                minmax = state_class.get_minmax()
-            model = self.option_class(args, state_class.flat_state_size() * args.num_stack, 
-                state_class.action_num, factor=args.factor, name = args.unique_id + "_" + str(i) +"_", minmax = minmax)
-            # since name is args.unique_id + str(i), this means that unique_id should be the edge, in form head_tail
-            if args.cuda:
-                model = model.cuda()
-            self.models.append(model) # make this an argument controlled parameter
+                for i in range(num_options):
+                    model = self.create_model(args, state_class, parameter_minmax, i)
+                    # since name is args.unique_id + str(i), this means that unique_id should be the edge, in form head_tail
+                    if args.cuda:
+                        model = model.cuda()
+                    self.models.append(model) # make this an argument controlled parameter
+        self.num_options = num_options
+        self.parameterized_option = args.parameterized_option
+        self.parameter_dim = 2
+        if args.parameterized_option == 2:
+            self.parameter_dim = parameter_minmax[0].shape[0]
+
         self.option_index = 0
 
     def names(self):
         return [model.name for model in self.models]
 
-    def determine_action(self, state):
+    def determine_step(self, state, reward):
+        '''
+        output: what is this function?
+        '''
+        actions = []
+        for i in range(self.num_options):
+            actions.append(self.models[i](state, reward))
+        pytorch_model.wrap(actions)
+        return actions
+
+    def set_parameter(self, parameter):
+        if self.parameterized_option == 2:
+            self.models[0].option_input = parameter
+
+
+    def determine_action(self, state, resp):
         '''
         output: 4 x [batch_size, num_options, num_actions/1]
         '''
         values, dist_entropy, probs, Q_vals = [], [], [], []
         for i in range(self.num_options):
-            v, de, p, Q = self.models[i](state)
+            if self.parameterized_option == 1: # TODO: parametrized options only has one option (possibly a combination)
+                self.models[0].option_index = i
+            v, de, p, Q = self.models[i](state, resp)
             values.append(v)
             dist_entropy.append(de)
             probs.append(p)
@@ -62,15 +132,63 @@ class MultiOption():
         return self.models[self.option_index]
 
     def save(self, pth):
+        print(os.path.join(*pth.split("/")))
+        try:
+            os.makedirs(os.path.join(*pth.split("/")))
+        except OSError:
+            pass
         for i, model in enumerate(self.models):
             model.save(pth)
 
     def load(self, args, pth):
         model_paths = glob.glob(os.path.join(pth, '*.pt'))
-        model_paths.sort(key=lambda x: int(x.split("_")[1]))
+        print("loading", model_paths)
+        model_paths.sort(key=lambda x: int(x.split("__")[1]))
         for mpth in model_paths:
             self.models.append(torch.load(mpth))
             if args.cuda:
                 self.models[-1] = self.models[-1].cuda()
         self.option_index = 0
         self.num_options = len(self.models)
+
+    def duplicate(self, num_models, args, state_class, parameter_minmax):
+        # TODO: only handles 1->many of models, build in many->many handling
+        old_model = self.models[0]
+        self.models = []
+        param = -1
+        if args.parameterized_option == 1:
+            param = num_models
+        elif args.parameterized_option == 2:
+            param = parameter_minmax[0].shape[0]
+        for i in range(num_models):
+            new_model = copy.deepcopy(old_model)
+            new_model.name = args.unique_id + "__" + str(i) +"__"
+            if args.model_form == 'population' and args.base_form == 'adjust': # right now, basically the same logic but for each model in the population
+                networks = []
+                for j in range(new_model.num_population):
+                    m = self.create_model(args, state_class, parameter_minmax, i, models[args.base_form], parameter = param)
+                    m.load_base(new_model.networks[j])
+                    networks.append(m)
+                new_model.set_networks(networks)
+                mean = self.create_model(args, state_class, parameter_minmax, i, models[args.base_form], parameter = param)
+                mean.load_base(new_model.mean)
+                new_model.mean = mean
+                best = self.create_model(args, state_class, parameter_minmax, i, models[args.base_form], parameter = param)
+                best.load_base(new_model.best)
+                new_model.best = best
+                if args.cuda:
+                    new_model = new_model.cuda()
+                self.models.append(new_model)
+            elif args.model_form == 'adjust': # for now, while there is only one adjustment model
+                print("loading adjustment model")
+                model = self.create_model(args, state_class, parameter_minmax, i)
+                model.load_base(new_model)
+                if args.cuda:
+                    model = model.cuda()
+                self.models.append(model)
+            else:
+                if args.cuda:
+                    new_model = new_model.cuda()
+                self.models.append(new_model)
+        self.num_options = num_models
+        self.option_index = 0
