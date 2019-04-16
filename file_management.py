@@ -102,3 +102,49 @@ def default_value_arg(kwargs, key, value):
         return kwargs[key]
     else:
         return value
+
+def render_dump(obj_dumps):
+    frame = np.zeros((84,84), dtype = 'uint8')
+    for bn in [bn for bn in obj_dumps.keys() if bn.find('Block') != -1]:
+        block = obj_dumps[bn]
+        pos = block[0]
+        if block[0] == 1:
+            frame[pos[0]:pos[0]+2, pos[1]:pos[1]+3] = .5 * 255
+    walln = "TopWall"
+    wall = obj_dumps[walln]
+    pos = wall[0]
+    width = 84
+    height = 4
+    frame[pos[0]:pos[0]+height, pos[1]:pos[1]+width] = .3 * 255
+
+    walln = "RightSideWall"
+    wall = obj_dumps[walln]
+    pos = wall[0]
+    width = 4
+    height = 84
+    frame[pos[0]:pos[0]+height, pos[1]:pos[1]+width] = .3 * 255
+
+    walln = "LeftSideWall"
+    wall = obj_dumps[walln]
+    pos = wall[0]
+    width = 4
+    height = 84
+    frame[pos[0]:pos[0]+height, pos[1]:pos[1]+width] = .3 * 255
+
+    walln = "BottomWall"
+    wall = obj_dumps[walln]
+    pos = wall[0]
+    width = 84
+    height = 4
+    frame[pos[0]:pos[0]+height, pos[1]:pos[1]+width] = .3 * 255
+
+    pos = obj_dumps["Paddle"]
+    width = 7
+    height = 2
+    frame[pos[0]:pos[0]+height, pos[1]:pos[1]+width] = .75 * 255
+
+    pos = obj_dumps["Ball"]
+    width = 2
+    height = 2
+    frame[pos[0]:pos[0]+height, pos[1]:pos[1]+width] = 1 * 255
+    return frame

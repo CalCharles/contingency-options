@@ -250,22 +250,28 @@ class GetRaw(StateGet):
 		raw = state[0].flatten()
 		return raw, [len(raw)]
 
-def load_states(state_function, pth, length_constraint=50000, use_raw = False):
-	raw_files = []
-	if use_raw:
-		for root, dirs, files in os.walk(pth, topdown=False):
-			dirs.sort(key=lambda x: int(x))
-			print(pth, dirs)
-			for d in dirs:
-				try:
-					for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
-						raw_files.append(imio.imread(p))
-						if len(raw_files) > length_constraint:
-							raw_files.pop(0)
-				except OSError as e:
-					# reached the end of the file
-					pass
-	dumps = read_obj_dumps(pth, i=-1, rng = length_constraint)
+def load_states(state_function, pth, length_constraint=50000, use_raw = False, raws = None, dumps = None):
+	if raws is None:
+		raw_files = []
+		if use_raw:
+			for root, dirs, files in os.walk(pth, topdown=False):
+				dirs.sort(key=lambda x: int(x))
+				print(pth, dirs)
+				for d in dirs:
+					try:
+						for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
+							raw_files.append(imio.imread(p))
+							if len(raw_files) > length_constraint:
+								raw_files.pop(0)
+					except OSError as e:
+						# reached the end of the file
+						pass
+	else:
+		raw_files = raws
+	if dumps is None:
+		dumps = read_obj_dumps(pth, i=-1, rng = length_constraint)
+	else:
+		dumps = dumps
 	print(len(raw_files), len(dumps))
 	if len(raw_files) < len(dumps):
 		# raw files not saved for some reason, which means use a dummy array of the same length
@@ -278,7 +284,7 @@ def load_states(state_function, pth, length_constraint=50000, use_raw = False):
 		resps.append(np.array(resp))
 	states = np.stack(states, axis=0)
 	resps = np.stack(resps, axis=0)
-	return states, resps
+	return states, resps, raw_files, dumps
 
 
 def compute_minmax(state_function, pth):
@@ -294,7 +300,7 @@ def compute_minmax(state_function, pth):
 	except FileNotFoundError as e:
 		print("not loaded", saved_minmax_pth)
 		use_raw = 'raw' in state_function.names
-		states, resps = load_states(state_function.get_state, pth, use_raw = use_raw) # TODO: no normalization for raw states (not implemented)
+		states, resps, raws, dumps = load_states(state_function.get_state, pth, use_raw = use_raw) # TODO: no normalization for raw states (not implemented)
 		minmax = (np.min(states, axis=0), np.max(states, axis=0))
 		np.save(saved_minmax_pth, minmax)
 	print(minmax)

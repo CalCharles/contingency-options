@@ -19,7 +19,7 @@ def compute_cp_minmax(reward_class, pth):
         minmax = np.load(saved_minmax_pth)
     except FileNotFoundError as e:
         print("not loaded", saved_minmax_pth)
-        states = load_states(reward_class.get_state, pth)
+        states, resps, raws, dumps = load_states(reward_class.get_state, pth)
         minmax = (np.min(states, axis=0), np.max(states, axis=0))
         np.save(saved_minmax_pth, minmax)
     return minmax

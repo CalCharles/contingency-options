@@ -40,14 +40,14 @@ if __name__ == "__main__":
         reward_classes = [BlockReward(args)]
     true_environment = Paddle()
     if args.pretrain_target == 0:
-        states, resps, num_actions, state_class, proxy_chain = get_states(args, true_environment, length_constraint = args.num_frames)
+        states, resps, num_actions, state_class, proxy_chain, raws, dumps = get_states(args, true_environment, length_constraint = args.num_frames)
         actions = get_option_actions(args.record_rollouts, args.train_edge, num_actions, args.weighting_lambda, length_constraint = args.num_frames)
-        rewards = get_option_rewards(args.record_rollouts, reward_classes, actions, length_constraint = args.num_frames)
+        rewards = get_option_rewards(args.record_rollouts, reward_classes, actions, length_constraint = args.num_frames, raws=raws, dumps=dumps)
         actions, states, resps = generate_trace_training(actions, rewards, states, resps, args.trace_len)
         targets = None
         criteria = supervised_criteria
     elif args.pretrain_target == 1:
-        states, resps, num_actions, state_class, proxy_chain = get_states(args, true_environment, length_constraint = args.num_frames)
+        states, resps, num_actions, state_class, proxy_chain, raws, dumps = get_states(args, true_environment, length_constraint = args.num_frames)
         try:
             actions = np.load("actions.npy") # delete this in filesystem when you need new actions
         except FileNotFoundError as e:
@@ -57,12 +57,12 @@ if __name__ == "__main__":
         criteria = supervised_criteria
         targets = None
     elif args.pretrain_target == 2:
-        states, resps, num_actions, state_class, proxy_chain = get_states(args, true_environment, length_constraint = args.num_frames)
+        states, resps, num_actions, state_class, proxy_chain, raws, dumps = get_states(args, true_environment, length_constraint = args.num_frames)
         actions = get_option_actions(args.record_rollouts, proxy_chain[-1].name.split("->")[0], 3, args.weighting_lambda, length_constraint = args.num_frames)
         rewards = get_option_rewards(args.record_rollouts, [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)], actions, length_constraint=args.num_frames)
         actions, indexes = generate_distilled_training(rewards)
         num_actions = 4
-        actions, states, resps, targets = generate_target_training(actions, indexes, states, resps, state_class, reward_classes, args.record_rollouts, args.trace_len, num_actions, length_constraint= args.num_frames)
+        actions, states, resps, targets = generate_target_training(actions, indexes, states, resps, state_class, reward_classes, args.record_rollouts, args.trace_len, num_actions, length_constraint= args.num_frames, raws=raws, dumps=dumps)
         criteria = supervised_criteria
     # elif args.optimizer_form in ["DQN", "SARSA", "Dist"]: # dist might have mode collapse to protect against
     #     pass # TODO: implement
