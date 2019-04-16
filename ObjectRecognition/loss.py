@@ -48,18 +48,33 @@ class SaliencyLoss(FocusLoss):
     # evaluate focus, lesser = more salience
     def forward(self, focus):
         frames = util.extract_neighbor(
-        			self.frame_source,
-        			focus,
-                    np.arange(focus.shape[0]),
-                    nb_size=self.nb_size
-                )
+			self.frame_source,
+			focus,
+            np.arange(focus.shape[0]),
+            nb_size=self.nb_size)
         frame_dev = self._deviation_1(frames)
         focus_dev = self._deviation_2(focus)
         frame_var = self._variance(frames)
-        belief_dev = self._belief_deviation(frames)
+
+        belief_dev = 0
+        if self.belief_dev_coeff != 0:
+            pre_frames = util.extract_neighbor(
+                self.frame_source,
+                focus[1:],
+                np.arange(focus.shape[0] - 1),
+                nb_size=self.nb_size)  # I_{t}(x_{t+1})
+            post_frames = util.extract_neighbor(
+                self.frame_source,
+                focus[:-1],
+                np.arange(focus.shape[0] - 1) + 1,
+                nb_size=self.nb_size)  # I_{t+1}(x_{t})
+            belief_dev = self._belief_deviation(focus, frames, 
+                                                pre_frames, post_frames)
+
         if self.verbose:
-            logger.info('frame_dev= %f, focus_dev= %f, frame_var= %f'%(
-                        frame_dev, focus_dev, frame_var))
+            logger.info(
+                'frame_dev= %f, focus_dev= %f, frame_var= %f, belief_dev= %f'%(
+                frame_dev, focus_dev, frame_var, belief_dev))
         return  self.frame_dev_coeff*frame_dev \
             + self.focus_dev_coeff*focus_dev \
             - self.frame_var_coeff*frame_var \
@@ -99,24 +114,31 @@ class SaliencyLoss(FocusLoss):
 
 
     # belief change by frame deviation
-    def _belief_deviation(self, features):
+    def _belief_deviation(self, focus, frames, pre_frames, post_frames):
         r"""
-        metric to penalize changing focus to 
+        metric to reward changing to high deviation frame
         """
-        return 0 # np.mean(np.var(features.reshape((features.shape[0], -1)), axis=1))
+        n_frames = focus.shape[0] - 1
+        assert frames.shape[0] == n_frames + 1
+        assert pre_frames.shape[0] == n_frames
+        assert post_frames.shape[0] == n_frames
 
+        focus_diff = np.sum((focus[1:] - focus[:-1])**2, axis=1)
+        pre_frame_diff = np.sum(
+            (frames[1:] - pre_frames).reshape(n_frames, -1)**2,
+            axis=1)
+        post_frame_diff = np.sum(
+            (frames[:-1] - post_frames).reshape(n_frames, -1)**2,
+            axis=1)
+        return np.mean(focus_diff * pre_frame_diff * post_frame_diff)
 
-
-    # frame non-uniformity to filter out blank frame
-    def _variance(self, features):
-        r"""
-        metric for non-uniformity, variance
-        """
-        return np.mean(np.var(features.reshape((features.shape[0], -1)), axis=1))
 
     def __str__(self, prefix=''):
-        return prefix + 'SaliencyLoss: frame_dev= %g, focus_dev= %g, frame_var= %g'%(
-            self.frame_dev_coeff, self.focus_dev_coeff, self.frame_var_coeff)
+        return (prefix + \
+            'SaliencyLoss: frame_dev= %g, focus_dev= %g, ' + \
+            'frame_var= %g, belief_dev= %g')%(
+            self.frame_dev_coeff, self.focus_dev_coeff,
+            self.frame_var_coeff, self.belief_dev_coeff)
 
 
 # Mutual Information by Change Point Loss: consistancy from known premise
@@ -179,6 +201,7 @@ class PremiseMICPLoss(FocusChangePointLoss):
         self.mi_match_coeff = kwargs.get('mi_match_coeff', 1.0)
         self.mi_diffs_coeff = kwargs.get('mi_diffs_coeff', 1.0)
         self.mi_valid_coeff = kwargs.get('mi_valid_coeff', 1.0)
+        self.mi_cndcp_coeff = kwargs.get('mi_cndcp_coeff', 1.0)
         self.verbose = kwargs.get('verbose', False)
 
 
@@ -187,12 +210,15 @@ class PremiseMICPLoss(FocusChangePointLoss):
         premise_focus = self._premise_forward()
 
         # calculate mutual info between two changepoints
-        mi_match, mi_diffs, mi_valid = self._mutual_info(focus, premise_focus, changepoints)
+        loss_vals = self._mutual_info(focus, premise_focus, changepoints)
+        mi_match, mi_diffs, mi_valid, mi_cndcp = loss_vals
         mi_loss = self.mi_diffs_coeff*mi_diffs \
                   - self.mi_match_coeff*mi_match \
-                  + self.mi_valid_coeff*mi_valid
+                  + self.mi_valid_coeff*mi_valid \
+                  - self.mi_cndcp_coeff*mi_cndcp
         if self.verbose:
-            logger.info('match= %f, diff= %f'%(mi_match, mi_diffs))
+            logger.info('match= %f, diffs= %f, valid= %f, cndcp= %f'%(
+                        mi_match, mi_diffs, mi_valid, mi_cndcp))
         if ret_extra:
             return mi_loss, {'valid': mi_valid}
         return mi_loss
@@ -220,10 +246,51 @@ class PremiseMICPLoss(FocusChangePointLoss):
             logger.info('prox filter valid= %d: match= %3d, diff= %3d'%(
                 np.sum(prox_mask), np.sum(match_mask), np.sum(diffs_mask)))
 
-        # TODO: better normalization?
+        # probability of proximal conditioned on changepoint
+        frame_shape = self.frame_source.get_shape()[-2:]
+        frame_shape = (frame_shape[0] // 4, frame_shape[1] // 4)
+        is_object_cp = set(object_cp)
+        tp, fp, fn, tn = 1e-10, 1e-10, 1e-10, 1e-10
+        cp_cnt = np.zeros(frame_shape)
+        prox_cnt = np.zeros(frame_shape)
+        cp_prox_cnt = np.zeros(frame_shape)
+        total_cnt = np.zeros(frame_shape)
+        for cpi in object_cp:
+            obj_x = (object_focus[cpi] * frame_shape).astype(int)
+            premise_x = (premise_focus[cpi] * frame_shape).astype(int)
+            cp_cnt[obj_x[0], obj_x[1]] += 1
+            if prox_mask[cpi]:
+                cp_prox_cnt[obj_x[0], obj_x[1]] += 1
+        none_cnt = total_cnt - cp_cnt - prox_cnt + cp_prox_cnt
+        cnt_valid = np.logical_and(cp_prox_cnt > 0.0, 
+                                   prox_cnt - cp_prox_cnt > 0.0)
+        cndcp_score = np.mean(2 * cp_prox_cnt[cnt_valid]
+                              / (cp_cnt[cnt_valid] + prox_cnt[cnt_valid])) \
+                              if np.sum(cnt_valid) > 0.0 else 0.0
+        # util.confuse_metrics(cp_prox_cnt, prox_cnt-cp_prox_cnt, 
+        #                      cp_cnt-cp_prox_cnt, none_cnt)
+        
+        # for i, obj_fx in enumerate(object_focus):
+        #     obj_x = (obj_fx * frame_shape).astype(int)
+        #     total_cnt[obj_x[0], obj_x[1]] += 1
+        #     if prox_mask[i]:
+        #         prox_cnt[obj_x[0], obj_x[1]] += 1
+        #         if i in is_object_cp:
+        #             tp += 1
+        #         else:
+        #             fp += 1
+        #     else:
+        #         if i in is_object_cp:
+        #             fn += 1
+        #         else:
+        #             tn += 1
+        # print('tp', int(tp), 'fp', int(fp), 'fn', int(fn), 'tn', int(tn))
+        # util.confuse_metrics(tp, fp, fn, tn)
+
         return np.sum(match_mask)/n_focus, \
                np.sum(diffs_mask)/n_focus, \
-               np.sum(prox_mask)/n_focus
+               np.sum(prox_mask)/n_focus, \
+               cndcp_score
 
 
     # get known object's focus
@@ -235,7 +302,7 @@ class PremiseMICPLoss(FocusChangePointLoss):
 
     # get proximity mask, True => object is close to premise
     def _get_prox_mask(self, object_focus, premise_focus):
-    	# TODO: add func to Focus for this
+        # TODO: add func to Focus for this
         distances = np.linalg.norm(object_focus-premise_focus, axis=1)
         prox_mask = np.zeros(object_focus.shape[0], dtype=bool)
         prox_mask[distances < self.prox_dist] = True
@@ -244,9 +311,9 @@ class PremiseMICPLoss(FocusChangePointLoss):
 
     def __str__(self, prefix=''):
         return prefix + 'PremiseMICPLoss: ' \
-            'mi_match= %g, mi_diffs= %g, mi_valid= %g, prox= %g'%(
+            'mi_match= %g, mi_diffs= %g, mi_valid= %g, mi_cndcp= %g, prox= %g'%(
             self.mi_match_coeff, self.mi_diffs_coeff, self.mi_valid_coeff,
-            self.prox_dist)
+            self.mi_cndcp_coeff, self.prox_dist)
 
 
 # MICP with multiple premises

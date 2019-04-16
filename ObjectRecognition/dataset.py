@@ -69,6 +69,7 @@ class DatasetSelfBreakout(Dataset):
         self.n_state = kwargs.get('n_state', 1000)
         self.block_size = kwargs.get('block_size', 10000)
         self.binarize = kwargs.get('binarize', None)
+        self.offset_fix = kwargs.get('offset_fix', None)
         self.frame_l, self.frame_r = 0, -1  # uninitialized frame interval
 
         self.block_size = min(self.block_size, self.n_state)
@@ -87,7 +88,7 @@ class DatasetSelfBreakout(Dataset):
 
     # retrieve selected actions associated with frames
     def retrieve_action(self, idxs):
-        return self.actions[idxs]
+        return self.actions[idxs + self.idx_offset]
 
 
     # get frame at index l to r
@@ -128,10 +129,13 @@ class DatasetSelfBreakout(Dataset):
 
     # reset state (do nothing)
     def reset(self):
-        # to simulate generating new episode
-        self.idx_offset = np.random.randint(
-            low=0, 
-            high=DatasetSelfBreakout.TOTAL_STATE-self.n_state)
+        if self.offset_fix is None:
+            # to simulate generating new episode
+            self.idx_offset = np.random.randint(
+                low=0, 
+                high=DatasetSelfBreakout.TOTAL_STATE-self.n_state)
+        else:
+            self.idx_offset = self.offset_fix
         self._load_range(self.frame_l)
 
 

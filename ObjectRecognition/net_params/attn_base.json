@@ -1,0 +1,8 @@
+{
+	"filter": 4,
+	"channel": [32, 16, 8, 1],
+	"kernel_size": [5, 3, 3, 3],
+	"stride": [1, 1, 1, 1],
+	"padding": [4, 2, 2, 2],
+    "activation_fn": ["ReLU", "ReLU", "ReLU", "ELU"]
+}

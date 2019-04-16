@@ -27,17 +27,11 @@ from ObjectRecognition.optimizer import CMAEvolutionStrategyWrapper
 from ObjectRecognition.loss import (
     SaliencyLoss, ActionMICPLoss, PremiseMICPLoss,
     CollectionMICPLoss, CombinedLoss)
+import ObjectRecognition.add_args as add_args
 import ObjectRecognition.util as util
 
 
-def get_dir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-        print('created directory', path)
-    return path
-
-
-def plot_model_filter(model):
+def plot_model_filter(model, save_path=None):
     filters = [submodule[1].detach().numpy()
                for submodule in model.named_parameters() 
                if 'weight' in submodule[0] and len(submodule[1].shape) == 4]
@@ -50,19 +44,26 @@ def plot_model_filter(model):
     pidx = 0
     for f in filters:
         for subf in f:
-            axs_list[pidx].imshow(subf)
+            axs_list[pidx].imshow(subf, interpolation=None)
             pidx += 1
-    plt.show()
+
+    if save_path is not None:
+        file_path = os.path.join(save_path, 'filter.png')
+        plt.savefig(file_path)
+        print('saved weight at', save_path)
+    else:
+        plt.show()
+    plt.close()
 
 
-def load_model(prefix, model_id, net_params, cp_detector, use_prior=False):
-    model_param_path = os.path.join(get_dir(prefix), '%s.npy'%model_id)
+def load_model(prefix, model_id, net_params, *args, **kwargs):
+    model_param_path = os.path.join(util.get_dir(prefix), '%s.npy'%model_id)
     params = np.load(model_param_path)
     model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
-        cp_detector=cp_detector,
-        use_prior=use_prior,
+        *args,
+        **kwargs,
     )
     model.set_parameters(params)
 
@@ -79,15 +80,15 @@ def plot_focus(dataset, indices, all_focus):
     )
     for i in range(PY):
         plt.subplot(PX, PY, i + 1)
-        plt.imshow(dataset.get_frame(indices[i])[0])
+        plt.imshow(dataset.get_frame(indices[i])[0], interpolation=None)
 
         plt.subplot(PX, PY, PY + i + 1)
-        plt.imshow(focus_img[i])
+        plt.imshow(focus_img[i], interpolation=None)
     plt.show()
 
 
 def save_imgs(imgs, save_path):
-    save_subpath = get_dir(os.path.join(save_path, 'intensity'))
+    save_subpath = util.get_dir(os.path.join(save_path, 'intensity'))
     for i, img in enumerate(imgs):
         file_name = 'intensity_%d.png'%(i)
         file_path = os.path.join(save_subpath, file_name)
@@ -95,7 +96,7 @@ def save_imgs(imgs, save_path):
     print('focus intensity saved under', save_subpath)
 
 
-def save_focus_img(dataset, all_focus, save_path, changepoints=None):
+def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
     focus_img = util.extract_neighbor(
         dataset,
         all_focus,
@@ -109,9 +110,10 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=None):
         imsave(file_path, img)
     print('saved under', save_path)
 
+    pos_cnt = np.zeros(dataset.get_shape()[-2:])
     cp_mask = np.zeros(len(all_focus), dtype=bool)
     cp_mask[changepoints] = True
-    save_subpath = get_dir(os.path.join(save_path, 'marker'))
+    save_subpath = util.get_dir(os.path.join(save_path, 'marker'))
     for i, img in enumerate(dataset.get_frame(0, len(all_focus))):
         # marker
         file_name = 'marker_%d.png'%(i)
@@ -121,26 +123,32 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=None):
         img[0, :, marker_pos[1]] = 1
         if cp_mask[i]:
             img = 1 - img
+        pos_cnt[marker_pos[0], marker_pos[1]] += 1
         imsave(marker_file_path, img[0])
     print('focus by marker saved under', save_subpath)
 
+    if np.sum(pos_cnt) > 0:
+        pos_cnt = np.sqrt(1.0 - (pos_cnt / np.max(pos_cnt) - 1)**2)
+        pos_cnt_file_path = os.path.join(save_path, 'counter_pos.png')
+        imsave(pos_cnt_file_path, pos_cnt)
+        print('position count saved at', pos_cnt_file_path)
 
-def report_model(dataset, model, prefix, plot_flags, cpd):
-    focus_img_dir = get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
+
+def report_model(save_path, dataset, model, prefix, plot_flags, cpd):
     focus = model.forward_all(dataset, batch_size=400, 
                               ret_extra=plot_flags['plot_intensity'])
     if plot_flags['plot_intensity']:
-        save_imgs(focus[1], focus_img_dir)
+        save_imgs(focus[1], save_path)
         focus = focus[0]
 
     if plot_flags['plot_focus']:
         # compute changepoints if needed
-        changepoints = None
+        changepoints = []
         if plot_flags['plot_cp']:
             _, changepoints = cpd.generate_changepoints(focus)
 
         # plot and save into directories
-        save_focus_img(dataset, focus, focus_img_dir, changepoints)
+        save_focus_img(dataset, focus, save_path, changepoints)
 
 if __name__ == '__main__':
     import argparse
@@ -154,12 +162,6 @@ if __name__ == '__main__':
                         help='network params JSON file')
     parser.add_argument('modelID',
                         help='model params file')
-    parser.add_argument('--champ', choices=['ball', 'paddle'],
-                        help='parameters for CHAMP')
-    parser.add_argument('--boost', action='store_true', default=False,
-                        help='boost mode [in progress]')
-    parser.add_argument('--prior', action='store_true', default=False,
-                        help='use focus prior filter')
     parser.add_argument('--plot-filter', action='store_true', default=False,
                         help='plot model filter')
     parser.add_argument('--plot-focus', action='store_true', default=False,
@@ -168,7 +170,11 @@ if __name__ == '__main__':
                         help='indicate changepoint frames (with --plot-focus)')
     parser.add_argument('--plot-intensity', action='store_true', default=False,
                         help='plot focus intensity (output before argmax)')
+    add_args.add_changepoint_argument(parser)
+    add_args.add_dataset_argument(parser)
+    add_args.add_model_argument(parser)
     args = parser.parse_args()
+    print(args)
 
     prefix = args.dir
     model_id = args.modelID
@@ -195,16 +201,18 @@ if __name__ == '__main__':
         dataset = DatasetSelfBreakout(
             'SelfBreakout/runs',  # object dump path
             'SelfBreakout/runs/0',  # run states
-            binarize=0.1,
+            n_state=args.n_state,  # set max number of states
+            binarize=args.binarize,  # binarize image to 0 and 1
+            offset_fix=args.offset_fix,  # offset of episode number
         )  # 10.0, 0.1, 1.0, 0.0005
     elif args.game == 'atari':
-        actor = partial(RotatePolicy, hold_count=7)
+        actor = partial(RotatePolicy, hold_count=10)
         dataset = DatasetAtari(
             'BreakoutNoFrameskip-v4',  # atari game name
             actor,  # mock actor
-            n_state=1000,  # set max number of states
+            n_state=args.n_state,  # set max number of states
             save_path='results',  # save path for gym
-            binarize=0.1,
+            binarize=args.binarize,  # binarize image to 0 and 1
         )
 
     """
@@ -224,12 +232,13 @@ if __name__ == '__main__':
     model = load_model(
         prefix,
         model_id,
-        net_params,
-        cpd,
+        net_params=net_params,
         use_prior=args.prior,
+        argmax_mode=args.argmax_mode,
     )
+    save_path = util.get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
     if plot_flags['plot_filter']:
-        plot_model_filter(model)
+        plot_model_filter(model, save_path)
 
     # boosting with trained models
     if args.boost:
@@ -255,4 +264,4 @@ if __name__ == '__main__':
     """
     Do the report
     """
-    report_model(dataset, model, prefix, plot_flags, cpd)
+    report_model(save_path, dataset, model, prefix, plot_flags, cpd)

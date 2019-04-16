@@ -189,7 +189,8 @@ class RotatePolicy(Policy):
     def act(self, screen):
         self.current_count += 1
         if self.current_count >= self.hold_count:
-            self.current_action = (self.current_action+1) % self.action_space
+            self.current_action = np.random.randint(self.action_space)
+            # self.current_action = (self.current_action+1) % self.action_space
             self.current_count = 0
         return self.current_action
 
