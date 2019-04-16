@@ -47,7 +47,7 @@ class Model(nn.Module):
         if args.num_layers == 0:
             self.insize = num_inputs
         else:
-            self.insize = factor * factor // 2
+            self.insize = factor * factor * factor // min(factor, 8)
         print("MINMAX", self.minmax)
         if self.minmax is not None:
             self.minmax = (torch.cat([pytorch_model.wrap(self.minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(self.minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
