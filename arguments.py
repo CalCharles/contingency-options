@@ -216,6 +216,11 @@ def get_args():
                         help='number of states in a trace trajectory (default -1)')
     parser.add_argument('--trace-queue-len', type=int, default=-1,
                         help='number of trace trajectories in the trace queue (default -1)')
+    # dilated settings
+    parser.add_argument('--dilated-stack', type=int, default=4,
+                        help='number of states to keep when one dilated index is added (default 4)')
+    parser.add_argument('--dilated-queue-len', type=int, default=-1,
+                        help='number of states in the dilation index queue (multiply with dilated-stack) (default -1 not used)')
 
     # logging settings
     parser.add_argument('--log-interval', type=int, default=10,

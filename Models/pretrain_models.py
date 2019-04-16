@@ -65,7 +65,7 @@ def get_option_rewards(dataset_path, reward_fns, actions, length_constraint=5000
     states, resps = load_states(reward_fns[0].get_state, dataset_path, length_constraint=length_constraint)
     rewards = []
     for reward_fn in reward_fns:
-        reward = reward_fn.compute_reward(pytorch_model.wrap(states, cuda=True), actions)
+        reward = reward_fn.compute_reward(pytorch_model.wrap(states, cuda=True), actions, None)
         rewards.append(reward.tolist())
     return rewards
 

@@ -28,7 +28,7 @@ class BounceReward(ChangepointReward):
         self.form = args.reward_form
 
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
         states must have at least two in the stack: to keep size of rewards at num_states - 1
         assumes ball is the last state
@@ -84,7 +84,7 @@ class Xreward(ChangepointReward):
         self.head, self.tail = get_edge(args.train_edge)
         self.name = "x"
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
         states must have at least two in the stack: to keep size of rewards at num_states - 1
         assumes ball is the last state
@@ -110,7 +110,7 @@ class BlockReward(ChangepointReward):
         self.max_dist = np.linalg.norm([30, 20])
         self.cuda = args.cuda
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         rewards = torch.zeros(len(states))
         change_indexes, ats, states = self.state_class.determine_delta_target(pytorch_model.unwrap(states))
         if len(change_indexes) > 0:
@@ -119,6 +119,13 @@ class BlockReward(ChangepointReward):
         if self.cuda:
             rewards = rewards.cuda()
         return rewards
+
+    def determineChanged(self, states, actions, resps):
+        change_indexes, ats, states = self.state_class.determine_delta_target(pytorch_model.unwrap(states))
+        change = len(change_indexes) > 0
+        if change:
+            return change, states[0]
+        return change, None
 
 class RewardRight(ChangepointReward):
     def compute_reward(self, states, actions):

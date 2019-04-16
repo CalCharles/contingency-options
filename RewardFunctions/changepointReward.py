@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from Environments.state_definition import load_states
+from Environments.state_definition import load_states, GetState
 
 def compute_cp_minmax(reward_class, pth):
     '''
@@ -36,14 +36,23 @@ class ChangepointReward():
         self.cuda = args.cuda
         self.traj_dim = 2 #TODO: the dimension of the input trajectory is currently pre-set at 2, the dim of a location. Once we figure out dynamic setting, this can change
         self.parameter_minmax = None
+        self.state_class = GetState(0, self.head, state_forms=[(self.head, 'bounds'), *[(tail, 'bounds') for tail in self.tail]]) # TODO: technically, multibounds for both
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
         takes in states, actions in format: [num in batch (sequential), dim of state/action], there is one more state than action
         for state, action, nextstate
+        resps is the respective values associated with each state class
         returns rewards in format: [num in batch, 1]
         '''
         pass
+
+    def determineChanged(self, states, actions, resps):
+        '''
+        finds out if there was a chance in the correlate, to determine if a goal state was reached.
+        Returns true if so, and the state at which the change occurred, or false and None
+        '''
+        return False, None
 
     def get_state(self, state): # copy of get_trajectories, but for a single state
         # print(self.head)
@@ -91,7 +100,7 @@ class ChangepointDetectionReward(ChangepointReward):
         self.desired_mode = desired_mode
         self.seg_reward = args.segment
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         trajectory = pytorch_model.unwrap(states[:-1,:self.traj_dim])
         saliency_trajectory = pytorch_model.unwrap(states[:-1,self.traj_dim:])
         # print("states shape", trajectory.shape, saliency_trajectory.shape)
@@ -249,7 +258,7 @@ class ChangepointMarkovReward(ChangepointReward):
         # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-3:])
         return probs
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         probs = self.compute_fit(states)
         reward = torch.ones(probs.size()) * -1
         reward[probs <= self.max_dev] = 2

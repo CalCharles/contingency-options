@@ -113,10 +113,10 @@ class ProxyEnvironment():
         self.iscuda = args.cuda
 
         self.swap_form = args.swap_form
-        self.delayed_swap = False
-        if args.swap_form in ['reward']:
-            self.delayed_swap = True
         self.swap = True
+        self.delayed_swap = False
+        if self.swap_form == 'reward':
+            self.delayed_swap = True
         self.current_action = 0
         self.num_hist = args.num_stack
         self.state_size = self.stateExtractor.shape
@@ -127,6 +127,7 @@ class ProxyEnvironment():
         self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(proxy_chain[0].getState())[0], cuda=args.cuda)
         self.resp = pytorch_model.wrap([0 for i in range(len(self.stateExtractor.fnames))], cuda=args.cuda)
         self.insert_extracted()
+
         self.changepoint_queue_len = args.changepoint_queue_len
         self.changepoint_shape = self.reward_fns[0].get_trajectories([proxy_chain[0].getState()]).shape[1:]
         self.changepoint_queue = torch.zeros(self.changepoint_queue_len, *self.changepoint_shape).detach()
@@ -304,17 +305,14 @@ class ProxyEnvironment():
 
     def computeReward(self, length):
         # TODO: probably doesn't have to be in here
-        if self.cp_filled:
-            states = torch.cat([self.changepoint_queue[self.changepoint_at+1:], self.changepoint_queue[:self.changepoint_at+1]], dim=0) # multiple policies training
-            actions = torch.cat([self.changepoint_action_queue[self.changepoint_at+1:], self.changepoint_action_queue[:self.changepoint_at+1]], dim=0)
-        else:
-            states = self.changepoint_queue[:self.changepoint_at+1] # multiple policies training
-            actions = self.changepoint_action_queue[:self.changepoint_at+1]
+        states = self.changepoint_queue[:self.changepoint_filled] # multiple policies training
+        actions = self.changepoint_action_queue[:self.changepoint_filled]
+        resps = self.changepoint_resp_queue[:self.changepoint_filled]
         rewards = []
         # print(rollout.changepoint_queue.shape)
         # print(states)
         for reward_fn in self.reward_fns:
-            rwd = reward_fn.compute_reward(states,actions)
+            rwd = reward_fn.compute_reward(states,actions,resps)
             if len(rwd) < length: #queue not yet filled enough
                 ext = torch.zeros((length - len(rwd), )).cuda().detach()
                 # print(ext.shape)
@@ -331,6 +329,14 @@ class ProxyEnvironment():
         self.current_rewards = torch.stack(rewards, dim=0)[:,-length-self.lag_num:-self.lag_num]
         return self.current_rewards
 
+    def determineChanged(self, length):
+        states = self.changepoint_queue[self.changepoint_filled - length:self.changepoint_filled] # multiple policies training
+        actions = self.changepoint_action_queue[self.changepoint_filled - length:self.changepoint_filled]
+        resps = self.changepoint_resp_queue[self.changepoint_filled - length:self.changepoint_filled]
+
+        change, state = self.reward_fns[0].determineChanged(states, actions, resps)
+        return change, state
+
     def determine_swaps(self, length, needs_rewards=True):
         if len(self.proxy_chain) > 1:
             self.proxy_chain[-1].determine_swaps()
@@ -338,7 +344,7 @@ class ProxyEnvironment():
             self.swap = True
         elif self.swap_form == "reward":
             if needs_rewards:
-                rewards = self.computeReward(length)
+                rewards = self.proxy_chain[-1].computeReward(length)
             self.swap = rewards.sum() > 0.3
 
     def changepoint_state(self, raw_state):
@@ -349,11 +355,11 @@ class ProxyEnvironment():
 
     def insert_changepoint_queue(self, state, action, resp):
         if self.changepoint_queue_len > 0:
-            self.changepoint_action_queue[self.changepoint_at].copy_(action.squeeze().detach())
-            self.changepoint_resp_queue[self.changepoint_at].copy_(resp.squeeze().detach())
-            self.changepoint_queue[self.changepoint_at].copy_(state.squeeze().detach())
-            if self.changepoint_at == self.changepoint_queue_len - 1:
-                self.cp_filled = True
-                self.changepoint_at = 0
-            else:
-                self.changepoint_at += 1
+            if self.changepoint_filled == self.changepoint_queue_len:
+                self.changepoint_action_queue = self.changepoint_action_queue.roll(1, dim=0)
+                self.changepoint_resp_queue = self.changepoint_resp_queue.roll(1, dim=0)
+                self.changepoint_queue = self.changepoint_queue.roll(1, dim=0)
+            self.changepoint_filled += self.changepoint_filled < self.changepoint_queue_len
+            self.changepoint_action_queue[self.changepoint_filled-1].copy_(action.squeeze().detach())
+            self.changepoint_resp_queue[self.changepoint_filled-1].copy_(resp.squeeze().detach())
+            self.changepoint_queue[self.changepoint_filled-1].copy_(state.squeeze().detach())
