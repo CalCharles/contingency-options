@@ -342,9 +342,10 @@ from Models.image_models import ObjectSumImageModel
 models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, 
             "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel,
             "sumimage": ObjectSumImageModel}
-from Models.parameterized_models import ParameterizedOneHotModel, ParameterizedContinuousModel
+from Models.parameterized_models import ParameterizedOneHotModel, ParameterizedContinuousModel, ParameterizedBoostDim
 models["paramhot"] = ParameterizedOneHotModel
 models["paramcont"] = ParameterizedContinuousModel
+models["paramboost"] = ParameterizedBoostDim
 from Models.adjustment_models import AdjustmentModel
 models["adjust"] = AdjustmentModel
 from Models.multi_models import PopulationModel
