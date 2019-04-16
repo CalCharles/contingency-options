@@ -243,6 +243,7 @@ class CMAES_optimizer():
 
 def supervised_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values):
     loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(true_values, cuda=True).squeeze()) # TODO: cuda support required
+    loss += -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean() * .01
     # print(action_probs[:5], true_values[:5], loss)
     # for optimizer in optimizers:
     #     optimizer.zero_grad()
