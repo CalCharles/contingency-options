@@ -30,6 +30,7 @@ class ParametrizedModel(Model):
         expanded_state = torch.zeros(x.size(0), 1) + vec.shape[1]
         if self.iscuda:
             expanded_state = expanded_state.cuda()
+        print(expanded_state.shape, resp.shape)
         # print("vshape", vec.shape[1], resp.shape, expanded_state.shape)
         resp = torch.cat((resp, expanded_state), dim=1)
         x = torch.cat((x,vec), dim=1)
@@ -57,7 +58,7 @@ class ParametrizedModel(Model):
 class ParameterizedOneHotModel(ParametrizedModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.num_options = default_value_arg(kwargs, 'param_dim', 0) # number of inputs for the options
+        self.num_options = default_value_arg(kwargs, 'param_dim', 1) # number of inputs for the options
         self.hot_encodings = []
         self.option_values = None # list of option indexes
 
@@ -76,9 +77,11 @@ class ParameterizedContinuousModel(ParametrizedModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.hot_encodings = []
-        self.param_dim = default_value_arg(kwargs, 'param_dim', 0)
+        self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
         print(self.param_dim)
         self.option_values = torch.zeros(1, self.param_dim) # changed externally to the parameters
+        if args.cuda:
+            self.option_values = self.option_values.cuda()
     
     def get_option_dim(self, param_dim):
         return param_dim
@@ -94,14 +97,18 @@ class ParameterizedBoostDim(ParametrizedModel):
         super().__init__(**kwargs)
         args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.hot_encodings = []
-        self.param_dim = default_value_arg(kwargs, 'param_dim', 0)
+        self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
         print(self.param_dim)
         self.option_values = torch.zeros(1, self.param_dim) # changed externally to the parameters
+        if args.cuda:
+            self.option_values = self.option_values.cuda()
         self.l1 = nn.Linear(self.param_dim, num_inputs)
-    
+        self.train()
+        self.reset_parameters()
+
     def get_option_dim(self, param_dim):
         return self.num_inputs
-
     def create_option_vec(self, batch_size):
         # boosts the dimension of the option values to the same as the inputs (relu might not be the right activation...)
+        print(F.relu(self.l1(self.option_values.clone())).shape)
         return F.relu(self.l1(self.option_values.clone()))

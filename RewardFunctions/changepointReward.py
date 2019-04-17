@@ -54,6 +54,12 @@ class ChangepointReward():
         '''
         return False, None
 
+    def get_possible_parameters(self, state):
+        '''
+        gets parameters that can be used for a parametrized reward. Usually, different objects when there are more than one
+        '''
+        return 1
+
     def get_state(self, state): # copy of get_trajectories, but for a single state
         # print(self.head)
         if self.head == "Block": # TODO: make not hard coded

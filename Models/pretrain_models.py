@@ -9,6 +9,7 @@ from Environments.multioption import MultiOption
 from OptionChain.option_chain import OptionChain
 from Environments.state_definition import GetState, compute_minmax, load_states
 from ReinforcementLearning.learning_algorithms import PopOptim
+import matplotlib.pyplot as plt
 
 def hot_actions(action_data, num_actions):
     for i in range(len(action_data)):
@@ -140,14 +141,15 @@ def generate_target_training(actions, indexes, states, resps, state_class, rewar
             i += 1
             ci = change_indexes[i]
         if ci < idx2: # we hit a block
-            # plt.imshow(dumps[idx1])
+            # plt.imshow(render_dump(dumps[idx1]))
             # plt.show()
-            # plt.imshow(dumps[ci])
+            # plt.imshow(render_dump(dumps[ci]))
             # plt.show()
             train_states += states[idx1:idx2][:num_steps].tolist() # first 10 states after contact
             train_resps += resps[idx1:idx2][:num_steps].tolist()
             train_actions += hot_actions([a], num_actions) * len(states[idx1:idx2][:num_steps])
             param_targets += [hindsight_targets[i].tolist()] * len(states[idx1:idx2][:num_steps])
+            print(len(train_states), len(train_resps), len(train_actions), len(param_targets))
     return np.array([train_actions]), np.array([train_states]), np.array([train_resps]), np.array(param_targets)
 
 def generate_soft_dataset(states, resps, true_environment, reward_fns, args):
@@ -247,7 +249,7 @@ class CMAES_optimizer():
 
 def supervised_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values):
     loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(true_values, cuda=True).squeeze()) # TODO: cuda support required
-    loss += -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean() * .001
+    loss += -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean() * .01
     # print(action_probs[:5], true_values[:5], loss)
     # for optimizer in optimizers:
     #     optimizer.zero_grad()

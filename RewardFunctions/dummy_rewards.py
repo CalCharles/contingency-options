@@ -105,7 +105,7 @@ class BlockReward(ChangepointReward):
     def __init__(self, args): 
         super().__init__(None, args)
         self.form = args.reward_form
-        self.state_class = GetState(action_num=4, target="Block", state_forms=[("Ball", "bounds"), ("Block", "multifull")]) # should be a block state class
+        self.state_class = GetState(target="Block", state_forms=[("Ball", "bounds"), ("Block", "multifull")]) # should be a block state class
         self.parameters = np.array([0,0])
         self.max_dist = np.linalg.norm([30, 20])
         self.cuda = args.cuda
@@ -126,6 +126,13 @@ class BlockReward(ChangepointReward):
         if change:
             return change, states[0]
         return change, None
+
+    def get_possible_parameters(self, state):
+        state = state.view(-1,3)
+        idxes = state[:,2].nonzero()[:,0].squeeze()
+        # print(idxes, state[idxes,:2])
+        return state[idxes,:2]
+
 
 class RewardRight(ChangepointReward):
     def compute_reward(self, states, actions):

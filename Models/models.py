@@ -41,6 +41,8 @@ class Model(nn.Module):
         self.minmax = default_value_arg(kwargs, 'minmax', None)
         self.name = default_value_arg(kwargs, 'name', 'option')
         self.no_preamble = default_value_arg(kwargs, 'no_preamble', False)
+        self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
+        self.option_values = torch.zeros(1, self.param_dim) # changed externally to the parameters
         num_inputs = int(num_inputs)
         num_outputs = int(num_outputs)
         self.num_layers = args.num_layers

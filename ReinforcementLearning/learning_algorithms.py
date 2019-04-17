@@ -68,14 +68,14 @@ class LearningOptimizer():
         self.max_duration = self.current_duration
         self.sample_duration = args.sample_duration
         self.RL = 0
-        self.distilled = False
+        self.dilated = False
 
-    def interUpdateModel(self, step):
+    def interUpdateModel(self, step, rewards, change):
         # see evolutionary methods for how this is used
         # basically, updates the model at each time step if necessary (switches between population in evo methods)
-        pass
+        return False
 
-    def updateModel(self):
+    def updateModel(self, parameter):
         # TODO: unclear whether this function should actually be inside optimizer, possibly moved to a manager class
         if self.step_counter == self.num_update_model:
             self.models.option_index = np.random.randint(self.models.num_options)
@@ -114,7 +114,7 @@ class LearningOptimizer():
         ''' 
         TODO: make this less bulky, since code is mostly repeated
         '''
-        if self.distilled:
+        if not self.dilated:
             rol = rollouts.base_rollouts
             buffer_at = rol.buffer_filled - rollouts.lag_num
         else:
@@ -149,16 +149,16 @@ class LearningOptimizer():
                 grad_indexes = np.random.choice(possible_indexes, min(num_grad_states, len(possible_indexes)), replace=False, p=weights) # should probably choose from the actually valid indices...
                 # print(grad_indexes)
             # error
-            state_eval, current_state_eval, epsilon_eval, done_eval, resp_eval, action_eval, cp_states_eval, option_param_eval, option_no_eval, full_rollout_rewards, full_rollout_returns, action_probs_eval, q_eval, value_eval = rol.get_indexes(grad_indexes)
-            next_state_eval, next_current_state_eval, _, _, _, next_action_eval, _, _, _, next_full_rollout_returns, _, next_q_eval, _ = rol.get_indexes(grad_indexes + 1)
+            state_eval, current_state_eval, epsilon_eval, done_eval, resp_eval, action_eval, cp_states_eval, option_param_eval, option_no_eval, rollout_rewards, rollout_returns, action_probs_eval, q_eval, value_eval = rol.get_indexes(grad_indexes)
+            next_state_eval, next_current_state_eval, _, _, next_resp_eval, next_action_eval, _, _, _, _, next_rollout_returns, _, next_q_eval, _ = rol.get_indexes(grad_indexes + 1)
             self.last_selected_indexes = grad_indexes
         else:
-            state_eval, current_state_eval, epsilon_eval, done_eval, resp_eval, action_eval, cp_states_eval, option_param_eval, option_no_eval, full_rollout_rewards, full_rollout_returns, action_probs_eval, q_eval, value_eval = rol.get_from(0,1)
-            next_state_eval, next_current_state_eval, _, _, _, next_action_eval, _, _, _, next_full_rollout_returns, _, next_q_eval, _ = rol.get_from(1,0)
+            state_eval, current_state_eval, epsilon_eval, done_eval, resp_eval, action_eval, cp_states_eval, option_param_eval, option_no_eval, rollout_rewards, rollout_returns, action_probs_eval, q_eval, value_eval = rol.get_from(0,1)
+            next_state_eval, next_current_state_eval, _, _, next_resp_eval, next_action_eval, _, _, _, _, next_rollout_returns, _, next_q_eval, _ = rol.get_from(1,0)
             self.last_selected_indexes = list(range(len(state_eval)))
         # print(epsilon_eval)
         # print(state_eval.shape, current_state_eval.shape, next_current_state_eval.shape, action_eval.shape, rollout_returns.shape, rollout_rewards.shape, next_state_eval.shape, next_rollout_returns.shape, q_eval.shape, next_q_eval.shape)
-        return state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns
+        return state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns[reward_index], rollout_rewards[reward_index], next_rollout_returns[reward_index], q_eval, next_q_eval, action_probs_eval, epsilon_eval, resp_eval, rollout_returns
 
     def step_optimizer(self, optimizer, model, loss, RL=-1):
         '''
@@ -684,15 +684,16 @@ class Evolutionary_optimizer(LearningOptimizer):
         self.max_duration = sample_duration * self.models.num_options * self.models.currentModel().num_population * self.retest // reward_check
         self.sample_duration = sample_duration
 
-    def interUpdateModel(self, step, rewards):
+    def interUpdateModel(self, step, rewards, change):
         '''
         if a reward is acquired, then switch the testing option. Each of the population has n tries
         reward of the form: [option num, batch size, 1]
         '''
         duration_check = ((step - self.last_swap) % self.sample_duration == 0 and step != 0)
-        early_stop = rewards.abs().sum() > 0 and self.reward_stopping
+        early_stop = pytorch_model.unwrap(rewards.abs().sum()) > 0 and self.reward_stopping
         # print((step - self.last_stop) % self.sample_duration)
         # late_stop = rewards.sum() > 0 and self.reward_stopping and duration_check
+        # print("duration, es", duration_check, early_stop, pytorch_model.unwrap(rewards.sum()), rewards.shape, self.reward_stopping)
         if duration_check or early_stop:
             # update to next model
             ridx = step
@@ -726,7 +727,7 @@ class Evolutionary_optimizer(LearningOptimizer):
                 self.models.currentModel().current_network_index += 1
         return False
 
-    def updateModel(self):
+    def updateModel(self, parameter):
         self.models.currentModel().current_network_index = 0
         self.sample_indexes = [[[] for j in range(self.models.models[0].num_population)] for i in range(self.models.num_options)]
 
@@ -759,7 +760,7 @@ class Evolutionary_optimizer(LearningOptimizer):
                         # print(i,j,s,e,returns[k, s:e].sum())
                         if self.reward_stopping: # specialized stopping return
                             if returns[k, s:e].sum() < .5: # TODO: negative rewards not hardcoded
-                                total_value += returns[k, s:e].sum() + (-(e-s) / self.sample_duration)
+                                total_value += returns[k, s:e].sum() * 2 + (-(e-s) / self.sample_duration)
                             else:
                                 # total_value += returns[k, s:e].sum() * self.sample_duration / (e-s)
                                 total_value += returns[k, s:e].sum() * (self.sample_duration - (e-s)) / self.sample_duration
@@ -934,7 +935,7 @@ class GradientEvolution_optimizer(LearningOptimizer):
         return rval
 
 
-    def updateModel(self):
+    def updateModel(self, parameter):
         # self.models.currentModel().current_network_index = (self.models.currentModel().current_network_index + 1 )  % self.models.currentModel().num_population
         # print(self.current_duration_at, self.sample_duration, self.models.currentModel().num_population, self.models.currentModel().current_network_index)
         if self.current_duration_at % self.sample_duration == 0 and self.current_duration_at != 0:
@@ -1057,8 +1058,16 @@ class CMAES_optimizer(Evolutionary_optimizer):
 class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implement this
     def initialize(self, args, train_models, reward_classes=None):
         super().initialize(args, train_models)
+        self.rl_optimizer = learning_algorithms[args.base_optimizer]()
         self.rl_optimizer.initialize(args, train_models)
         self.rl_optimizer.distilled = True
+
+    def interUpdateModel(self, step, rewards, change):
+        return change
+
+    def updateModel(self, possible_parameters):
+        choice = np.random.randint(len(possible_parameters))
+        self.models.set_parameter(possible_parameters[choice])
 
     def step(self, args, train_models, rollouts, use_range=None):
         # steps the RL optimizer for different targets
@@ -1088,7 +1097,6 @@ class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implem
             res = self.rl_optimizer.step(args, train_models, rollouts, use_range=(max(di-args.lookback, 0),di))
         args.grad_epoch = ge
 
-
 # class SupervisedLearning_optimizer(LearningOptimizer): # TODO: implement this
 #     def initialize(self, args, train_models):
 #         super().initialize(args, train_models)
@@ -1116,4 +1124,4 @@ class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implem
 learning_algorithms = {"DQN": DQN_optimizer, "DDPG": DDPG_optimizer, "PPO": PPO_optimizer, 
 "A2C": A2C_optimizer, "SARSA": SARSA_optimizer, "TabQ":TabQ_optimizer, "PG": PolicyGradient_optimizer,
 "Dist": Distributional_optimizer, "Evo": Evolutionary_optimizer, "GradEvo": GradientEvolution_optimizer, 
-"CMAES": CMAES_optimizer, "SVPG": SteinVariational_optimizer}
+"CMAES": CMAES_optimizer, "SVPG": SteinVariational_optimizer, "Hind": HindsightParametrizedLearning_optimizer}

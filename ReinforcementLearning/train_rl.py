@@ -37,15 +37,16 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     base_env = proxy_chain[0]
     base_env.set_save(0, args.save_dir, args.save_recycle)
     proxy_environment.initialize(args, proxy_chain, reward_classes, state_class, behavior_policy)
+    # proxy_environment.action_size = 4 # DANGER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! ONLY FOR BLOCKS WHEN NO BOUNCE ANGLES IN GRAPH
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)
-    behavior_policy.initialize(args, state_class.action_num)
+    behavior_policy.initialize(args, proxy_environment.action_size)
     print("loading weights", args.load_weights)
     if not args.load_weights:
-        train_models.initialize(args, len(reward_classes), state_class)
+        train_models.initialize(args, len(reward_classes), state_class, proxy_environment.action_size)
         proxy_environment.set_models(train_models)
     else:
-        train_models.initialize(args, len(reward_classes), state_class)
+        train_models.initialize(args, len(reward_classes), state_class, proxy_environment.action_size)
         train_models.session(args)
         proxy_environment.duplicate(args)
     train_models.train()
@@ -61,9 +62,9 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     # print("initial_state (s, hs, rs, cps)", state, hist_state, raw_state, cp_state)
     # print(cp_state.shape, state.shape, hist_state.shape, state_class.shape)
     print(args.trace_len, args.trace_queue_len)
-    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, cr.flatten().shape[0],
+    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), proxy_environment.action_size, cr.flatten().shape[0],
         state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, args.trace_len, 
-        args.trace_queue_len, args.dilated_stack, args.target_stack, args.dilated_queue_len, len(train_models.models), cp_state[0].shape,
+        args.trace_queue_len, args.dilated_stack, args.target_stack, args.dilated_queue_len, train_models.currentOptionParam().shape[1:], len(train_models.models), cp_state[0].shape,
         args.lag_num, args.cuda)
     option_actions = {option.name: collections.Counter() for option in train_models.models}
     total_duration = 0
@@ -117,20 +118,21 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                     else: # need to clear out trace queue
                         trace_queue = rollouts.insert_trace(trace_queue)
                         trace_queue = []
+                # time.sleep(.1)
             # print(m, args.reward_check)
             rewards = proxy_environment.computeReward(m+1)
-            change, target = proxy_environment.determine_changed(m+1)
+            change, target = proxy_environment.determineChanged(m+1)
             proxy_environment.determine_swaps(m+1, needs_rewards=False) # doesn't need to generate rewards
             # print("reward time", time.time() - start)
             # print("rewards", torch.sum(rewards))
             rollouts.insert_hindsight_target(change, target)
-            rollouts.insert_rewards(rewards, last_total_steps)
+            rollouts.insert_rewards(args, rewards)
             name = train_models.currentName()
             option_counter[name] += m + 1
             option_value[name] += rewards.sum(dim=1)[train_models.option_index]  
 
             last_total_steps = total_steps
-            completed = learning_algorithm.interUpdateModel(total_steps, rewards)
+            completed = learning_algorithm.interUpdateModel(total_steps, rewards, change)
             if completed:
                 # print(step)
                 break
@@ -148,7 +150,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
 
         cp_state = proxy_environment.changepoint_state([raw_state])
-        rollouts.insert(total_steps + 1, state, current_state, action_probs, action, Q_vals, values, train_models.option_index, cp_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), current_resp, done=done) # inserting the last state and unused action
+        rollouts.insert(retest, state, current_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), done, current_resp, action, cp_state[0], train_models.currentOptionParam(), train_models.option_index, None, None, action_probs, Q_vals, values) # inserting the last state and unused action
         retest = True # need to re-insert value with true state
         # print("rew, state", rollouts.rewards[0,-50:], rollouts.extracted_state[-50:])
         # print("inserttime", time.time() - start)
@@ -163,7 +165,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             trace_queue = rollouts.insert_trace(trace_queue)
         # print(rollouts.extracted_state)
         # print(rewards)
-        rollouts.compute_returns(args, values)
+        # rollouts.compute_returns(args, values) # don't need to compute returns because they are computed upon reward reception
         # print("returns and rewards (rew, ret)", rollouts.rewards, rollouts.returns)
         # print("returns and return queue", rollouts.returns, rollouts.return_queue)
         # print("reward check (cs, rw, rol rw, rt", rollouts.current_state, rewards, rollouts.rewards, rollouts.returns)
@@ -171,7 +173,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         # print(name, rollouts.extracted_state, rollouts.rewards, rollouts.actions)
 
         #### logging
-        reward_total = rollouts.rewards.sum(dim=1)[train_models.option_index]
+        reward_total = rollouts.base_rollouts.rewards.sum(dim=1)[train_models.option_index]
         # print("reward_total", reward_total.shape)
         final_rewards.append(reward_total)
         #### logging
@@ -193,12 +195,12 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                     learning_algorithm.retest += 1
                 learning_algorithm.reset_current_duration(learning_algorithm.sample_duration, args.reward_check)
                 args.changepoint_queue_len = max(learning_algorithm.max_duration, args.changepoint_queue_len)
-                rollouts.set_changepoint_queue(args.changepoint_queue_len)
                 sample_schedule = args.sample_schedule * (j // args.sample_schedule + 1)# sum([args.sample_schedule * (i+1) for i in range(j // args.sample_schedule + 1)])
                 # print("resample", time.time() - start)
         else:
             value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = None, None, None, None, None, None
-        learning_algorithm.updateModel()
+        parameter = proxy_environment.get_next_parameter()
+        learning_algorithm.updateModel(parameter)
         # print("update", time.time() - start)
 
         if j % args.save_interval == 0 and args.save_models and args.train: # no point in saving if not training

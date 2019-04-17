@@ -120,19 +120,22 @@ class ProxyEnvironment():
         self.current_action = 0
         self.num_hist = args.num_stack
         self.state_size = self.stateExtractor.shape
-        self.action_size = self.stateExtractor.action_num
+        # self.action_size = self.stateExtractor.action_num
         self.lag_num = args.lag_num
         self.behavior_policy = behavior_policy
         self.reset_history()
         self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(proxy_chain[0].getState())[0], cuda=args.cuda)
         self.resp = pytorch_model.wrap([0 for i in range(len(self.stateExtractor.fnames))], cuda=args.cuda)
+        self.resp_len = len(self.stateExtractor.fnames)
         self.insert_extracted()
+        self.parameterized_option = args.parameterized_option
 
         self.changepoint_queue_len = args.changepoint_queue_len
         self.changepoint_shape = self.reward_fns[0].get_trajectories([proxy_chain[0].getState()]).shape[1:]
         self.changepoint_queue = torch.zeros(self.changepoint_queue_len, *self.changepoint_shape).detach()
         self.changepoint_resp_queue = torch.zeros(self.changepoint_queue_len, *self.resp.shape).detach()
         self.changepoint_action_queue = torch.zeros(self.changepoint_queue_len, 1).long().detach() # TODO: add responsibility to changepoints
+        self.changepoint_filled = 0
         if self.iscuda:
             self.changepoint_queue = self.changepoint_queue.cuda()
             self.changepoint_action_queue = self.changepoint_action_queue.cuda()
@@ -142,6 +145,12 @@ class ProxyEnvironment():
         self.cp_filled = False
 
         print("num_reward_functions", len(self.reward_fns))
+
+    def get_next_parameter(self):
+        if self.parameterized_option == 0:
+            return len(self.reward_fns)
+        else:
+            return self.reward_fns[0].get_possible_parameters(self.changepoint_queue[self.changepoint_filled])
 
     def get_names(self):
         if len(self.proxy_chain) > 1:
@@ -185,7 +194,8 @@ class ProxyEnvironment():
     def duplicate(self, args):
         if len(self.reward_fns) > len(self.models.models) or args.adjustment_model:
             self.reward_fns[0].parameter_minmax = None
-            self.models.duplicate(len(self.reward_fns), args, self.stateExtractor, self.reward_fns[0].parameter_minmax)
+            print(self.name)
+            self.models.duplicate(len(self.reward_fns), args, self.stateExtractor, self.action_size, self.reward_fns[0].parameter_minmax)
 
     def set_proxy_chain(self, proxy_chain):
         self.proxy_chain = proxy_chain
@@ -208,7 +218,7 @@ class ProxyEnvironment():
 
     def reset_history(self):
         self.current_state = pytorch_model.wrap(np.zeros((self.num_hist * int(np.prod(self.state_size)), )), cuda = self.iscuda)
-        self.current_resp = pytorch_model.wrap([[0 for i in range(len(self.stateExtractor.fnames))] for _ in range(self.num_hist)], cuda = self.iscuda)
+        self.current_resp = pytorch_model.wrap([[0 for i in range(len(self.stateExtractor.fnames))] for _ in range(self.num_hist)], cuda = self.iscuda).flatten()
         # TODO: add multi-process code someday
 
     def insert_extracted(self):
@@ -219,10 +229,10 @@ class ProxyEnvironment():
         state_size = int(np.prod(self.state_size))
         if self.num_hist > 1:
             self.current_state[:(shape_dim0-1)*state_size] = self.current_state[-(shape_dim0-1)*state_size:]
-            self.current_resp[:-1] = self.current_resp[1:]
+            self.current_resp[:-self.resp_len] = self.current_resp[self.resp_len:]
         self.current_state[-state_size:] = self.extracted_state # unsqueeze 0 is for dummy multi-process code
         # print(self.current_resp, self.resp)
-        self.current_resp[-1] = self.resp
+        self.current_resp[-self.resp_len:] = self.resp
         return self.current_state
 
     def getState(self):
@@ -326,7 +336,7 @@ class ProxyEnvironment():
         # print(rewards, rollout.lag_num, -length-rollout.lag_num)
         # if rewards > 0:
         #     error
-        self.current_rewards = torch.stack(rewards, dim=0)[:,-length-self.lag_num:-self.lag_num]
+        self.current_rewards = torch.stack(rewards, dim=0)[:,self.changepoint_filled-length-self.lag_num:self.changepoint_filled-self.lag_num]
         return self.current_rewards
 
     def determineChanged(self, length):
@@ -356,10 +366,11 @@ class ProxyEnvironment():
     def insert_changepoint_queue(self, state, action, resp):
         if self.changepoint_queue_len > 0:
             if self.changepoint_filled == self.changepoint_queue_len:
-                self.changepoint_action_queue = self.changepoint_action_queue.roll(1, dim=0)
-                self.changepoint_resp_queue = self.changepoint_resp_queue.roll(1, dim=0)
-                self.changepoint_queue = self.changepoint_queue.roll(1, dim=0)
+                self.changepoint_action_queue = self.changepoint_action_queue.roll(-1, 0)
+                self.changepoint_resp_queue = self.changepoint_resp_queue.roll(-1, 0)
+                self.changepoint_queue = self.changepoint_queue.roll(-1, 0)
             self.changepoint_filled += self.changepoint_filled < self.changepoint_queue_len
             self.changepoint_action_queue[self.changepoint_filled-1].copy_(action.squeeze().detach())
             self.changepoint_resp_queue[self.changepoint_filled-1].copy_(resp.squeeze().detach())
             self.changepoint_queue[self.changepoint_filled-1].copy_(state.squeeze().detach())
+            # print(self.changepoint_queue)

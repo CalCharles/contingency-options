@@ -45,9 +45,15 @@ class OptionChain():
                     model_path = os.path.join(save_path, d)
                     models = MultiOption()
                     models.load(args, model_path)
-                    proxy_env = load_from_pickle(os.path.join(save_path, d, "env.pkl"))
+                    has_test = True
+                    try:
+                        proxy_env = load_from_pickle(os.path.join(save_path, d, "env.pkl"))
+                    except FileNotFoundError as e:
+                        proxy_env = ProxyEnvironment(d)
+                        has_test = False
                     proxy_env.set_models(models)
-                    proxy_env.set_test() # changes behavior policy to testing mode (no random actions)
+                    if has_test:
+                        proxy_env.set_test() # changes behavior policy to testing mode (no random actions)
                     proxy_env.name = d
                     print(proxy_env.__dict__)
                     self.environments[edge] = proxy_env
@@ -106,7 +112,7 @@ class OptionChain():
         object_at = n_edge[1]
         env_order = []
         while True:
-            print(n_edge, env_order)
+            print("edge and order", n_edge, env_order, self.environments[n_edge].name)
             env_order = [self.environments[n_edge]] + env_order
             object_at = n_edge[0]
             if object_backpointers[object_at] is None:
@@ -114,7 +120,10 @@ class OptionChain():
             n_edge = object_backpointers[object_at]
             object_order = [n_edge[1]] + object_order
         env_order = [self.base_environment] + env_order
-        print(env_order)
+        env_order[1].action_size = self.base_environment.num_actions # should have merged naming conventionsn
+        for le, env in zip(env_order[1:-1], env_order[2:]):
+            env.action_size = len(le.reward_fns) # TODO: handle parametrized reward functions
+        print("env order", env_order[-1].name)
         return env_order
 
     def add_edge(self, edge):

@@ -122,13 +122,12 @@ class StateGet():
 		the image represented state (raw_state)
 
 	'''
-	def __init__(self, action_num, target, minmax):
+	def __init__(self, target, minmax):
 		# TODO: full and feature is set at 1, and prox and bounds at 2, but this can differ
 		# self.state_shapes = state_shapes
 		global state_functions, state_shapes
 		self.state_functions = state_functions
 		self.state_shape = state_shapes
-		self.action_num = action_num
 		self.target = target
 		self.minmax = minmax
 		self.shape = None # should always be defined at some point
@@ -154,11 +153,11 @@ class GetState(StateGet):
 	'''
 	gets a state with components as defined above
 	'''
-	def __init__(self, action_num, target, minmax=None, state_forms=None):
+	def __init__(self, target, minmax=None, state_forms=None):
 		'''
 		given a list of pairs (name of correlate, relationship)
 		'''
-		super(GetState, self).__init__(action_num, target, minmax=minmax)
+		super(GetState, self).__init__(target, minmax=minmax)
 		# TODO: does not work on combination of higher dimensions
 		# TODO: order of input matters/ must be fixed
 		self.shape = np.sum([self.state_shape[state_form[1]] for state_form in state_forms])
@@ -239,11 +238,11 @@ class GetRaw(StateGet):
 	'''
 	gets a state with components as defined above
 	'''
-	def __init__(self, action_num, target="", minmax=None, state_forms=None, state_shape = None):
+	def __init__(self, target="", minmax=None, state_forms=None, state_shape = None):
 		'''
 		given a list of pairs (name of correlate, relationship)
 		'''
-		super(GetRaw, self).__init__(action_num, target, minmax=minmax)
+		super(GetRaw, self).__init__(target, minmax=minmax)
 		self.shape = np.sum(state_shape)		
 
 	def get_state(self, state):
