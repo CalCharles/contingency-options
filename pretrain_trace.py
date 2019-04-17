@@ -29,6 +29,7 @@ if __name__ == "__main__":
     pretrain_target
     save-dir
     '''
+    # python pretrain_trace.py --model-form paramcont --record-rollouts "./data/bounce/" --train-edge "Ball->Block" --num-stack 1 --train --num-iters 1000 --state-forms bounds vel bin --state-names Ball Ball Block --base-node Paddle --changepoint-dir ./data/paddlegraph/ --factor 16 --num-layers 2 --lr 1e-5 --init-form xnorm --optimizer-form PPO --parameterized-form basic --reward-form block --pretrain-target 2 --weighting-lambda 0 --log-interval 200 --num-frames 10000 --num-grad-states 1000 --trace-len 10 --parameterized-option 2
     args = get_args()
     if args.reward_form == 'x':
         reward_classes = [Xreward(args)]
@@ -36,7 +37,7 @@ if __name__ == "__main__":
         reward_classes = [BounceReward(-1, args)]
     elif args.reward_form == 'dir':
         reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
-    if args.reward_form == 'block':
+    elif args.reward_form == 'block':
         reward_classes = [BlockReward(args)]
     true_environment = Paddle()
     if args.pretrain_target == 0:
@@ -62,6 +63,7 @@ if __name__ == "__main__":
         rewards = get_option_rewards(args.record_rollouts, [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)], actions, length_constraint=args.num_frames)
         actions, indexes = generate_distilled_training(rewards)
         num_actions = 4
+        print("target training")
         actions, states, resps, targets = generate_target_training(actions, indexes, states, resps, state_class, reward_classes, args.record_rollouts, args.trace_len, num_actions, length_constraint= args.num_frames, raws=raws, dumps=dumps)
         criteria = supervised_criteria
     # elif args.optimizer_form in ["DQN", "SARSA", "Dist"]: # dist might have mode collapse to protect against

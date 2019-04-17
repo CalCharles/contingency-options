@@ -12,7 +12,7 @@ from Environments.state_definition import GetState, compute_minmax
 from BehaviorPolicies.behavior_policies import behavior_policies
 from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
-from RewardFunctions.dummy_rewards import BounceReward, Xreward
+from RewardFunctions.dummy_rewards import BounceReward, Xreward, BlockReward
 from RewardFunctions.changepointReward import compute_cp_minmax
 from RewardFunctions.novelty_wrappers import novelty_rewards
 
@@ -50,6 +50,9 @@ if __name__ == "__main__":
         reward_classes = [BounceReward(-1, args)]
     elif args.reward_form == 'dir':
         reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
+    elif args.reward_form == 'block':
+        reward_classes = [BlockReward(args)]
+
     train_models = MultiOption(len(reward_classes), models[args.model_form])
     learning_algorithm = learning_algorithms[args.optimizer_form]()
     environments = option_chain.initialize(args)
@@ -62,7 +65,7 @@ if __name__ == "__main__":
     else:
         num_actions = environments[-1].num_actions
     print(args.state_names, args.state_forms)
-    state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
+    state_class = GetState(head, state_forms=list(zip(args.state_names, args.state_forms)))
     if args.normalize:
         state_class.minmax = compute_minmax(state_class, dataset_path)
         print(state_class.minmax)
