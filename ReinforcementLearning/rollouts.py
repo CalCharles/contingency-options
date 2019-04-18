@@ -28,6 +28,8 @@ class ReinforcementStorage(object):
             self.option_param_shape = option_param_shape
             self.gamma_dilation = gamma_dilation
         self.reset_length(save_length)
+        self.option_agnostic_names = {'state', 'current_state', 'epsilon', 'done', 'resp', 'action', 'changepoint', 'option_param', 'option'}
+        self.option_specific_names = {'rewards', 'returns', 'action_probs', 'Qvals', 'value_preds'}
 
     def copy_values(self, i, n, other, oi):
         for val, oval in zip(self.option_agnostic, other.option_agnostic):
@@ -56,14 +58,14 @@ class ReinforcementStorage(object):
     def reset_lists(self):
         self.option_agnostic = [self.extracted_state, self.current_state, self.epsilon, self.dones, self.resps, self.actions, self.changepoint_states, self.option_param, self.option_num]
         self.option_specific = [self.rewards, self.returns, self.action_probs, self.Qvals, self.value_preds]
-        self.name_dict = {'state': self.extracted_state, 'current_state': self.current_state, 'epsilon': self.epsilon, 'done': self.dones, 'resp': self.resps, 'actions': self.actions,
+        self.name_dict = {'state': self.extracted_state, 'current_state': self.current_state, 'epsilon': self.epsilon, 'done': self.dones, 'resp': self.resps, 'action': self.actions,
                           'changepoint': self.changepoint_states, 'option_param': self.option_param, 'option': self.option_num,
                           'rewards': self.rewards, 'returns': self.returns, 'action_probs': self.action_probs, 'Qvals': self.Qvals, 'value_preds': self.value_preds}
 
     def reset_values(self):
         self.extracted_state, self.current_state, self.epsilon, self.dones, self.resps, self.actions, self.changepoint_states, self.option_param, self.option_num = tuple(self.option_agnostic)
         self.rewards, self.returns, self.action_probs, self.Qvals, self.value_preds = tuple(self.option_specific)
-        self.name_dict = {'state': self.extracted_state, 'current_state': self.current_state, 'epsilon': self.epsilon, 'done': self.dones, 'resp': self.resps, 'actions': self.actions,
+        self.name_dict = {'state': self.extracted_state, 'current_state': self.current_state, 'epsilon': self.epsilon, 'done': self.dones, 'resp': self.resps, 'action': self.actions,
                           'changepoint': self.changepoint_states, 'option_param': self.option_param, 'option': self.option_num,
                           'rewards': self.rewards, 'returns': self.returns, 'action_probs': self.action_probs, 'Qvals': self.Qvals, 'value_preds': self.value_preds}
 
@@ -164,7 +166,7 @@ class ReinforcementStorage(object):
         if len(names) > 0:
             res = []
             for n in names:
-                if self.name_dict[n] in self.option_agnostic:
+                if n in self.option_agnostic_names:
                     res.append(self.name_dict[n][i])
                 else:
                     res.append(self.name_dict[n][:,i])
@@ -176,7 +178,7 @@ class ReinforcementStorage(object):
         if len(names) > 0:
             res = []
             for n in names:
-                if self.name_dict[n] in self.option_agnostic:
+                if n in self.option_agnostic_names:
                     res.append(self.name_dict[n][idxes])
                 else:
                     res.append(self.name_dict[n][:,idxes])
@@ -188,7 +190,7 @@ class ReinforcementStorage(object):
         if len(names) > 0:
             res = []
             for n in names:
-                if self.name_dict[n] in self.option_agnostic:
+                if n in self.option_agnostic_names:
                     res.append(self.name_dict[n][i:self.buffer_filled-j])
                 else:
                     res.append(self.name_dict[n][:,i:self.buffer_filled-j])
@@ -254,6 +256,7 @@ class RolloutOptionStorage(object):
             self.target_start = target_start
             self.dilated_change_targets = torch.zeros(dilation_queue_len, *option_param_shape)
             self.dilated_change_indexes = torch.zeros(dilation_queue_len)
+            self.target_indexes = torch.zeros(dilation_queue_len)
             self.change_filled = 0
             self.target_counter = 0
 

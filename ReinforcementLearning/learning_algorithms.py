@@ -51,7 +51,7 @@ def compute_output_entropy(args, action_probs, log_output_probs):
 
 
 class LearningOptimizer():
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         '''
         Currently, just assigns the models, duration (number of steps to roll out policy before optimizing) 
         and the empty optimizers, to be filled by the values. In the future it
@@ -315,7 +315,7 @@ def correct_epsilon(action_probs, epsilons):
 
 class DQN_optimizer(LearningOptimizer):
 
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         '''
         TODO: use arguments to define optimizer
         '''
@@ -351,7 +351,7 @@ class DQN_optimizer(LearningOptimizer):
 
 class DDPG_optimizer(LearningOptimizer):
 
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         '''
         TODO: use arguments to define optimizer
         '''
@@ -389,7 +389,7 @@ class DDPG_optimizer(LearningOptimizer):
         return total_loss/args.grad_epoch, tpl/args.grad_epoch, dist_entropy, None, None, torch.log(action_probs)
 
 class PPO_optimizer(LearningOptimizer):
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         for model in train_models.models:
             self.optimizers.append(initialize_optimizer(args, model))
@@ -444,7 +444,7 @@ class PPO_optimizer(LearningOptimizer):
         return value_loss, action_loss, dist_entropy, None, entropy_loss, action_log_probs
 
 class A2C_optimizer(LearningOptimizer):
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         for model in train_models.models:
             self.optimizers.append(initialize_optimizer(args, model))
@@ -469,7 +469,7 @@ class A2C_optimizer(LearningOptimizer):
         return value_loss, action_loss, dist_entropy, None, entropy_loss, log_output_probs
 
 class Distributional_optimizer(LearningOptimizer):
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         for model in train_models.models:
             self.optimizers.append(initialize_optimizer(args, model))
@@ -505,7 +505,7 @@ class Distributional_optimizer(LearningOptimizer):
         return value_loss, None, None, None, None, None
 
 class PolicyGradient_optimizer(LearningOptimizer):
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         for model in train_models.models:
             self.optimizers.append(initialize_optimizer(args, model))
@@ -529,7 +529,7 @@ class PolicyGradient_optimizer(LearningOptimizer):
 
 
 class SARSA_optimizer(LearningOptimizer):
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         if args.optim != "base":
             for model in train_models.models:
@@ -591,7 +591,7 @@ class SARSA_optimizer(LearningOptimizer):
         return q_loss, None, dist_entropy, None, None, None
 
 class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probably be combined
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         # assumes tabular Q base models, which breaks abstraction
 
@@ -658,7 +658,7 @@ class TabQ_optimizer(LearningOptimizer): # very similar to SARSA, and can probab
         return q_loss, None, dist_entropy, None, None, None
 
 class Evolutionary_optimizer(LearningOptimizer):
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         self.variance_lr = args.variance_lr
         self.retest = args.retest
@@ -888,7 +888,7 @@ class Evolutionary_optimizer(LearningOptimizer):
 class GradientEvolution_optimizer(LearningOptimizer):
     # trains num_population models for n time steps, then chooses the ones with the highest return over the train period
     # keeps the performance of the last model as well
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         print("current model", train_models.currentModel())
         self.optimizer = learning_algorithms[args.base_learner]()
@@ -945,7 +945,7 @@ class GradientEvolution_optimizer(LearningOptimizer):
             super().updateModel()
 
 class SteinVariational_optimizer(LearningOptimizer):
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         self.theta_shape = train_models.currentModel().parameter_vector().shape
         self.kernel = kernels[args.kernel](args, theta_shape)
@@ -998,7 +998,7 @@ class SteinVariational_optimizer(LearningOptimizer):
         return value_loss, action_loss, dist_entropy, None, entropy_loss, None
 
 class CMAES_optimizer(Evolutionary_optimizer):
-    def initialize(self, args, train_models):
+    def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
         self.optimizers = []
         self.solutions = []
@@ -1007,7 +1007,7 @@ class CMAES_optimizer(Evolutionary_optimizer):
             if args.load_weights and not args.freeze_initial: # TODO: initialize from non-population model
                 xinit = pytorch_model.unwrap(train_models.models[i].mean.get_parameters())
                 # TODO: parameter for sigma?
-                sigma = 0.6#pytorch_model.unwrap(torch.stack([train_models.models[i].networks[j].get_parameters() for j in range(train_models.models[i].num_population)]).var(dim=1).mean())
+                sigma = 1.0#pytorch_model.unwrap(torch.stack([train_models.models[i].networks[j].get_parameters() for j in range(train_models.models[i].num_population)]).var(dim=1).mean())
                 print(xinit, sigma)
             else:
                 xinit = (np.random.rand(train_models.currentModel().networks[0].count_parameters())-0.5)*2 # initializes [-1,1]
@@ -1061,6 +1061,7 @@ class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implem
         self.rl_optimizer = learning_algorithms[args.base_optimizer]()
         self.rl_optimizer.initialize(args, train_models)
         self.rl_optimizer.distilled = True
+        self.reward_classes = reward_classes
 
     def interUpdateModel(self, step, rewards, change):
         return change
@@ -1076,23 +1077,28 @@ class HindsightParametrizedLearning_optimizer(LearningOptimizer): # TODO: implem
         for _ in range(ge):
             ti = []
             while len(ti) == 0:
+                print(rollouts.dilation_filled)
                 idx = np.random.randint(rollouts.dilation_filled - 1)
                 di = rollouts.dilated_indexes[idx]
                 dnxt = rollouts.dilated_indexes[idx+1]
+                print(rollouts.dilated_change_indexes[:rollouts.dilation_filled], di, dnxt)
                 ti = rollouts.dilated_change_indexes[di<rollouts.dilated_change_indexes]
-                ti = ti[ti < dnxt]
+                ti = ti[ti < dnxt].long()
             tidx = ti[np.random.randint(ti.size(0))]
+            print(tidx)
             target = rollouts.dilated_change_targets[tidx]
 
             tiv = torch.argmin((rollouts.dilated_change_indexes - tidx).abs()) # index of dilated change indexes chosen
-            tiv = rollouts.target_indexes[tiv] # get the index in the target queue
+            tiv = rollouts.target_indexes[tiv].long() # get the index in the target queue
+            print(rollouts.target_start, tiv)
             resp_eval, action_eval, cp_states_eval = rollouts.target_rollouts.get_indexes(list(range(tiv - rollouts.target_start // 2 + 1, tiv + rollouts.target_start // 2)), names=['resp', 'action', 'changepoint'])
-            param_eval =  rollouts.distilled_rollouts.get_values(di, names=['option_param'])
+            param_eval =  rollouts.dilated_rollouts.get_values(di.long(), names=['option_param'])
             param_eval = param_eval if np.random.randint(2) == 0 else target
             self.reward_classes[train_models.option_index].parameter = param_eval
-            rewards = self.reward_classes[train_models.option_index].compute_rewards(cp_states_eval, action_eval, resp_eval)
-            rew = rewards.sum().unsqueeze(0) # assumes all the reward is at that single point
-            rollouts.distilled_rollouts.insert_rewards_at(args, rew, start_at = di + rollouts.dilated_start-1)
+            rewards = self.reward_classes[train_models.option_index].compute_reward(cp_states_eval, action_eval, resp_eval)
+            rew = rewards.sum().unsqueeze(0).unsqueeze(0) # assumes all the reward is at that single point
+            print(rew.shape, di.long() + rollouts.dilated_start-1, rollouts.dilated_start, rollouts.dilated_rollouts.buffer_filled)
+            rollouts.dilated_rollouts.insert_rewards_at(args, rew, start_at = di.long() + rollouts.dilated_start-1)
             train_models.currentModel().option_value = torch.stack([param_eval for _ in range(args.num_grad_states)], dim=0)
             res = self.rl_optimizer.step(args, train_models, rollouts, use_range=(max(di-args.lookback, 0),di))
         args.grad_epoch = ge

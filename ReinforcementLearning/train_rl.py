@@ -50,7 +50,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         proxy_environment.duplicate(args)
     train_models.train()
     proxy_environment.set_save(0, args.save_dir, args.save_recycle)
-    learning_algorithm.initialize(args, train_models)
+    learning_algorithm.initialize(args, train_models, reward_classes=reward_classes)
     print(proxy_environment.get_names())
     state = pytorch_model.wrap(proxy_environment.getState(), cuda = args.cuda)
     cs, cr = proxy_environment.getHistState()
@@ -120,7 +120,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             # print(m, args.reward_check)
             rewards = proxy_environment.computeReward(m+1)
             change, target = proxy_environment.determineChanged(m+1)
-            proxy_environment.determine_swaps(m+1, needs_rewards=False) # doesn't need to generate rewards
+            proxy_environment.determine_swaps(m+1, needs_rewards=True) # doesn't need to generate rewards
             # print("reward time", time.time() - start)
             # print("rewards", torch.sum(rewards))
             rollouts.insert_hindsight_target(change, target)
