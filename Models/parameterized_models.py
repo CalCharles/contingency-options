@@ -30,7 +30,6 @@ class ParametrizedModel(Model):
         expanded_state = torch.zeros(x.size(0), 1) + vec.shape[1]
         if self.iscuda:
             expanded_state = expanded_state.cuda()
-        print(expanded_state.shape, resp.shape)
         # print("vshape", vec.shape[1], resp.shape, expanded_state.shape)
         resp = torch.cat((resp, expanded_state), dim=1)
         x = torch.cat((x,vec), dim=1)
@@ -113,5 +112,4 @@ class ParameterizedBoostDim(ParametrizedModel):
         return self.num_inputs
     def create_option_vec(self, batch_size):
         # boosts the dimension of the option values to the same as the inputs (relu might not be the right activation...)
-        print(F.relu(self.l1(self.option_values.clone())).shape)
         return F.relu(self.l1(self.option_values.clone()))

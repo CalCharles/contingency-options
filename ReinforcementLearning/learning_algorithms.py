@@ -759,8 +759,8 @@ class Evolutionary_optimizer(LearningOptimizer):
                     for (s,e) in self.sample_indexes[i][j]:
                         # print(i,j,s,e,returns[k, s:e].sum())
                         if self.reward_stopping: # specialized stopping return
-                            if returns[k, s:e].sum() < .5: # TODO: negative rewards not hardcoded
-                                total_value += returns[k, s:e].sum()# + (-(e-s) / self.sample_duration)
+                            if returns[k, s:e].sum() < 0: # TODO: negative rewards not hardcoded
+                                total_value += returns[k, s:e].sum() * 2# + (-(e-s) / self.sample_duration)
                             else:
                                 # total_value += returns[k, s:e].sum() * self.sample_duration / (e-s)
                                 total_value += returns[k, s:e].sum()# * (self.sample_duration - (e-s)) / self.sample_duration

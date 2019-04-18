@@ -178,21 +178,19 @@ class GetState(StateGet):
 
 	def determine_delta_target(self, states):
 		'''
-		given a set of values, determine if any of them changed. assumes target is the last resp
+		given a set of values, determine if any of them changed. assumes target is the first resp
 		returns index of difference (assumes only 1), and index in the state of difference (assumes only 1)
 		'''
-		last_shape = self.shapes[(self.names[-1], self.fnames[-1])][0] # assumes 1D
+		last_shape = self.shapes[(self.names[0], self.fnames[0])][0] # assumes 1D
 		change_indexes,ats,rstates = [], [], []
 		for i, (s1, s2) in enumerate(zip(states[:-1], states[1:])):
 			diff = s1[:last_shape] - s2[:last_shape]
 			mag = np.linalg.norm(diff)
-			# print(s1[:last_shape], s2[:last_shape], diff, mag)
-			# error
 			if mag > 0:
 				lidx = np.where(diff != 0)[0][0]
 				ats.append((lidx + 1) // 3) # 2 and 3 hard coded as the x,y,attribute
 				rstates.append(s1[:last_shape][lidx-2:lidx])
-				change_indexes.append(i)
+				change_indexes.append(i+1)
 		return change_indexes, ats, rstates
 
 	def determine_target(self, states, resps):

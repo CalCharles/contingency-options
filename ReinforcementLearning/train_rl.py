@@ -37,7 +37,6 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     base_env = proxy_chain[0]
     base_env.set_save(0, args.save_dir, args.save_recycle)
     proxy_environment.initialize(args, proxy_chain, reward_classes, state_class, behavior_policy)
-    # proxy_environment.action_size = 4 # DANGER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! ONLY FOR BLOCKS WHEN NO BOUNCE ANGLES IN GRAPH
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)
     behavior_policy.initialize(args, proxy_environment.action_size)
@@ -112,7 +111,6 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 if done:
                     if not args.sample_duration > 0:
                         # print("reached end")
-                        rollouts.cut_current(total_steps)
                         # print(step)
                         break
                     else: # need to clear out trace queue

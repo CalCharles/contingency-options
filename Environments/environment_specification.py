@@ -150,7 +150,7 @@ class ProxyEnvironment():
         if self.parameterized_option == 0:
             return len(self.reward_fns)
         else:
-            return self.reward_fns[0].get_possible_parameters(self.changepoint_queue[self.changepoint_filled])
+            return self.reward_fns[0].get_possible_parameters(self.changepoint_queue[self.changepoint_filled-1])
 
     def get_names(self):
         if len(self.proxy_chain) > 1:
@@ -259,9 +259,8 @@ class ProxyEnvironment():
             action = self.current_action
         if model:
             if self.swap:
-                print("current_state", self.current_state)
                 values, dist_entropy, probs, Q_vals = self.models.determine_action(self.current_state.unsqueeze(0), self.current_resp.unsqueeze(0))
-                vals, action_probs, Q_vs = self.models.get_action(values, probs, Q_vals, index = action)
+                vals, action_probs, Q_vs = self.models.get_action(values, probs, Q_vals, index = int(action))
                 action = self.behavior_policy.take_action(action_probs, Q_vs)
                 self.current_action = action
             else:
@@ -271,6 +270,7 @@ class ProxyEnvironment():
             #     action = self.models.currentModel().forward(self.current_state, reward[self.models.option_index])
         if len(self.proxy_chain) > 1:
             state, base_state, resp, done, action_list = self.proxy_chain[-1].step(action, model=True, action_list = [action] + action_list)
+            raw_state, factored_state = base_state
         else:
             raw_state, factored_state, done = self.proxy_chain[-1].step(action)
             action_list = [action] + action_list
@@ -285,7 +285,11 @@ class ProxyEnvironment():
         self.insert_extracted()
         if not model: # at the top level
             self.save_actions(action_list)
-        self.insert_changepoint_queue(self.cp_state, pytorch_model.wrap(action, cuda=self.iscuda), pytorch_model.wrap(resp, cuda=self.iscuda))
+        try:
+            cp_state = self.cp_state
+        except AttributeError as e:
+            cp_state = self.changepoint_state([self.raw_state])
+        self.insert_changepoint_queue(cp_state, pytorch_model.wrap(action, cuda=self.iscuda), pytorch_model.wrap(resp, cuda=self.iscuda))
         if self.delayed_swap and self.swap: # we just swapped and we are using delayed swapping
             self.swap = False
         return self.extracted_state, self.raw_state, self.resp, done, action_list, 
@@ -350,7 +354,7 @@ class ProxyEnvironment():
 
     def determine_swaps(self, length, needs_rewards=True):
         if len(self.proxy_chain) > 1:
-            self.proxy_chain[-1].determine_swaps()
+            self.proxy_chain[-1].determine_swaps(length)
         if self.swap_form == "dense": # TODO: swap based on rewards for all
             self.swap = True
         elif self.swap_form == "reward":
