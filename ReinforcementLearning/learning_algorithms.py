@@ -665,9 +665,9 @@ class Evolutionary_optimizer(LearningOptimizer):
         self.reward_stopping = args.reward_stopping
         self.reward_check = args.reward_check
         self.OoO_eval = args.OoO_eval # out of order evaluation
-        self.num_population = train_models.models[0].num_population
+        self.num_population = args.num_population
         self.reset_current_duration(args.sample_duration, args.reward_check)
-        self.sample_indexes = [[[] for j in range(train_models.models[0].num_population)] for i in range(self.models.num_options)]
+        self.sample_indexes = [[[] for j in range(args.num_population)] for i in range(self.models.num_options)]
         self.last_swap = 0
         if args.reassess_num > 0:
             self.reassess_pool = []
