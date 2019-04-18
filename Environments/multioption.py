@@ -124,7 +124,6 @@ class MultiOption():
 
         if index == -1:
             index = self.option_index
-        print(index, values.shape, probs.shape, Q_vals.shape)
         return values[index], probs[index], Q_vals[index]
 
     def currentName(self):
@@ -156,8 +155,10 @@ class MultiOption():
             self.models[-1].test=True
         self.option_index = 0
         self.num_options = len(self.models)
-        self.parameterized_option = self.models[0].parameterized_option
-        self.parameter_dim = self.models[0].param_dim
+        if len(self.models) > 0:
+            print(self.models)
+            self.parameterized_option = self.models[0].parameterized_option
+            self.parameter_dim = self.models[0].param_dim
 
     def duplicate(self, num_models, args, state_class, num_actions, parameter_minmax):
         # TODO: only handles 1->many of models, build in many->many handling
