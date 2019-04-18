@@ -23,6 +23,13 @@ class PopulationModel(Model):
         self.reset_parameters()
         self.use_mean = False
 
+    def expand_pop(self, num_population):
+        networks = []
+        for i in range(num_population):
+            networks.append(copy.deepcopy(self.mean))
+        self.networks = nn.ModuleList(networks)
+        self.num_population = num_population
+
     def currentModel(self):
         return self.networks[self.current_network_index]
 

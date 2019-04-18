@@ -1005,6 +1005,7 @@ class CMAES_optimizer(Evolutionary_optimizer):
         self.weight_sharing = args.weight_sharing
         for i in range(len(self.models.models)):
             if args.load_weights and not args.freeze_initial: # TODO: initialize from non-population model
+                train_models.models[i].expand_pop(args.num_population)
                 xinit = pytorch_model.unwrap(train_models.models[i].mean.get_parameters())
                 # TODO: parameter for sigma?
                 sigma = 1.0#pytorch_model.unwrap(torch.stack([train_models.models[i].networks[j].get_parameters() for j in range(train_models.models[i].num_population)]).var(dim=1).mean())
