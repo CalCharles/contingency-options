@@ -58,6 +58,7 @@ class PopulationModel(Model):
 
     def forward(self, inputs, resp, idx=-1):
         # self.current_network_index = (self.current_network_index + 1) % self.num_population
+        print(inputs)
         if self.test or self.use_mean:
             return self.mean(inputs, resp)
         if idx < 0:

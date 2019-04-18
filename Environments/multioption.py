@@ -73,6 +73,7 @@ class MultiOption():
             self.parameter_dim = parameter_minmax[0].shape[0]
 
         self.option_index = 0
+        print("parameterized option", self.parameterized_option)
 
     def names(self):
         return [model.name for model in self.models]
@@ -90,7 +91,6 @@ class MultiOption():
     def set_parameter(self, parameter):
         if self.parameterized_option == 2:
             self.models[0].option_input = parameter
-
 
     def determine_action(self, state, resp):
         '''
@@ -119,10 +119,12 @@ class MultiOption():
 
     def get_action(self, values, probs, Q_vals, index=-1):
         '''
-        output 2 x [batch_size, num_actions]
+        output 3 x [num_option, batch_size, num_actions]
         '''
+
         if index == -1:
             index = self.option_index
+        print(index, values.shape, probs.shape, Q_vals.shape)
         return values[index], probs[index], Q_vals[index]
 
     def currentName(self):
@@ -151,8 +153,11 @@ class MultiOption():
             self.models.append(torch.load(mpth))
             if args.cuda:
                 self.models[-1] = self.models[-1].cuda()
+            self.models[-1].test=True
         self.option_index = 0
         self.num_options = len(self.models)
+        self.parameterized_option = self.models[0].parameterized_option
+        self.parameter_dim = self.models[0].param_dim
 
     def duplicate(self, num_models, args, state_class, num_actions, parameter_minmax):
         # TODO: only handles 1->many of models, build in many->many handling

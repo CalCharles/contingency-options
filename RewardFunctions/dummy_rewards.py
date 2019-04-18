@@ -107,8 +107,9 @@ class BlockReward(ChangepointReward):
         self.form = args.reward_form
         self.state_class = GetState(target="Block", state_forms=[("Ball", "bounds"), ("Block", "multifull")]) # should be a block state class
         self.parameters = np.array([0,0])
-        self.max_dist = np.linalg.norm([30, 20])
+        self.max_dist = np.linalg.norm([60, 20])
         self.cuda = args.cuda
+        self.parameter_minmax = [np.array([0,0]), np.array([84,84])]
 
     def compute_reward(self, states, actions, resps):
         rewards = torch.zeros(len(states))

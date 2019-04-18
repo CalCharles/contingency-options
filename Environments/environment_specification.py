@@ -259,9 +259,12 @@ class ProxyEnvironment():
             action = self.current_action
         if model:
             if self.swap:
-                values, dist_entropy, probs, Q_vals = self.models.determine_action(self.current_state, self.current_resp)
-                action_probs, Q_vs = models.get_action(probs, Q_vals, index = action)
-                action = self.behavior_policy.take_action(probs, Q_vals)
+                print("current_state", self.current_state)
+                values, dist_entropy, probs, Q_vals = self.models.determine_action(self.current_state.unsqueeze(0), self.current_resp.unsqueeze(0))
+                vals, action_probs, Q_vs = self.models.get_action(values, probs, Q_vals, index = action)
+                error
+                print(action_probs.shape, Q_vs.shape)
+                action = self.behavior_policy.take_action(action_probs, Q_vs)
                 self.current_action = action
             else:
                 action = self.current_action

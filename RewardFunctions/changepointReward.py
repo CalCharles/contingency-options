@@ -35,7 +35,7 @@ class ChangepointReward():
         self.model = model
         self.cuda = args.cuda
         self.traj_dim = 2 #TODO: the dimension of the input trajectory is currently pre-set at 2, the dim of a location. Once we figure out dynamic setting, this can change
-        self.parameter_minmax = None
+        self.parameter_minmax = [np.array([0]), np.array([84])] # TODO: where does this come from?
         self.state_class = GetState(0, self.head, state_forms=[(self.head, 'bounds'), *[(tail, 'bounds') for tail in self.tail]]) # TODO: technically, multibounds for both
 
     def compute_reward(self, states, actions, resps):
