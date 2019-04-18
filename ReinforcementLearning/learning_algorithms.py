@@ -697,7 +697,7 @@ class Evolutionary_optimizer(LearningOptimizer):
         if duration_check or early_stop:
             # update to next model
             ridx = step
-            print(self.models.option_index, self.models.currentModel().current_network_index, duration_check, early_stop, self.last_swap, step, ridx)
+            print(self.models.option_index, pytorch_model.unwrap(rewards.sum()) < 0, self.models.currentModel().current_network_index, duration_check, early_stop, self.last_swap, step, ridx)
             if early_stop:
                 ridx = step - pytorch_model.unwrap((self.reward_check - torch.argmax(rewards.abs().sum(dim=0))))
             self.sample_indexes[self.models.option_index][self.models.currentModel().current_network_index].append((self.last_swap, ridx))
@@ -760,7 +760,7 @@ class Evolutionary_optimizer(LearningOptimizer):
                         # print(i,j,s,e,returns[k, s:e].sum())
                         if self.reward_stopping: # specialized stopping return
                             if returns[k, s:e].sum() < .5: # TODO: negative rewards not hardcoded
-                                total_value += returns[k, s:e].sum() * 2 + (-(e-s) / self.sample_duration)
+                                total_value += returns[k, s:e].sum() + (-(e-s) / self.sample_duration)
                             else:
                                 # total_value += returns[k, s:e].sum() * self.sample_duration / (e-s)
                                 total_value += returns[k, s:e].sum() * (self.sample_duration - (e-s)) / self.sample_duration
