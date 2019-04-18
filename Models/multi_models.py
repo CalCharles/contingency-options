@@ -1,5 +1,6 @@
 from Models.models import Model, models
 import torch.nn as nn
+import copy
 
 class PopulationModel(Model):
     def __init__(self, **kwargs):
