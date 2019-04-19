@@ -192,7 +192,7 @@ class ProxyEnvironment():
         self.models = models
 
     def duplicate(self, args):
-        if len(self.reward_fns) > len(self.models.models) or args.adjustment_model:
+        if len(self.reward_fns) > len(self.models.models) or args.model_form == 'adjust':
             self.reward_fns[0].parameter_minmax = None
             print(self.name)
             self.models.duplicate(len(self.reward_fns), args, self.stateExtractor, self.action_size, self.reward_fns[0].parameter_minmax)

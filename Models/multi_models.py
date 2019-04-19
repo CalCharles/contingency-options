@@ -29,6 +29,8 @@ class PopulationModel(Model):
         for i in range(num_population):
             networks.append(copy.deepcopy(self.mean))
         self.networks = nn.ModuleList(networks)
+        print(self.layers)
+        self.layers += self.networks
         self.num_population = num_population
 
     def currentModel(self):
