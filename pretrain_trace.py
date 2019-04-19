@@ -30,6 +30,8 @@ if __name__ == "__main__":
     save-dir
     '''
     # python pretrain_trace.py --model-form paramcont --record-rollouts "./data/bounce/" --train-edge "Ball->Block" --num-stack 1 --train --num-iters 1000 --state-forms bounds vel bin --state-names Ball Ball Block --base-node Paddle --changepoint-dir ./data/paddlegraph/ --factor 16 --num-layers 2 --lr 1e-5 --init-form xnorm --optimizer-form PPO --parameterized-form basic --reward-form block --pretrain-target 2 --weighting-lambda 0 --log-interval 200 --num-frames 10000 --num-grad-states 1000 --trace-len 10 --parameterized-option 2
+    # ../datasets/caleb_data/bounce/bounce0/ --save-models --save-graph data/bounceOoO/
+    # python pretrain_trace.py --model-form basic --record-rollouts "../datasets/caleb_data/bounce/bounce0/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 5000000 --state-forms prox vel --state-names Paddle Ball --base-node Paddle --changepoint-dir ./data/paddlegraph/ --factor 16 --num-layers 2 --lr 1e-8 --init-form xnorm --optimizer-form PPO --reward-form bounce --pretrain-target 1 --weighting-lambda 0.001 --log-interval 2000 --num-frames 1000000 --num-grad-states 30 --save-models --save-graph data/prenet0/ --save-interval 1 > outpre.txt
     args = get_args()
     if args.reward_form == 'x':
         reward_classes = [Xreward(args)]
@@ -40,14 +42,14 @@ if __name__ == "__main__":
     elif args.reward_form == 'block':
         reward_classes = [BlockReward(args)]
     true_environment = Paddle()
-    if args.pretrain_target == 0:
+    if args.pretrain_target == 0: # pretrain to follow the trace
         states, resps, num_actions, state_class, proxy_chain, raws, dumps = get_states(args, true_environment, length_constraint = args.num_frames)
         actions = get_option_actions(args.record_rollouts, args.train_edge, num_actions, args.weighting_lambda, length_constraint = args.num_frames)
         rewards = get_option_rewards(args.record_rollouts, reward_classes, actions, length_constraint = args.num_frames, raws=raws, dumps=dumps)
         actions, states, resps = generate_trace_training(actions, rewards, states, resps, args.trace_len)
         targets = None
         criteria = supervised_criteria
-    elif args.pretrain_target == 1:
+    elif args.pretrain_target == 1: # pretrain soft actions
         states, resps, num_actions, state_class, proxy_chain, raws, dumps = get_states(args, true_environment, length_constraint = args.num_frames)
         try:
             actions = np.load("actions.npy") # delete this in filesystem when you need new actions

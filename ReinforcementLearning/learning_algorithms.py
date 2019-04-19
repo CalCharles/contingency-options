@@ -59,7 +59,7 @@ class LearningOptimizer():
         '''
         self.models = train_models
         self.optimizers = []
-        self.current_duration = args.num_steps // args.reward_check
+        self.current_duration = args.num_steps
         self.lr = args.lr
         self.num_update_model = args.num_update_model
         self.step_counter = 0
@@ -760,7 +760,7 @@ class Evolutionary_optimizer(LearningOptimizer):
                         # print(i,j,s,e,returns[k, s:e].sum())
                         if self.reward_stopping: # specialized stopping return
                             if returns[k, s:e].sum() < 0: # TODO: negative rewards not hardcoded
-                                total_value += returns[k, s:e].sum() * 2# + (-(e-s) / self.sample_duration)
+                                total_value += returns[k, s:e].sum()# + (-(e-s) / self.sample_duration)
                             else:
                                 # total_value += returns[k, s:e].sum() * self.sample_duration / (e-s)
                                 total_value += returns[k, s:e].sum()# * (self.sample_duration - (e-s)) / self.sample_duration
@@ -771,6 +771,28 @@ class Evolutionary_optimizer(LearningOptimizer):
                 option_returns.append(total_ret)
             all_returns.append(option_returns)
         return np.array(all_returns)
+
+    def reassess_insert(self, returns, networks):
+        if args.reassess_num > 0:
+            oi = self.models.option_index
+            self.alter_reentry_list(returns)
+            best_values = returns
+            print(self.reassess_values)
+            for i in range(len(best_values)):
+                print(best_values[i])
+                if best_values[i] > self.reassess_values[oi][0]:
+                    j = 1
+                    while j < len(self.reassess_values[oi]) and best_values[i] > self.reassess_values[oi][j]:
+                        j += 1
+                    # print(best_values[-i], self.sample_duration)
+                    self.reassess_values[oi].pop(0)
+                    self.reassess_values[oi].insert(j-1, best_values[i])
+                    self.reassess_pool[oi].pop(0)
+                    self.reassess_pool[oi].insert(j-1, copy.deepcopy(networks[i]))
+                else:
+                    break
+            print(self.reassess_values)
+
 
     def single_option_returns(self, all_returns, oidx):
         returns = []
@@ -838,26 +860,7 @@ class Evolutionary_optimizer(LearningOptimizer):
             print(params.shape, params.var(dim=0).shape, torch.sqrt(params.var(dim=0)).mean())
             vlr = self.variance_lr * torch.exp(-torch.sqrt(params.var(dim=0)).mean() / .005)
             print("vlr", vlr)
-        if args.reassess_num > 0:
-            oi = self.models.option_index
-            self.alter_reentry_list(returns)
-            best_values = returns[best] / self.sample_duration
-            print(self.reassess_values)
-            for i in range(1, len(best_values) + 1):
-                print(best_values[-i])
-                if best_values[-i] > self.reassess_values[oi][0]:
-                    j = 1
-                    while j < len(self.reassess_values[oi]) and best_values[-i] > self.reassess_values[oi][j]:
-                        j += 1
-                    # print(best_values[-i], self.sample_duration)
-                    self.reassess_values[oi].pop(0)
-                    self.reassess_values[oi].insert(j-1, best_values[-i])
-                    self.reassess_pool[oi].pop(0)
-                    self.reassess_pool[oi].insert(j-1, copy.deepcopy(train_models.currentModel().networks[best[-i]]))
-                else:
-                    break
-            print(self.reassess_values)
-
+        self.reassess_insert(returns[best], train_models.currentModel().networks[best]) # might have broken this
         print("returns, best", returns, best)
         new_networks = []
         for j, idx in enumerate(best):
@@ -1031,6 +1034,10 @@ class CMAES_optimizer(Evolutionary_optimizer):
         state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(sample_duration, rollouts, 0, use_range=use_range, last_states=args.buffer_steps <= 0, last_buffer = True)    
         all_returns = self.get_corresponding_returns(full_rollout_returns)
         print(all_returns)
+        print(np.sum(all_returns[0], axis=1))
+        print(np.sum(all_returns[1], axis=1))
+        print(np.sum(all_returns[2], axis=1))
+        print(np.sum(all_returns[3], axis=1))
         for midx in range(len(self.models.models)):
             train_models.option_index = midx
             if args.parameterized_option > 0:
@@ -1046,6 +1053,7 @@ class CMAES_optimizer(Evolutionary_optimizer):
                 returns = self.single_option_returns(all_returns, midx)
                 solutions = self.solutions[train_models.option_index]
             # returns = torch.stack([rollout_returns[self.sample_duration * i:self.sample_duration * (i+1)].sum() / self.sample_duration for i in range(args.num_population)])
+            self.reassess_insert(returns, solutions)
             cmaes = self.optimizers[train_models.option_index]
             cmaes.tell(solutions, -1*returns)
             self.solutions[train_models.option_index] = cmaes.ask()

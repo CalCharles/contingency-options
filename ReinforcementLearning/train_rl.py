@@ -189,11 +189,11 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # print("eps", time.time() - start)
             if args.sample_schedule > 0 and j % sample_schedule == 0 and j != 0:
                 learning_algorithm.sample_duration = (j // args.sample_schedule + 1) * args.sample_duration
-                if args.retest_schedule:
-                    learning_algorithm.retest += 1
                 learning_algorithm.reset_current_duration(learning_algorithm.sample_duration, args.reward_check)
                 args.changepoint_queue_len = max(learning_algorithm.max_duration, args.changepoint_queue_len)
                 sample_schedule = args.sample_schedule * (j // args.sample_schedule + 1)# sum([args.sample_schedule * (i+1) for i in range(j // args.sample_schedule + 1)])
+            if args.retest_schedule > 0 and j % args.retest_schedule == 0 and j != 0:
+                learning_algorithm.retest += 1
                 # print("resample", time.time() - start)
         else:
             value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = None, None, None, None, None, None

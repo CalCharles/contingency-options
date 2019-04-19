@@ -149,7 +149,14 @@ class MultiOption():
         print("loading", model_paths)
         model_paths.sort(key=lambda x: int(x.split("__")[1]))
         for mpth in model_paths:
-            self.models.append(torch.load(mpth))
+            loaded_model = torch.load(mpth)
+            try: # use the mean of a population model if we are not training a population model
+                pop = loaded_model.num_population > 0
+            except AttributeError as e:
+                pop = False
+            if pop and args.model_form != 'population':
+                loaded_model = loaded_model.mean
+            self.models.append(loaded_model)
             if args.cuda:
                 self.models[-1] = self.models[-1].cuda()
             self.models[-1].test=True
