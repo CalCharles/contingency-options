@@ -199,8 +199,8 @@ if __name__ == '__main__':
     # pick game
     if args.game == 'self':
         dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs',  # object dump path
-            'SelfBreakout/runs/0',  # run states
+            'SelfBreakout/runs_bounce',  # object dump path
+            'SelfBreakout/runs_bounce/0',  # run states
             n_state=args.n_state,  # set max number of states
             binarize=args.binarize,  # binarize image to 0 and 1
             offset_fix=args.offset_fix,  # offset of episode number

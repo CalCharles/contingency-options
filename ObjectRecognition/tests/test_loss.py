@@ -37,19 +37,32 @@ def load_model(model_path, net_params_path, pmodel=None, *args, **kwargs):
 
 # game instance
 n_state = 1000
-game = DatasetSelfBreakout(
-    'SelfBreakout/runs',
-    'SelfBreakout/runs/0',
-    binarize=0.1,
-    n_state=n_state,
-)
-# game = DatasetAtari(
-#     'BreakoutNoFrameskip-v4',
-#     partial(RandomConsistentPolicy, change_prob=0.35),
-#     n_state=1000,
-#     save_path='results',
-#     normalized_coor=True,
-# )
+GAME_NAME = 'self-b'  # 'self', 'self-b', 'atari'
+if GAME_NAME == 'self':
+    game = DatasetSelfBreakout(
+        'SelfBreakout/runs',
+        'SelfBreakout/runs/0',
+        binarize=0.1,
+        n_state=n_state,
+        offset_fix=0,
+    )
+elif GAME_NAME == 'self-b':
+    game = DatasetSelfBreakout(
+        'SelfBreakout/runs_bounce',
+        'SelfBreakout/runs_bounce/0',
+        binarize=0.1,
+        n_state=n_state,
+        offset_fix=0,
+    )
+elif GAME_NAME == 'atari':
+    game = DatasetAtari(
+        'BreakoutNoFrameskip-v4',
+        partial(RandomConsistentPolicy, change_prob=0.35),
+        n_state=1000,
+        save_path='results',
+        normalized_coor=True,
+        offset_fix=0,
+    )
 
 # saliency
 dmiloss = SaliencyLoss(
@@ -57,7 +70,7 @@ dmiloss = SaliencyLoss(
     c_fn_2=partial(util.hinged_mean_square_deviation, 
                    alpha_d=0.3),  # TODO: parameterize this
     frame_dev_coeff= 0.0,
-    focus_dev_coeff= 50.0,
+    focus_dev_coeff= 20.0,
     frame_var_coeff= 0.0,
     belief_dev_coeff= 0.0,
     nb_size= (10, 10),
@@ -72,7 +85,7 @@ action_micploss = ActionMICPLoss(
     mi_diffs_coeff= 0.2,
     verbose=True,
 )
-# micplosses.append(action_micploss)
+micplosses.append(action_micploss)
 
 # premise loss
 pmodel_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
@@ -93,7 +106,7 @@ ball_model = load_model(
     pmodel=pmodel)
 comp_model = load_model(
     'results/cmaes_soln/focus_self/42068_40.npy',
-    'ObjectRecognition/net_params/two_layer_5_5.json',
+    'ObjectRecognition/net_params/two_layer.json',
     pmodel=pmodel)
 
 premise_micploss = PremiseMICPLoss(
@@ -106,7 +119,7 @@ premise_micploss = PremiseMICPLoss(
     prox_dist= 0.1,
     verbose=True,
 )
-micplosses.append(premise_micploss)
+# micplosses.append(premise_micploss)
 
 # combine every loss together
 micploss = CollectionMICPLoss(*micplosses)
@@ -143,7 +156,8 @@ ideal_ball = {
     '__train__': ideal_ball,
 }
 fix_jump_focus = paddle_model_focus
-fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]] = fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]]
+fix_jump_focus = np.zeros(fix_jump_focus['__train__'].shape)
+fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]] = paddle_model_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]]
 
 # plot tracking paddle
 if False:

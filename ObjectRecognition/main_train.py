@@ -57,7 +57,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train object recognition')
     parser.add_argument('savedir',
                         help='base directory to save results')
-    parser.add_argument('game', choices=['self', 'atari'],
+    parser.add_argument('game', choices=['self', 'self-b', 'atari'],
                         help='game name to train with')
     parser.add_argument('net',
                         help='network params JSON file')
@@ -93,7 +93,15 @@ if __name__ == '__main__':
     if args.game == 'self':
         dataset = DatasetSelfBreakout(
             'SelfBreakout/runs',  # object dump path
-            'SelfBreakout/runs/0',  # run states2
+            'SelfBreakout/runs/0',  # run states
+            n_state=args.n_state,  # set max number of states
+            binarize=args.binarize,  # binarize image to 0 and 1
+            offset_fix=args.offset_fix,  # offset of episode number
+        )  # 10.0, 0.1, 1.0, 0.0005
+    elif args.game == 'self-b':
+        dataset = DatasetSelfBreakout(
+            'SelfBreakout/runs_bounce',  # object dump path
+            'SelfBreakout/runs_bounce/0',  # run states
             n_state=args.n_state,  # set max number of states
             binarize=args.binarize,  # binarize image to 0 and 1
             offset_fix=args.offset_fix,  # offset of episode number
