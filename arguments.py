@@ -178,6 +178,9 @@ def get_args():
                     help='the different relational functions, which are defined in Environment.state_definition')
     parser.add_argument('--state-names', default=[""], nargs='+',
                     help='should match the number of elements in state-forms, contains the names of nodes used')
+    # Hindsight learning parameter
+    parser.add_argument('--base-optimizer', default="",
+                        help='choose the optimizer form, which is defined in ReinforcementLearning.learning_algorithms')
     # Learning settings
     parser.add_argument('--seed', type=int, default=1,
                         help='random seed (default: 1)')
@@ -185,7 +188,7 @@ def get_args():
                         help='how many training CPU processes to use (default: 16)')
     parser.add_argument('--lag-num', type=int, default=2,
                         help='lag between states executed and those used for learning, to delay for reward computation (default: 2)')
-    parser.add_argument('--num-steps', type=int, default=5,
+    parser.add_argument('--num-steps', type=int, default=1,
                         help='number of forward steps before update (default: 5)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
                         help='number of forward steps used to compute gradient, -1 for not used (default: -1)')
@@ -216,6 +219,13 @@ def get_args():
                         help='number of states in a trace trajectory (default -1)')
     parser.add_argument('--trace-queue-len', type=int, default=-1,
                         help='number of trace trajectories in the trace queue (default -1)')
+    # dilated settings
+    parser.add_argument('--dilated-stack', type=int, default=4,
+                        help='number of states to keep when one dilated index is added (default 4)')
+    parser.add_argument('--dilated-queue-len', type=int, default=-1,
+                        help='number of states in the dilation index queue (multiply with dilated-stack) (default -1 not used)')
+    parser.add_argument('--target-stack', type=int, default=10,
+                        help='states to keep around the pretrain-target (default 10)')
 
     # logging settings
     parser.add_argument('--log-interval', type=int, default=10,

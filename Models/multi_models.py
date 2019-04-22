@@ -1,5 +1,6 @@
 from Models.models import Model, models
 import torch.nn as nn
+import copy
 
 class PopulationModel(Model):
     def __init__(self, **kwargs):
@@ -22,6 +23,15 @@ class PopulationModel(Model):
         self.current_network_index = 0
         self.reset_parameters()
         self.use_mean = False
+
+    def expand_pop(self, num_population):
+        networks = []
+        for i in range(num_population):
+            networks.append(copy.deepcopy(self.mean))
+        self.networks = nn.ModuleList(networks)
+        print(self.layers)
+        self.layers += self.networks
+        self.num_population = num_population
 
     def currentModel(self):
         return self.networks[self.current_network_index]

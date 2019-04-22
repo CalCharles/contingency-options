@@ -28,7 +28,7 @@ class BounceReward(ChangepointReward):
         self.form = args.reward_form
 
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
         states must have at least two in the stack: to keep size of rewards at num_states - 1
         assumes ball is the last state
@@ -84,7 +84,7 @@ class Xreward(ChangepointReward):
         self.head, self.tail = get_edge(args.train_edge)
         self.name = "x"
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
         states must have at least two in the stack: to keep size of rewards at num_states - 1
         assumes ball is the last state
@@ -105,20 +105,46 @@ class BlockReward(ChangepointReward):
     def __init__(self, args): 
         super().__init__(None, args)
         self.form = args.reward_form
-        self.state_class = GetState(action_num=4, target="Block", state_forms=[("Ball", "bounds"), ("Block", "multifull")]) # should be a block state class
+        self.state_class = GetState(target="Block", state_forms=[("Block", "multifull"), ("Ball", "bounds")]) # should be a block state class
         self.parameters = np.array([0,0])
-        self.max_dist = np.linalg.norm([30, 20])
+        self.max_dist = np.linalg.norm([60, 20])
         self.cuda = args.cuda
+        self.parameter_minmax = [np.array([0,0]), np.array([84,84])]
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         rewards = torch.zeros(len(states))
-        change_indexes, ats, states = self.state_class.determine_delta_target(pytorch_model.unwrap(states))
+        change_indexes, ats, st = self.state_class.determine_delta_target(pytorch_model.unwrap(states))
         if len(change_indexes) > 0:
-            dists = np.linalg.norm(self.parameters - states[change_indexes])
-            rewards[change_indexes] = (self.max_dist - dists) / self.max_dist
+            dists = np.linalg.norm(self.parameters - st[0])
+            rewards[change_indexes[0]] = (self.max_dist - dists) / self.max_dist
         if self.cuda:
             rewards = rewards.cuda()
         return rewards
+
+    def determineChanged(self, states, actions, resps):
+        change_indexes, ats, states = self.state_class.determine_delta_target(pytorch_model.unwrap(states))
+        change = len(change_indexes) > 0
+        if change:
+            return change, states[0]
+        return change, None
+
+    def get_possible_parameters(self, state):
+        last_shape = self.state_class.shapes[(self.state_class.names[0], self.state_class.fnames[0])][0]
+        state = state[:last_shape]
+        # print(state, last_shape, state.shape, self.state_class.shapes[(self.state_class.names[-1], self.state_class.fnames[-1])])
+        state = state.view(-1,3)
+        idxes = state[:,2].nonzero()[:,0].squeeze()
+        # print(idxes, state[idxes,:2])
+        return state[idxes,:2]
+
+    def get_trajectories(self, full_states):
+        states = []
+        resps = []
+        for state in full_states:
+            state, resp = self.state_class.get_state(state)
+            states.append(state)
+            resps.append(resp)
+        return pytorch_model.wrap(np.stack(states), cuda=self.cuda)
 
 class RewardRight(ChangepointReward):
     def compute_reward(self, states, actions):

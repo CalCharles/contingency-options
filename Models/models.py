@@ -41,13 +41,16 @@ class Model(nn.Module):
         self.minmax = default_value_arg(kwargs, 'minmax', None)
         self.name = default_value_arg(kwargs, 'name', 'option')
         self.no_preamble = default_value_arg(kwargs, 'no_preamble', False)
+        self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
+        self.option_values = torch.zeros(1, self.param_dim) # changed externally to the parameters
+        self.parameterized_option = 0
         num_inputs = int(num_inputs)
         num_outputs = int(num_outputs)
         self.num_layers = args.num_layers
         if args.num_layers == 0:
             self.insize = num_inputs
         else:
-            self.insize = factor * factor // 2
+            self.insize = factor * factor * factor // min(factor, 8)
         print("MINMAX", self.minmax)
         if self.minmax is not None:
             self.minmax = (torch.cat([pytorch_model.wrap(self.minmax[0] - 1e-5).cuda() for _ in range(args.num_stack)], dim=0), torch.cat([pytorch_model.wrap(self.minmax[1] + 1e-5).cuda() for _ in range(args.num_stack)], dim=0))
@@ -342,9 +345,10 @@ from Models.image_models import ObjectSumImageModel
 models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, 
             "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel,
             "sumimage": ObjectSumImageModel}
-from Models.parameterized_models import ParameterizedOneHotModel, ParameterizedContinuousModel
+from Models.parameterized_models import ParameterizedOneHotModel, ParameterizedContinuousModel, ParameterizedBoostDim
 models["paramhot"] = ParameterizedOneHotModel
 models["paramcont"] = ParameterizedContinuousModel
+models["paramboost"] = ParameterizedBoostDim
 from Models.adjustment_models import AdjustmentModel
 models["adjust"] = AdjustmentModel
 from Models.multi_models import PopulationModel

@@ -32,13 +32,13 @@ class Novelty_Wrapper():
         self.traj_dim = reward_function.traj_dim #TODO: the dimension of the input trajectory is currently pre-set at 2, the dim of a location. Once we figure out dynamic setting, this can change
         self.novelty_decay = args.novelty_decay
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
         takes in states, actions in format: [num in batch (sequential), dim of state/action], there is one more state than action
         for state, action, nextstate
         returns rewards in format: [num in batch, 1]
         '''
-        base_reward = self.reward_function.compute_reward(states, actions)
+        base_reward = self.reward_function.compute_reward(states, actions, resps)
         return base_reward
 
     def get_trajectories(self, full_states): # head is first and tail is second
@@ -60,7 +60,7 @@ class VisitationCountReward(Novelty_Wrapper):
         return tuple(int(v) for v in state)
 
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         # TODO: decay rate so rewards come back later?
         reward = []
         for state in states[max(-self.num_states-1, -states.size(0)+1):-1]:
@@ -71,7 +71,7 @@ class VisitationCountReward(Novelty_Wrapper):
         # print(reward,len(states), self.num_states)
         reward = pytorch_model.wrap([0 for i in range(len(states) - self.num_states - 2)] + reward)
         # print("reward", reward)
-        base_reward = self.reward_function.compute_reward(states, actions)
+        base_reward = self.reward_function.compute_reward(states, actions, resps)
         # print("base_reward", base_reward)
         # print(reward, base_reward)
         # print(list(self.seen_states.values()))
@@ -131,9 +131,9 @@ class BaseRewardNovelty(CorrelateHashReward):
     def __init__(self, args, reward_function, minmax):
         super().__init__(args, reward_function, minmax)
 
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         # TODO: decay rate so rewards come back later?
-        base_reward = self.reward_function.compute_reward(states, actions)
+        base_reward = self.reward_function.compute_reward(states, actions, resps)
         for i in range(len(base_reward) - min(self.num_states, states.size(0)-2),len(base_reward)):
             reward_at = base_reward[i]
             state = states[i]

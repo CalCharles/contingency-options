@@ -57,9 +57,10 @@ class ParametrizedModel(Model):
 class ParameterizedOneHotModel(ParametrizedModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.num_options = default_value_arg(kwargs, 'param_dim', 0) # number of inputs for the options
+        self.num_options = default_value_arg(kwargs, 'param_dim', 1) # number of inputs for the options
         self.hot_encodings = []
         self.option_values = None # list of option indexes
+        self.parameterized_option = 1
 
     def get_option_dim(self, param_dim):
         return param_dim
@@ -76,9 +77,12 @@ class ParameterizedContinuousModel(ParametrizedModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.hot_encodings = []
-        self.param_dim = default_value_arg(kwargs, 'param_dim', 0)
+        self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
         print(self.param_dim)
         self.option_values = torch.zeros(1, self.param_dim) # changed externally to the parameters
+        self.parameterized_option = 1
+        if args.cuda:
+            self.option_values = self.option_values.cuda()
     
     def get_option_dim(self, param_dim):
         return param_dim
@@ -94,14 +98,18 @@ class ParameterizedBoostDim(ParametrizedModel):
         super().__init__(**kwargs)
         args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.hot_encodings = []
-        self.param_dim = default_value_arg(kwargs, 'param_dim', 0)
+        self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
+        self.parameterized_option = 1
         print(self.param_dim)
         self.option_values = torch.zeros(1, self.param_dim) # changed externally to the parameters
+        if args.cuda:
+            self.option_values = self.option_values.cuda()
         self.l1 = nn.Linear(self.param_dim, num_inputs)
-    
+        self.train()
+        self.reset_parameters()
+
     def get_option_dim(self, param_dim):
         return self.num_inputs
-
     def create_option_vec(self, batch_size):
         # boosts the dimension of the option values to the same as the inputs (relu might not be the right activation...)
         return F.relu(self.l1(self.option_values.clone()))

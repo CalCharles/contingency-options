@@ -122,13 +122,12 @@ class StateGet():
 		the image represented state (raw_state)
 
 	'''
-	def __init__(self, action_num, target, minmax):
+	def __init__(self, target, minmax):
 		# TODO: full and feature is set at 1, and prox and bounds at 2, but this can differ
 		# self.state_shapes = state_shapes
 		global state_functions, state_shapes
 		self.state_functions = state_functions
 		self.state_shape = state_shapes
-		self.action_num = action_num
 		self.target = target
 		self.minmax = minmax
 		self.shape = None # should always be defined at some point
@@ -154,11 +153,11 @@ class GetState(StateGet):
 	'''
 	gets a state with components as defined above
 	'''
-	def __init__(self, action_num, target, minmax=None, state_forms=None):
+	def __init__(self, target, minmax=None, state_forms=None):
 		'''
 		given a list of pairs (name of correlate, relationship)
 		'''
-		super(GetState, self).__init__(action_num, target, minmax=minmax)
+		super(GetState, self).__init__(target, minmax=minmax)
 		# TODO: does not work on combination of higher dimensions
 		# TODO: order of input matters/ must be fixed
 		self.shape = np.sum([self.state_shape[state_form[1]] for state_form in state_forms])
@@ -179,21 +178,19 @@ class GetState(StateGet):
 
 	def determine_delta_target(self, states):
 		'''
-		given a set of values, determine if any of them changed. assumes target is the last resp
+		given a set of values, determine if any of them changed. assumes target is the first resp
 		returns index of difference (assumes only 1), and index in the state of difference (assumes only 1)
 		'''
-		last_shape = self.shapes[(self.names[-1], self.fnames[-1])][0] # assumes 1D
+		last_shape = self.shapes[(self.names[0], self.fnames[0])][0] # assumes 1D
 		change_indexes,ats,rstates = [], [], []
 		for i, (s1, s2) in enumerate(zip(states[:-1], states[1:])):
 			diff = s1[:last_shape] - s2[:last_shape]
 			mag = np.linalg.norm(diff)
-			# print(s1[:last_shape], s2[:last_shape], diff, mag)
-			# error
 			if mag > 0:
 				lidx = np.where(diff != 0)[0][0]
 				ats.append((lidx + 1) // 3) # 2 and 3 hard coded as the x,y,attribute
 				rstates.append(s1[:last_shape][lidx-2:lidx])
-				change_indexes.append(i)
+				change_indexes.append(i+1)
 		return change_indexes, ats, rstates
 
 	def determine_target(self, states, resps):
@@ -239,33 +236,39 @@ class GetRaw(StateGet):
 	'''
 	gets a state with components as defined above
 	'''
-	def __init__(self, action_num, target="", minmax=None, state_forms=None, state_shape = None):
+	def __init__(self, target="", minmax=None, state_forms=None, state_shape = None):
 		'''
 		given a list of pairs (name of correlate, relationship)
 		'''
-		super(GetRaw, self).__init__(action_num, target, minmax=minmax)
+		super(GetRaw, self).__init__(target, minmax=minmax)
 		self.shape = np.sum(state_shape)		
 
 	def get_state(self, state):
 		raw = state[0].flatten()
 		return raw, [len(raw)]
 
-def load_states(state_function, pth, length_constraint=50000, use_raw = False):
-	raw_files = []
-	if use_raw:
-		for root, dirs, files in os.walk(pth, topdown=False):
-			dirs.sort(key=lambda x: int(x))
-			print(pth, dirs)
-			for d in dirs:
-				try:
-					for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
-						raw_files.append(imio.imread(p))
-						if len(raw_files) > length_constraint:
-							raw_files.pop(0)
-				except OSError as e:
-					# reached the end of the file
-					pass
-	dumps = read_obj_dumps(pth, i=-1, rng = length_constraint)
+def load_states(state_function, pth, length_constraint=50000, use_raw = False, raws = None, dumps = None):
+	if raws is None:
+		raw_files = []
+		if use_raw:
+			for root, dirs, files in os.walk(pth, topdown=False):
+				dirs.sort(key=lambda x: int(x))
+				print(pth, dirs)
+				for d in dirs:
+					try:
+						for p in [os.path.join(pth, d, "state" + str(i) + ".png") for i in range(2000)]:
+							raw_files.append(imio.imread(p))
+							if len(raw_files) > length_constraint:
+								raw_files.pop(0)
+					except OSError as e:
+						# reached the end of the file
+						pass
+	else:
+		raw_files = raws
+	if dumps is None:
+		dumps = read_obj_dumps(pth, i=-1, rng = length_constraint)
+	else:
+		dumps = dumps
 	print(len(raw_files), len(dumps))
 	if len(raw_files) < len(dumps):
 		# raw files not saved for some reason, which means use a dummy array of the same length
@@ -278,7 +281,7 @@ def load_states(state_function, pth, length_constraint=50000, use_raw = False):
 		resps.append(np.array(resp))
 	states = np.stack(states, axis=0)
 	resps = np.stack(resps, axis=0)
-	return states, resps
+	return states, resps, raw_files, dumps
 
 
 def compute_minmax(state_function, pth):
@@ -294,7 +297,7 @@ def compute_minmax(state_function, pth):
 	except FileNotFoundError as e:
 		print("not loaded", saved_minmax_pth)
 		use_raw = 'raw' in state_function.names
-		states, resps = load_states(state_function.get_state, pth, use_raw = use_raw) # TODO: no normalization for raw states (not implemented)
+		states, resps, raws, dumps = load_states(state_function.get_state, pth, use_raw = use_raw) # TODO: no normalization for raw states (not implemented)
 		minmax = (np.min(states, axis=0), np.max(states, axis=0))
 		np.save(saved_minmax_pth, minmax)
 	print(minmax)

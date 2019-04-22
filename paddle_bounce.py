@@ -12,7 +12,7 @@ from Environments.state_definition import GetState, compute_minmax
 from BehaviorPolicies.behavior_policies import behavior_policies
 from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
-from RewardFunctions.dummy_rewards import BounceReward, Xreward
+from RewardFunctions.dummy_rewards import BounceReward, Xreward, BlockReward
 from RewardFunctions.changepointReward import compute_cp_minmax
 from RewardFunctions.novelty_wrappers import novelty_rewards
 
@@ -32,6 +32,7 @@ if __name__ == "__main__":
     # x values python paddle_bounce.py --model-form basic --optimizer-form PPO --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 10000 --state-forms xprox --state-names Paddle --base-node Paddle --changepoint-dir ../datasets/caleb_data/cotest/paddlegraph --factor 16 --num-layers 2 --lr 7e-4 --behavior-policy esp --optim RMSprop --period .05 --reward-form x --gamma .5 --save-dir data/doperl --init-form xnorm --entropy-coef 0.01 --grad-epoch 5
     # x values bounce 100k python paddle_bounce.py --model-form gaumulti --optimizer-form PPO --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 100000 --state-forms xprox --state-names Paddle --base-node Paddle --changepoint-dir ../datasets/caleb_data/cotest/paddlegraph --factor 40 --num-layers 1 --lr 7e-4 --behavior-policy esp --optim RMSprop --period .01 --scale 30 --num-population 50 --normalize --reward-form bounce --gamma .99 --save-dir data/doperl --init-form xnorm --entropy-coef 0.1 --grad-epoch 5 > outdope.txt
     # evo python paddle_bounce.py --model-form population --optimizer-form Evo --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 20000 --state-forms prox --state-names Paddle --base-node Paddle --changepoint-dir ../datasets/caleb_data/cotest/paddlegraph --lr 5e-2 --behavior-policy esp --reward-form bounce --gamma .8 --init-form xnorm --factor 4 --num-layers 2 --evolve-form basic --select-ratio .25 --num-population 20 --sample-duration 100 --sample-schedule 8 --elitism --warm-up 0 --log-interval 1 --scale 5
+    # python paddle_bounce.py --model-form paramboost --optimizer-form Hind --record-rollouts "data/cleanbounce/" --train-edge "Ball->Block" --num-stack 1 --train --num-iters 1000 --state-forms bounds vel bin --state-names Ball Ball Block --base-node Paddle --changepoint-dir ./data/paddlegraph --lr 7e-4 --behavior-policy esp --reward-form block --gamma .7 --init-form xnorm --factor 8 --num-layers 2 --base-optimizer PPO --parameterized-form basic --parameterized-option 2 --reward-check 10 --dilated-queue-len 20
     args = get_args()
     torch.cuda.set_device(args.gpu)
     # true_environment = Paddle()
@@ -50,6 +51,9 @@ if __name__ == "__main__":
         reward_classes = [BounceReward(-1, args)]
     elif args.reward_form == 'dir':
         reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
+    elif args.reward_form == 'block':
+        reward_classes = [BlockReward(args)]
+
     train_models = MultiOption(len(reward_classes), models[args.model_form])
     learning_algorithm = learning_algorithms[args.optimizer_form]()
     environments = option_chain.initialize(args)
@@ -62,7 +66,7 @@ if __name__ == "__main__":
     else:
         num_actions = environments[-1].num_actions
     print(args.state_names, args.state_forms)
-    state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
+    state_class = GetState(head, state_forms=list(zip(args.state_names, args.state_forms)))
     if args.normalize:
         state_class.minmax = compute_minmax(state_class, dataset_path)
         print(state_class.minmax)

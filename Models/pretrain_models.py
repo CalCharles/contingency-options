@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from file_management import load_from_pickle, get_edge
+from file_management import load_from_pickle, get_edge, render_dump
 import glob, os
 import numpy as np
 from Models.models import models, pytorch_model
@@ -9,6 +9,7 @@ from Environments.multioption import MultiOption
 from OptionChain.option_chain import OptionChain
 from Environments.state_definition import GetState, compute_minmax, load_states
 from ReinforcementLearning.learning_algorithms import PopOptim
+import matplotlib.pyplot as plt
 
 def hot_actions(action_data, num_actions):
     for i in range(len(action_data)):
@@ -30,7 +31,7 @@ def smooth_weight(action_data, lmda):
     # print(np.array(action_data))
     return action_data
 
-def get_states(args, true_environment, length_constraint=50000):
+def get_states(args, true_environment, length_constraint=50000, raws = None, dumps = None):
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)
@@ -45,8 +46,8 @@ def get_states(args, true_environment, length_constraint=50000):
     state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
     use_raw = 'raw' in args.state_forms
     state_class.minmax = compute_minmax(state_class, dataset_path)
-    states, resps = load_states(state_class.get_state, dataset_path, length_constraint = length_constraint, use_raw = use_raw)
-    return states, resps, num_actions, state_class, environments
+    states, resps, raws, dumps = load_states(state_class.get_state, dataset_path, length_constraint = length_constraint, use_raw = use_raw, raws=raws, dumps=dumps)
+    return states, resps, num_actions, state_class, environments, raws, dumps
 
 def get_option_actions(pth, train_edge, num_actions, weighting_lambda, length_constraint = 50000):
     action_file = open(os.path.join(pth, train_edge + "_actions.txt"), 'r')
@@ -61,11 +62,11 @@ def get_option_actions(pth, train_edge, num_actions, weighting_lambda, length_co
     actions = smooth_weight(actions, weighting_lambda)
     return actions
 
-def get_option_rewards(dataset_path, reward_fns, actions, length_constraint=50000):
-    states, resps = load_states(reward_fns[0].get_state, dataset_path, length_constraint=length_constraint)
+def get_option_rewards(dataset_path, reward_fns, actions, length_constraint=50000, raws= None, dumps = None):
+    states, resps, raws, dumps = load_states(reward_fns[0].get_state, dataset_path, length_constraint=length_constraint, raws=raws, dumps=dumps)
     rewards = []
     for reward_fn in reward_fns:
-        reward = reward_fn.compute_reward(pytorch_model.wrap(states, cuda=True), actions)
+        reward = reward_fn.compute_reward(pytorch_model.wrap(states, cuda=True), actions, None)
         rewards.append(reward.tolist())
     return rewards
 
@@ -123,7 +124,7 @@ def generate_distilled_training(rewards):
             break
     return np.array(actions), all_indexes
 
-def generate_target_training(actions, indexes, states, resps, state_class, reward_fns, dataset_path, num_steps, num_actions, length_constraint=50000):
+def generate_target_training(actions, indexes, states, resps, state_class, reward_fns, dataset_path, num_steps, num_actions, length_constraint=50000, raws=None, dumps = None):
     train_states = []
     train_actions = []
     train_resps = []
@@ -131,7 +132,7 @@ def generate_target_training(actions, indexes, states, resps, state_class, rewar
     indexes = indexes.tolist()
     indexes = [0] + indexes
     indexes.append(len(states))
-    rstates, resps = load_states(reward_fns[0].get_state, dataset_path, length_constraint=length_constraint)
+    rstates, resps, raws, dumps = load_states(reward_fns[0].get_state, dataset_path, length_constraint=length_constraint, raws=raws, dumps=dumps)
     change_indexes, param_idx, hindsight_targets = reward_fns[0].state_class.determine_delta_target(rstates)
     i = 0
     ci = change_indexes[i]
@@ -140,10 +141,15 @@ def generate_target_training(actions, indexes, states, resps, state_class, rewar
             i += 1
             ci = change_indexes[i]
         if ci < idx2: # we hit a block
+            # plt.imshow(render_dump(dumps[idx1]))
+            # plt.show()
+            # plt.imshow(render_dump(dumps[ci]))
+            # plt.show()
             train_states += states[idx1:idx2][:num_steps].tolist() # first 10 states after contact
             train_resps += resps[idx1:idx2][:num_steps].tolist()
             train_actions += hot_actions([a], num_actions) * len(states[idx1:idx2][:num_steps])
             param_targets += [hindsight_targets[i].tolist()] * len(states[idx1:idx2][:num_steps])
+            print(len(train_states), len(train_resps), len(train_actions), len(param_targets))
     return np.array([train_actions]), np.array([train_states]), np.array([train_resps]), np.array(param_targets)
 
 def generate_soft_dataset(states, resps, true_environment, reward_fns, args):
@@ -243,6 +249,7 @@ class CMAES_optimizer():
 
 def supervised_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values):
     loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(true_values, cuda=True).squeeze()) # TODO: cuda support required
+    loss += -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean() * .01
     # print(action_probs[:5], true_values[:5], loss)
     # for optimizer in optimizers:
     #     optimizer.zero_grad()
