@@ -36,6 +36,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     # if option_chain is not None: #TODO: implement this
     base_env = proxy_chain[0]
     base_env.set_save(0, args.save_dir, args.save_recycle)
+    print(base_env.save_path)
     proxy_environment.initialize(args, proxy_chain, reward_classes, state_class, behavior_policy)
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)
@@ -189,11 +190,11 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # print("eps", time.time() - start)
             if args.sample_schedule > 0 and j % sample_schedule == 0 and j != 0:
                 learning_algorithm.sample_duration = (j // args.sample_schedule + 1) * args.sample_duration
-                if args.retest_schedule:
-                    learning_algorithm.retest += 1
                 learning_algorithm.reset_current_duration(learning_algorithm.sample_duration, args.reward_check)
                 args.changepoint_queue_len = max(learning_algorithm.max_duration, args.changepoint_queue_len)
                 sample_schedule = args.sample_schedule * (j // args.sample_schedule + 1)# sum([args.sample_schedule * (i+1) for i in range(j // args.sample_schedule + 1)])
+            if args.retest_schedule > 0 and j % args.retest_schedule == 0 and j != 0:
+                learning_algorithm.retest += 1
                 # print("resample", time.time() - start)
         else:
             value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = None, None, None, None, None, None

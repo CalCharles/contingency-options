@@ -77,9 +77,9 @@ class Screen(RawEnvironment):
             self.actions.take_action(action[0])
             if len(self.save_path) != 0:
                 if self.itr != 0:
-                    object_dumps = open(self.save_path + "/object_dumps.txt", 'a')
+                    object_dumps = open(os.path.join(self.save_path, "object_dumps.txt"), 'a')
                 else:
-                    object_dumps = open(self.save_path + "/object_dumps.txt", 'w') # create file if it does not exist
+                    object_dumps = open(os.path.join(self.save_path, "object_dumps.txt"), 'w') # create file if it does not exist
                 self.write_objects(object_dumps, self.save_path)
                 object_dumps.close()
             for obj1 in self.animate:
@@ -128,7 +128,7 @@ class Screen(RawEnvironment):
             os.makedirs(save_path)
         except OSError:
             pass
-        object_dumps = open(save_path + "object_dumps.txt", 'w')
+        object_dumps = open(os.path.join(save_path,"object_dumps.txt"), 'w')
         if render:
             self.render_frame()
         for self.itr in range(iterations):
@@ -223,11 +223,11 @@ class BouncePolicy(Policy):
 def abbreviate_obj_dump_file(pth, new_path, get_last=-1):
     total_len = 0
     if get_last > 0:
-        for line in open(pth + '/object_dumps.txt', 'r'):
+        for line in open(os.path.join(pth,  'object_dumps.txt'), 'r'):
             total_len += 1
     current_len = 0
-    new_file = open(new_path+ '/object_dumps.txt', 'w')
-    for line in open(pth + '/object_dumps.txt', 'r'):
+    new_file = open(os.path.join(new_path, 'object_dumps.txt'), 'w')
+    for line in open(os.path.join(pth,  'object_dumps.txt'), 'r'):
         current_len += 1
         if current_len< total_len-get_last:
             continue
@@ -246,7 +246,7 @@ def read_obj_dumps(pth, i= 0, rng=-1):
     obj_dumps = []
     total_len = 0
     if i < 0:
-        for line in open(pth + '/object_dumps.txt', 'r'):
+        for line in open(os.path.join(pth, 'object_dumps.txt'), 'r'):
             total_len += 1
         print("length", total_len)
         if rng == -1:
@@ -254,7 +254,7 @@ def read_obj_dumps(pth, i= 0, rng=-1):
         else:
             i = max(total_len - rng, 0)
     current_len = 0
-    for line in open(pth + '/object_dumps.txt', 'r'):
+    for line in open(os.path.join(pth, 'object_dumps.txt'), 'r'):
         current_len += 1
         if current_len< i:
             continue

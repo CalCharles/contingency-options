@@ -36,21 +36,22 @@ def get_states(args, true_environment, length_constraint=50000, raws = None, dum
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)
     environments = option_chain.initialize(args)
+    print(environments)
     proxy_environment = environments.pop(-1)
     head, tail = get_edge(args.train_edge)
     if len(environments) > 1: # there is a difference in the properties of a proxy environment and the true environment
         num_actions = len(environments[-1].reward_fns)
     else:
         num_actions = environments[-1].num_actions
-    print(environments[0], environments[1].name)
-    state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
+    state_class = GetState(head, state_forms=list(zip(args.state_names, args.state_forms)))
     use_raw = 'raw' in args.state_forms
     state_class.minmax = compute_minmax(state_class, dataset_path)
     states, resps, raws, dumps = load_states(state_class.get_state, dataset_path, length_constraint = length_constraint, use_raw = use_raw, raws=raws, dumps=dumps)
     return states, resps, num_actions, state_class, environments, raws, dumps
 
 def get_option_actions(pth, train_edge, num_actions, weighting_lambda, length_constraint = 50000):
-    action_file = open(os.path.join(pth, train_edge + "_actions.txt"), 'r')
+    head, tail = get_edge(train_edge)
+    action_file = open(os.path.join(pth, tail[0] + "_actions.txt"), 'r')
     actions = []
     for act in action_file:
         # print(act, os.path.join(pth, train_edge + "_actions.txt"))
@@ -166,10 +167,10 @@ def generate_soft_dataset(states, resps, true_environment, reward_fns, args):
         num_actions = len(environments[-1].reward_fns)
     else:
         num_actions = environments[-1].num_actions
-    state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
+    state_class = GetState(head, state_forms=list(zip(args.state_names, args.state_forms)))
     proxy_environment.initialize(args, proxy_chain, reward_fns, state_class, behavior_policy=None)
 
-    train_models.initialize(args, len(reward_fns), state_class)
+    train_models.initialize(args, len(reward_fns), state_class, num_actions)
     train_models.session(args)
     proxy_environment.duplicate(args) # assumes that we are loading weights
     args.load_weights = pre_load_weights
@@ -312,10 +313,10 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
     print(parameter_minmax)
     if not args.load_weights:
         state_class.action_num = num_actions
-        train_models.initialize(args, len(reward_classes), state_class, parameter_minmax=parameter_minmax)
+        train_models.initialize(args, len(reward_classes), state_class, num_actions, parameter_minmax=parameter_minmax)
         proxy_environment.set_models(train_models)
     else:
-        train_models.initialize(args, len(reward_classes), state_class, parameter_minmax=parameter_minmax)
+        train_models.initialize(args, len(reward_classes), state_class, num_actions, parameter_minmax=parameter_minmax)
         train_models.session(args)
         proxy_environment.duplicate(args)
     train_models.train()    
@@ -342,8 +343,8 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
         total_loss = 0.0
         for i in range(args.num_iters):
             idxes = np.random.choice(list(range(len(odesired))), (batch_size,), replace=False)
-            param_vals = targets[idxes]
             if args.model_form.find("param") != -1:
+                param_vals = targets[idxes]
                 train_models.currentModel().option_values = pytorch_model.wrap(param_vals, cuda=args.cuda)
             # start = np.random.randint(len(odesired))
             # idxes = [(idx + start) % len(odesired) for idx in range(batch_size)]

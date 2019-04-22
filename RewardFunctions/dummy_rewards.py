@@ -53,11 +53,14 @@ class BounceReward(ChangepointReward):
                 if torch.norm(v2 - self.desired_vel) == 0:
                     rewards.append(1)
                     rewarded = True
-                elif self.anybounce:
+                else:
                     for v in self.desired_vels:
                         if torch.norm(v2 - v) == 0:
                             # print ("REWARD", v1, v2)
-                            rewards.append(1)
+                            if self.anybounce:
+                                rewards.append(1)
+                            else:
+                                rewards.append(0.25)
                             rewarded = True
             if not rewarded:
                 if self.form == 'dense':

@@ -108,6 +108,9 @@ class ProxyEnvironment():
         In order to create a classic RL system, just use a single element list containing the true environment as the proxy chain
         '''
         self.proxy_chain = proxy_chain
+        for i, env in enumerate(self.proxy_chain[1:]):
+            env.proxy_chain = self.proxy_chain[:len(self.proxy_chain) - i - 1] 
+            env.iscuda = args.cuda # TODO: changes to this probably will cause breaking
         self.reward_fns = reward_fns
         self.stateExtractor = state_get
         self.iscuda = args.cuda
