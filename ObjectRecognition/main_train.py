@@ -36,12 +36,17 @@ from SelfBreakout.breakout_screen import RandomConsistentPolicy, RotatePolicy
 from ChangepointDetection.LinearCPD import LinearCPD
 from ChangepointDetection.CHAMP import CHAMPDetector
 from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
-from ObjectRecognition.model import ModelFocusCNN, ModelFocusBoost, load_param
+from ObjectRecognition.model import (
+    ModelFocusCNN, ModelFocusBoost,
+    ModelAttentionCNN,
+    ModelCollectionDAG,
+    load_param)
 from ObjectRecognition.optimizer import CMAEvolutionStrategyWrapper
 from ObjectRecognition.train import Trainer, recognition_train
 from ObjectRecognition.loss import (
     SaliencyLoss, ActionMICPLoss, PremiseMICPLoss,
-    CollectionMICPLoss, CombinedLoss)
+    CollectionMICPLoss, CombinedLoss,
+    AttentionPremiseMICPLoss)
 import ObjectRecognition.add_args as add_args
 import ObjectRecognition.util as util
 
@@ -119,27 +124,21 @@ if __name__ == '__main__':
     """
     Model Template & Constructor
     """
+    model = ModelCollectionDAG()
     net_params = json.loads(open(args.net).read())
-    model = ModelFocusCNN(
-        image_shape=dataset.frame_shape,
-        net_params=net_params,
-        use_prior=args.prior,
-        argmax_mode=args.argmax_mode,
-    )
-    logger.info('loaded net_params %s'%(str(net_params)))
-
-    # paddle model for premise MICP loss
-    if args.premise_micp:
-        pmodel_weight_path = args.premise_path
-        pmodel_net_params_text = open(args.premise_net).read()
-        pmodel_net_params = json.loads(pmodel_net_params_text)
-        pmodel_params = load_param(pmodel_weight_path)
-        pmodel = ModelFocusCNN(
-            image_shape=(84, 84),
-            net_params=pmodel_net_params,
+    if args.model_type == 'focus':
+        train_model = ModelFocusCNN(
+            image_shape=dataset.frame_shape,
+            net_params=net_params,
+            use_prior=args.prior,
+            argmax_mode=args.argmax_mode,
         )
-        pmodel.set_parameters(pmodel_params)
-
+    elif args.model_type == 'attn':
+        train_model = ModelAttentionCNN(
+            image_shape=dataset.frame_shape,
+            net_params=net_params,
+        )
+    logger.info('loaded net_params %s'%(str(net_params)))
 
     # boosting with trained models
     if args.boost:
@@ -154,12 +153,29 @@ if __name__ == '__main__':
         b_model.set_parameters(b_params)
 
         # boosting ensemble
-        model = ModelFocusBoost(
+        train_model = ModelFocusBoost(
             b_model,
-            model,
+            train_model,
             train_flags=[False, True],
             cp_detector=cpd,
         )
+
+    # paddle model for premise MICP loss
+    if args.premise_micp or args.attn_premise_micp:
+        pmodel_weight_path = args.premise_path
+        pmodel_net_params_text = open(args.premise_net).read()
+        pmodel_net_params = json.loads(pmodel_net_params_text)
+        pmodel_params = load_param(pmodel_weight_path)
+        pmodel = ModelFocusCNN(
+            image_shape=(84, 84),
+            net_params=pmodel_net_params,
+        )
+        pmodel.set_parameters(pmodel_params)
+        model.add_model('premise', pmodel, [])
+        model.add_model('train', train_model, ['premise'])
+    else:
+        model.add_model('train', train_model, [])
+    model.set_trainable('train')
     logger.info(model)
 
 
@@ -197,7 +213,7 @@ if __name__ == '__main__':
         if args.premise_micp:
             premise_micploss = PremiseMICPLoss(
                 dataset,
-                pmodel,
+                'premise',
                 mi_match_coeff=args.premise_micp[0],  # 1.0
                 mi_diffs_coeff=args.premise_micp[1],  # 0.2
                 mi_valid_coeff=args.premise_micp[2],  # 0.1
@@ -213,6 +229,19 @@ if __name__ == '__main__':
             cp_detector=cpd,
         )
         seq_loss.append(micploss)
+    if args.attn_premise_micp:
+        attn_premise_micploss = AttentionPremiseMICPLoss(
+            dataset,
+            'premise',
+            mi_match_coeff=args.attn_premise_micp[0],  # ?
+            mi_diffs_coeff=args.attn_premise_micp[1],  # ?
+            temp_loss_coeff=args.attn_premise_micp[2],  # ?
+            prox_dist=args.attn_premise_micp[3],  # ?
+            attn_t=args.attn_premise_micp[4],  # ?
+            batch_size=500,
+            verbose=args.verbose,
+        )
+        seq_loss.append(attn_premise_micploss)
     loss = CombinedLoss(*seq_loss)
     logger.info(loss)
 

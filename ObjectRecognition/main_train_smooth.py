@@ -16,8 +16,9 @@ import ObjectRecognition.util as util
 if __name__ == '__main__':
     net_path = 'ObjectRecognition/net_params/attn_base.json'
     model_path = 'results/cmaes_soln/focus_self/42309_7_smooth_2.pth'
+    # model_path = 'results/cmaes_soln/focus_atari_breakout/42101_22_smooth.pth'
     image_shape = (84, 84)
-    n_state = 100
+    n_state = 30
     is_train = False
 
     # get dataset
@@ -26,11 +27,22 @@ if __name__ == '__main__':
         'SelfBreakout/runs/0',  # run states2
         n_state=n_state,  # set max number of states
         binarize=0.1,  # binarize image to 0 and 1
+        offset_fix=0,  # offset of episode number
     )
+    # actor = partial(RotatePolicy, hold_count=5)
+    # dataset = DatasetAtari(
+    #     'BreakoutNoFrameskip-v4',  # atari game name
+    #     actor,  # mock actor
+    #     n_state=n_state,  # set max number of states
+    #     save_path='results',  # save path for gym
+    #     binarize=0.1,  # binarize image to 0 and 1
+    # )
 
     # get ball model
-    prev_net_params_path = 'ObjectRecognition/net_params/two_layer_5_5.json'
+    prev_net_params_path = 'ObjectRecognition/net_params/two_layer_5_5_old.json'
     prev_weight_path = 'results/cmaes_soln/focus_self/42309_7.npy'
+    # prev_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+    # prev_weight_path = 'results/cmaes_soln/focus_atari_breakout/42101_22.npy'
     prev_net_params = json.loads(open(prev_net_params_path).read())
     prev_model = ModelFocusCNN(
         image_shape=(84, 84),
@@ -47,14 +59,17 @@ if __name__ == '__main__':
 
     # train
     if is_train:
-        model.from_focus_model(prev_model, dataset, n_iter=1000)
+        model.from_focus_model(prev_model, dataset, n_iter=300)
     else:
         model.load_state_dict(torch.load(model_path))
         model.eval()
 
     # forward
     focus = prev_model.forward(frames)
-    focus_attn = util.focus2attn(focus, image_shape)
+    focus_attn = util.focus2attn(
+        focus,
+        image_shape,
+        fn=partial(util.gaussian_pdf, normalized=False))
     attn = model.forward(frames, ret_numpy=True)
 
     # plots

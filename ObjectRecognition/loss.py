@@ -13,7 +13,7 @@ import ObjectRecognition.util as util
 class FocusLoss:
 
     def forward(self, focus):
-        raise NotImplemented
+        raise NotImplementedError('forward not implemented')
 
     def __call__(self, focus):
         return self.forward(focus)
@@ -23,7 +23,7 @@ class FocusLoss:
 class FocusChangePointLoss:
 
     def forward(self, focus, changepoints, ret_extra=False):
-        raise NotImplemented
+        raise NotImplementedError('forward not implemented')
 
     def __call__(self, focus, changepoints, ret_extra=False):
         return self.forward(focus, changepoints, ret_extra)
@@ -47,6 +47,7 @@ class SaliencyLoss(FocusLoss):
 
     # evaluate focus, lesser = more salience
     def forward(self, focus):
+        focus = focus['__train__']
         frames = util.extract_neighbor(
 			self.frame_source,
 			focus,
@@ -154,6 +155,8 @@ class ActionMICPLoss(FocusChangePointLoss):
 
     # evaluate changepoint, lesser = more relevant focus
     def forward(self, focus, changepoints, ret_extra=False):
+        focus = focus['__train__']
+
         # get action change points
         premise_cp = self.action_source.get_changepoint()
 
@@ -207,10 +210,11 @@ class PremiseMICPLoss(FocusChangePointLoss):
 
     # evaluate changepoint, lesser = more relevant focus
     def forward(self, focus, changepoints, ret_extra=False):
-        premise_focus = self._premise_forward()
+        premise_focus = focus[self.premise]
+        train_focus = focus['__train__']
 
         # calculate mutual info between two changepoints
-        loss_vals = self._mutual_info(focus, premise_focus, changepoints)
+        loss_vals = self._mutual_info(train_focus, premise_focus, changepoints)
         mi_match, mi_diffs, mi_valid, mi_cndcp = loss_vals
         mi_loss = self.mi_diffs_coeff*mi_diffs \
                   - self.mi_match_coeff*mi_match \
@@ -255,6 +259,20 @@ class PremiseMICPLoss(FocusChangePointLoss):
         prox_cnt = np.zeros(frame_shape)
         cp_prox_cnt = np.zeros(frame_shape)
         total_cnt = np.zeros(frame_shape)
+        for i, obj_fx in enumerate(object_focus):
+            obj_x = (obj_fx * frame_shape).astype(int)
+            total_cnt[obj_x[0], obj_x[1]] += 1
+            if prox_mask[i]:
+                prox_cnt[obj_x[0], obj_x[1]] += 1
+                if i in is_object_cp:
+                    tp += 1
+                else:
+                    fp += 1
+            else:
+                if i in is_object_cp:
+                    fn += 1
+                else:
+                    tn += 1
         for cpi in object_cp:
             obj_x = (object_focus[cpi] * frame_shape).astype(int)
             premise_x = (premise_focus[cpi] * frame_shape).astype(int)
@@ -270,20 +288,6 @@ class PremiseMICPLoss(FocusChangePointLoss):
         # util.confuse_metrics(cp_prox_cnt, prox_cnt-cp_prox_cnt, 
         #                      cp_cnt-cp_prox_cnt, none_cnt)
         
-        # for i, obj_fx in enumerate(object_focus):
-        #     obj_x = (obj_fx * frame_shape).astype(int)
-        #     total_cnt[obj_x[0], obj_x[1]] += 1
-        #     if prox_mask[i]:
-        #         prox_cnt[obj_x[0], obj_x[1]] += 1
-        #         if i in is_object_cp:
-        #             tp += 1
-        #         else:
-        #             fp += 1
-        #     else:
-        #         if i in is_object_cp:
-        #             fn += 1
-        #         else:
-        #             tn += 1
         # print('tp', int(tp), 'fp', int(fp), 'fn', int(fn), 'tn', int(tn))
         # util.confuse_metrics(tp, fp, fn, tn)
 
@@ -327,7 +331,8 @@ class CollectionMICPLoss(FocusLoss):
 
     # evaluate focus loss w.r.t premises
     def forward(self, focus):
-        _, changepoints = self.cp_detector.generate_changepoints(focus)
+        focus_x = focus['__train__']
+        _, changepoints = self.cp_detector.generate_changepoints(focus_x)
         return self.agg_fn([micp_loss.forward(focus, changepoints)
                            for micp_loss in self.micp_losses])
 
@@ -350,6 +355,77 @@ class CollectionMICPLoss(FocusLoss):
                       for micp_loss in self.micp_losses))
 
 
+# attention mapper
+def attn_map(attn_1, attn_2):
+    raise NotImplementedError('not finished')
+
+
+# changepoint loss for attention models
+class AttentionPremiseMICPLoss:
+
+    def __init__(self, frame_source, premise, *args, **kwargs):
+        self.frame_source = frame_source
+        self.premise = premise  # produce focus
+        self.batch_size = kwargs.get('batch_size', 100)
+        self.prox_dist = kwargs.get('prox_dist', 0.1)
+        self.attn_t = kwargs.get('attn_t', 0.5)  # threshold for being object
+
+        self.mi_match_coeff = kwargs.get('mi_match_coeff', 1.0)
+        self.mi_diffs_coeff = kwargs.get('mi_diffs_coeff', 1.0)
+        self.temp_loss_coeff = kwargs.get('temp_loss_coeff', 1.0)
+        self.verbose = kwargs.get('verbose', False)
+
+
+    # evaluate focus loss
+    def forward(self, attn):
+        premise_focus = attn[self.premise]
+        train_attn = attn['__train__']
+
+        mi_match, mi_diffs = self._mutual_info(train_attn, premise_focus)
+        temp_loss = np.mean((train_attn > self.attn_t).astype(float))
+        mi_loss = self.mi_diffs_coeff*mi_diffs \
+                  - self.mi_match_coeff*mi_match \
+                  + self.temp_loss_coeff*temp_loss
+        if self.verbose:
+            logger.info('match= %f, diffs= %f, temp= %f'%(
+                        mi_match, mi_diffs, temp_loss))
+        return mi_loss
+
+
+    # evaluate focus loss
+    def _mutual_info(self, train_attn, premise_focus):
+        n_focus = train_attn.shape[0] - 1
+
+        # get changepoint in attention intensity
+        object_mask = train_attn > self.attn_t
+        object_cp_mask = object_mask[1:] != object_mask[:-1]
+
+        # get proximity mask
+        prox_mask = self._get_prox_mask(object_mask, premise_focus)[:-1]
+
+        # compute match and diffs
+        prox_cnt = prox_mask.sum(axis=1).sum(axis=1)
+        v_idx = prox_cnt > 0
+        match_cnt = (object_cp_mask & prox_mask).sum(axis=1).sum(axis=1)
+        diffs_cnt = (object_cp_mask ^ prox_mask).sum(axis=1).sum(axis=1)
+        return np.sum(match_cnt[v_idx] / prox_cnt[v_idx]) / n_focus, \
+               np.sum(diffs_cnt[v_idx] / prox_cnt[v_idx]) / n_focus
+
+
+    # get object proximity mask
+    def _get_prox_mask(self, object_mask, premise_focus):
+        premise_dist = util.focus2attn(
+            premise_focus, 
+            self.frame_source.get_shape()[-2:],
+            fn=util.conic)
+        return object_mask & (premise_dist < self.prox_dist)
+
+
+    # pretty print
+    def __str__(self, prefix=''):
+        return prefix + 'AttentionMICPLoss'
+
+
 # Aggregation of Loss
 class CombinedLoss(FocusLoss):
 
@@ -368,31 +444,3 @@ class CombinedLoss(FocusLoss):
         return prefix + 'CombinedLoss: agg_fn= %s\n%s'%(
             self.agg_fn.__str__(),
             '\n'.join(loss.__str__(prefix=prefix+'\t') for loss in self.losses))
-
-
-# abstracted class to measure focus
-class AttentionLoss:
-
-    def forward(self, attn):
-        raise NotImplemented
-
-    def __call__(self, attn):
-        return self.forward(attn)
-
-
-# changepoint loss
-class AttentionMICPLoss(AttentionLoss):
-
-    def __init__(self, frame_source, premise, *args, **kwargs):
-        self.frame_source = frame_source
-
-
-    # evaluate focus loss
-    def forward(self, focus):
-        pass
-
-
-    # pretty print
-    def __str__(self, prefix=''):
-        return prefix + 'AttentionMICPLoss'
-

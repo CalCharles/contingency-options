@@ -152,17 +152,34 @@ def gaussian_pdf(x, y, sigma, normalized=True):
     coeff = 2*np.pi * (sigma**2) if normalized else 1.0
     return coeff * np.exp(-(x**2 + y**2)/(sigma**2))
 
+
+# 2D conic function
+def conic(x, y, d=None):
+    return (x**2 + y**2)**0.5
+
+
 # 2D step function within distance
 def step2d_fn(x, y, dist):
     return np.where(np.sqrt(x**2 + y**2) < dist, 1.0, 0.0)
 
 
 # convert from focus to frame intensity in [0.0, 1.0]
-def focus2attn(focus, input_shape, fn=gaussian_pdf):
+def focus2attn(focus, input_shape, d=0.04, fn=gaussian_pdf):
     attn = np.zeros((focus.shape[0], 1) + input_shape)
     for i, f in enumerate(focus):
         xs = np.linspace(0, 1, input_shape[0], endpoint=False) - f[0]
         ys = np.linspace(0, 1, input_shape[1], endpoint=False) - f[1]
-        attn[i, ...] = gaussian_pdf(xs[:, None], ys[None, :], 0.04, False)
-        # attn[i, ...] = step2d_fn(xs[:, None], ys[None, :], 0.04)
+        attn[i, ...] = fn(xs[:, None], ys[None, :], d)
+        # attn[i, ...] = gaussian_pdf(xs[:, None], ys[None, :], d, False)
+        # attn[i, ...] = step2d_fn(xs[:, None], ys[None, :], d)
     return attn # / np.max(attn, axis=0)
+
+
+# no-op function
+def noop_x(x, y):
+    return x
+
+
+# pick first element in list
+def pick_first(x):
+    return x[0]

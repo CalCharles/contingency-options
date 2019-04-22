@@ -7,10 +7,33 @@ import matplotlib.pyplot as plt
 from ObjectRecognition.main_report import plot_focus
 from SelfBreakout.breakout_screen import RandomConsistentPolicy
 from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
-from ObjectRecognition.model import ModelFocusCNN
+from ObjectRecognition.model import (
+    ModelFocusCNN, ModelCollectionDAG,
+    load_param)
 from ObjectRecognition.loss import *
 from ObjectRecognition.util import extract_neighbor
 
+
+def load_model(model_path, net_params_path, pmodel=None, *args, **kwargs):
+    net_params = json.loads(open(net_params_path).read())
+    params = load_param(model_path)
+    test_mode = ModelFocusCNN(
+        image_shape=(84, 84),
+        net_params=net_params,
+        *args,
+        **kwargs,
+    )
+    test_mode.set_parameters(params)
+
+    # construct model
+    model = ModelCollectionDAG()
+    if pmodel:
+        model.add_model('premise', pmodel, [])
+        model.add_model('test_model', test_mode, ['premise'])
+    else:
+        model.add_model('test_model', test_mode, [])
+    model.set_trainable('test_model')
+    return model
 
 # game instance
 n_state = 1000
@@ -52,30 +75,30 @@ action_micploss = ActionMICPLoss(
 # micplosses.append(action_micploss)
 
 # premise loss
-net_params_path = 'ObjectRecognition/net_params/two_layer.json'
-net_params = json.loads(open(net_params_path).read())
-paddle_model = ModelFocusCNN(
+pmodel_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+net_params = json.loads(open(pmodel_net_params_path).read())
+params = load_param('results/cmaes_soln/focus_self/paddle_bin.npy')
+pmodel = ModelFocusCNN(
     image_shape=(84, 84),
     net_params=net_params,
 )
-paddle_model.set_parameters(np.load('results/cmaes_soln/focus_self/paddle_bin.npy'))
-net_params_path = 'ObjectRecognition/net_params/two_layer.json'
-net_params = json.loads(open(net_params_path).read())
-ball_model = ModelFocusCNN(
-    image_shape=(84, 84),
-    net_params=net_params,
-)
-ball_model.set_parameters(np.load('results/cmaes_soln/focus_self/ball_bin.npy'))
-net_params_path = 'ObjectRecognition/net_params/two_layer.json'
-net_params = json.loads(open(net_params_path).read())
-comp_model = ModelFocusCNN(
-    image_shape=(84, 84),
-    net_params=net_params,
-)
-comp_model.set_parameters(np.load('results/cmaes_soln/focus_self/42068_40.npy'))
+pmodel.set_parameters(params)
+paddle_model = load_model(
+    'results/cmaes_soln/focus_self/paddle_bin.npy',
+    'ObjectRecognition/net_params/two_layer.json',
+    pmodel=pmodel)
+ball_model = load_model(
+    'results/cmaes_soln/focus_self/ball_bin.npy',
+    'ObjectRecognition/net_params/two_layer.json',
+    pmodel=pmodel)
+comp_model = load_model(
+    'results/cmaes_soln/focus_self/42068_40.npy',
+    'ObjectRecognition/net_params/two_layer_5_5.json',
+    pmodel=pmodel)
+
 premise_micploss = PremiseMICPLoss(
     game,
-    paddle_model,
+    'premise',
     mi_match_coeff= 0.0,
     mi_diffs_coeff= 0.0,
     mi_valid_coeff= 0.0,
@@ -95,36 +118,48 @@ loss_fn = loss.forward
 LIMIT = n_state
 L = game.idx_offset
 R = L + LIMIT
+paddle_model_focus = paddle_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True)
+ball_model_focus = ball_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True)
+comp_model_focus = comp_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True)
+random_focus = np.random.rand(LIMIT, 2)
+random_focus = {
+    'premise': paddle_model_focus['premise'],
+    '__train__': random_focus,
+}
 try:
     ideal_paddle = game.paddle_data.astype(float)[L:R, ...] / 84.0
 except:
     ideal_paddle = np.random.rand(LIMIT, 2)
+ideal_paddle = {
+    'premise': paddle_model_focus['premise'],
+    '__train__': ideal_paddle,
+}
 try:
     ideal_ball = game.ball_data.astype(float)[L:R, ...] / 84.0
 except:
     ideal_ball = np.random.rand(LIMIT, 2)
-random_focus = np.random.rand(LIMIT, 2)
-paddle_model_focus = paddle_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float())
-ball_model_focus = ball_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float())
-comp_model_focus = comp_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float())
-fix_jump_focus = np.zeros((LIMIT, 2))
-fix_jump_focus[[LIMIT//6, LIMIT//4, LIMIT//2]] = paddle_model_focus[[LIMIT//6, LIMIT//4, LIMIT//2]]
+ideal_ball = {
+    'premise': paddle_model_focus['premise'],
+    '__train__': ideal_ball,
+}
+fix_jump_focus = paddle_model_focus
+fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]] = fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]]
 
 # plot tracking paddle
 if False:
     L, R = 20, 30
-    plot_focus(game, range(L, R), ideal_paddle[L:R])
-    plot_focus(game, range(L, R), ideal_ball[L:R])
-    plot_focus(game, range(L, R), random_focus[L:R])
-    plot_focus(game, range(L, R), paddle_model_focus[L:R])
-    plot_focus(game, range(L, R), ball_model_focus[L:R])
-    plot_focus(game, range(L, R), comp_model_focus[L:R])
+    plot_focus(game, range(L, R), ideal_paddle['__train__'][L:R])
+    plot_focus(game, range(L, R), ideal_ball['__train__'][L:R])
+    plot_focus(game, range(L, R), random_focus['__train__'][L:R])
+    plot_focus(game, range(L, R), paddle_model_focus['__train__'][L:R])
+    plot_focus(game, range(L, R), ball_model_focus['__train__'][L:R])
+    plot_focus(game, range(L, R), comp_model_focus['__train__'][L:R])
 
 # calculate loss
-print('Ideal Paddle Loss:', loss_fn(ideal_paddle[:LIMIT]))
-print('Ideal Ball Loss:', loss_fn(ideal_ball[:LIMIT]))
-print('Random Loss:', loss_fn(random_focus[:LIMIT]))
-print('Fix Jump Loss:', loss_fn(fix_jump_focus[:LIMIT]))
-print('Model Paddle Loss:', loss_fn(paddle_model_focus[:LIMIT]))
-print('Model Ball Loss:', loss_fn(ball_model_focus[:LIMIT]))
-print('Model Compared Loss:', loss_fn(comp_model_focus[:LIMIT]))
+print('Ideal Paddle Loss:', loss_fn(ideal_paddle))
+print('Ideal Ball Loss:', loss_fn(ideal_ball))
+print('Random Loss:', loss_fn(random_focus))
+print('Fix Jump Loss:', loss_fn(fix_jump_focus))
+print('Model Paddle Loss:', loss_fn(paddle_model_focus))
+print('Model Ball Loss:', loss_fn(ball_model_focus))
+print('Model Compared Loss:', loss_fn(comp_model_focus))
