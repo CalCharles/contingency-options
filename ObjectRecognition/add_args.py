@@ -27,6 +27,9 @@ def add_optimizer_argument(parser):
 
 
 def add_model_argument(parser):
+    parser.add_argument('--model_type',
+                        choices=['focus', 'attn'], default='focus',
+                        help='model type')
     parser.add_argument('--boost', type=str, nargs=2, default=None,
                         metavar=('NET-PARAMS', 'WEIGHT'),
                         help='train boost on top')
@@ -41,15 +44,18 @@ def add_loss_argument(parser):
     parser.add_argument('--saliency', type=float, nargs=4, default=None,
                         metavar=('FRAME-DEV', 'FOCUS-DEV', 'FRAME-VAR', 
                                  'BELIEF-DEV'),
-                        help='coefficients for saliency loss (3)')
+                        help='coefficients for saliency loss')
     parser.add_argument('--hinge_dist', type=float, default=0.2,
                         help='hinge distance for focus deviation')
     parser.add_argument('--action_micp', type=float, nargs=2, default=None,
                         metavar=('MATCH', 'DIFFS'),
-                        help='coefficients for action MICP loss (2)')
+                        help='coefficients for action MICP loss')
     parser.add_argument('--premise_micp', type=float, nargs=5, default=None,
                         metavar=('MATCH', 'DIFFS', 'VALID', 'CNDCP', 'PROX-DIST'),
-                        help='coefficients for premise MICP loss (4)')
+                        help='coefficients for premise MICP loss')
+    parser.add_argument('--attn_premise_micp', type=float, nargs=5, default=None,
+                        metavar=('MATCH', 'DIFFS', 'TEMP', 'PROX-DIST', 'ATTN-T'),
+                        help='coefficients for premise MICP loss')
     parser.add_argument('--premise_path', type=str,
                         default='results/cmaes_soln/focus_self/paddle.npy',
                         help='path to network weight for premise recognition')

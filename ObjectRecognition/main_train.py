@@ -36,12 +36,17 @@ from SelfBreakout.breakout_screen import RandomConsistentPolicy, RotatePolicy
 from ChangepointDetection.LinearCPD import LinearCPD
 from ChangepointDetection.CHAMP import CHAMPDetector
 from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
-from ObjectRecognition.model import ModelFocusCNN, ModelFocusBoost
+from ObjectRecognition.model import (
+    ModelFocusCNN, ModelFocusBoost,
+    ModelAttentionCNN,
+    ModelCollectionDAG,
+    load_param)
 from ObjectRecognition.optimizer import CMAEvolutionStrategyWrapper
 from ObjectRecognition.train import Trainer, recognition_train
 from ObjectRecognition.loss import (
     SaliencyLoss, ActionMICPLoss, PremiseMICPLoss,
-    CollectionMICPLoss, CombinedLoss)
+    CollectionMICPLoss, CombinedLoss,
+    AttentionPremiseMICPLoss)
 import ObjectRecognition.add_args as add_args
 import ObjectRecognition.util as util
 
@@ -52,7 +57,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train object recognition')
     parser.add_argument('savedir',
                         help='base directory to save results')
-    parser.add_argument('game', choices=['self', 'atari'],
+    parser.add_argument('game', choices=['self', 'self-b', 'atari'],
                         help='game name to train with')
     parser.add_argument('net',
                         help='network params JSON file')
@@ -88,7 +93,15 @@ if __name__ == '__main__':
     if args.game == 'self':
         dataset = DatasetSelfBreakout(
             'SelfBreakout/runs',  # object dump path
-            'SelfBreakout/runs/0',  # run states2
+            'SelfBreakout/runs/0',  # run states
+            n_state=args.n_state,  # set max number of states
+            binarize=args.binarize,  # binarize image to 0 and 1
+            offset_fix=args.offset_fix,  # offset of episode number
+        )  # 10.0, 0.1, 1.0, 0.0005
+    elif args.game == 'self-b':
+        dataset = DatasetSelfBreakout(
+            'SelfBreakout/runs_bounce',  # object dump path
+            'SelfBreakout/runs_bounce/0',  # run states
             n_state=args.n_state,  # set max number of states
             binarize=args.binarize,  # binarize image to 0 and 1
             offset_fix=args.offset_fix,  # offset of episode number
@@ -119,34 +132,28 @@ if __name__ == '__main__':
     """
     Model Template & Constructor
     """
+    model = ModelCollectionDAG()
     net_params = json.loads(open(args.net).read())
-    model = ModelFocusCNN(
-        image_shape=dataset.frame_shape,
-        net_params=net_params,
-        use_prior=args.prior,
-        argmax_mode=args.argmax_mode,
-    )
-    logger.info('loaded net_params %s'%(str(net_params)))
-
-    # paddle model for premise MICP loss
-    if args.premise_micp:
-        pmodel_weight_path = args.premise_path
-        pmodel_net_params_text = open(args.premise_net).read()
-        pmodel_net_params = json.loads(pmodel_net_params_text)
-        pmodel_params = np.load(pmodel_weight_path)
-        pmodel = ModelFocusCNN(
-            image_shape=(84, 84),
-            net_params=pmodel_net_params,
+    if args.model_type == 'focus':
+        train_model = ModelFocusCNN(
+            image_shape=dataset.frame_shape,
+            net_params=net_params,
+            use_prior=args.prior,
+            argmax_mode=args.argmax_mode,
         )
-        pmodel.set_parameters(pmodel_params)
-
+    elif args.model_type == 'attn':
+        train_model = ModelAttentionCNN(
+            image_shape=dataset.frame_shape,
+            net_params=net_params,
+        )
+    logger.info('loaded net_params %s'%(str(net_params)))
 
     # boosting with trained models
     if args.boost:
         # a model to be boosted
         b_net_params_path, b_weight_path = args.boost
         b_net_params = json.loads(open(b_net_params_path).read())
-        b_params = np.load(b_weight_path)
+        b_params = load_param(b_weight_path)
         b_model = ModelFocusCNN(
             image_shape=(84, 84),
             net_params=b_net_params,
@@ -154,12 +161,29 @@ if __name__ == '__main__':
         b_model.set_parameters(b_params)
 
         # boosting ensemble
-        model = ModelFocusBoost(
+        train_model = ModelFocusBoost(
             b_model,
-            model,
+            train_model,
             train_flags=[False, True],
             cp_detector=cpd,
         )
+
+    # paddle model for premise MICP loss
+    if args.premise_micp or args.attn_premise_micp:
+        pmodel_weight_path = args.premise_path
+        pmodel_net_params_text = open(args.premise_net).read()
+        pmodel_net_params = json.loads(pmodel_net_params_text)
+        pmodel_params = load_param(pmodel_weight_path)
+        pmodel = ModelFocusCNN(
+            image_shape=(84, 84),
+            net_params=pmodel_net_params,
+        )
+        pmodel.set_parameters(pmodel_params)
+        model.add_model('premise', pmodel, [])
+        model.add_model('train', train_model, ['premise'])
+    else:
+        model.add_model('train', train_model, [])
+    model.set_trainable('train')
     logger.info(model)
 
 
@@ -197,7 +221,7 @@ if __name__ == '__main__':
         if args.premise_micp:
             premise_micploss = PremiseMICPLoss(
                 dataset,
-                pmodel,
+                'premise',
                 mi_match_coeff=args.premise_micp[0],  # 1.0
                 mi_diffs_coeff=args.premise_micp[1],  # 0.2
                 mi_valid_coeff=args.premise_micp[2],  # 0.1
@@ -213,6 +237,19 @@ if __name__ == '__main__':
             cp_detector=cpd,
         )
         seq_loss.append(micploss)
+    if args.attn_premise_micp:
+        attn_premise_micploss = AttentionPremiseMICPLoss(
+            dataset,
+            'premise',
+            mi_match_coeff=args.attn_premise_micp[0],  # ?
+            mi_diffs_coeff=args.attn_premise_micp[1],  # ?
+            temp_loss_coeff=args.attn_premise_micp[2],  # ?
+            prox_dist=args.attn_premise_micp[3],  # ?
+            attn_t=args.attn_premise_micp[4],  # ?
+            batch_size=500,
+            verbose=args.verbose,
+        )
+        seq_loss.append(attn_premise_micploss)
     loss = CombinedLoss(*seq_loss)
     logger.info(loss)
 

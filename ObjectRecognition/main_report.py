@@ -9,6 +9,7 @@ Example:
 import os
 import json
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
 import cma
 from functools import partial
@@ -22,7 +23,7 @@ from SelfBreakout.breakout_screen import (
 from ChangepointDetection.LinearCPD import LinearCPD
 from ChangepointDetection.CHAMP import CHAMPDetector
 from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
-from ObjectRecognition.model import ModelFocusCNN, ModelFocusBoost
+from ObjectRecognition.model import ModelFocusCNN, ModelFocusBoost, load_param
 from ObjectRecognition.optimizer import CMAEvolutionStrategyWrapper
 from ObjectRecognition.loss import (
     SaliencyLoss, ActionMICPLoss, PremiseMICPLoss,
@@ -57,8 +58,7 @@ def plot_model_filter(model, save_path=None):
 
 
 def load_model(prefix, model_id, net_params, *args, **kwargs):
-    model_param_path = os.path.join(util.get_dir(prefix), '%s.npy'%model_id)
-    params = np.load(model_param_path)
+    params = load_param((util.get_dir(prefix), model_id))
     model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
@@ -199,8 +199,8 @@ if __name__ == '__main__':
     # pick game
     if args.game == 'self':
         dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs',  # object dump path
-            'SelfBreakout/runs/0',  # run states
+            'SelfBreakout/runs_bounce',  # object dump path
+            'SelfBreakout/runs_bounce/0',  # run states
             n_state=args.n_state,  # set max number of states
             binarize=args.binarize,  # binarize image to 0 and 1
             offset_fix=args.offset_fix,  # offset of episode number
@@ -246,7 +246,7 @@ if __name__ == '__main__':
         ball_model_id = 'results/cmaes_soln/focus_atari_breakout/42080_16.npy'
         ball_net_params_text = open('objRecog/net_params/two_layer.json').read()
         ball_net_params = json.loads(ball_net_params_text)
-        ball_params = np.load(ball_model_id)
+        ball_params = load_param(ball_model_id)
         ball_model = ModelFocusCNN(
             image_shape=(84, 84),
             net_params=ball_net_params,
