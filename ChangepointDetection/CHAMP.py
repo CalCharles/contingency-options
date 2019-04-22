@@ -324,7 +324,7 @@ class CHAMPDetector(ChangepointDetector):
 if __name__ == "__main__":
     # python ChangepointDetection/CHAMP.py --train-edge "Action->Paddle" --record-rollouts data/random/ --champ-parameters "Paddle"
     args = get_args()
-    detector = CHAMPDetector(args.train_edge, args.champ_parameters)
+    detector = CHAMPDetector(args.train_edge, args.champ_parameters, args.focus_dumps_name)
     data = detector.load_obj_dumps(args)
     models, changepoints = detector.generate_changepoints(data, save_dict=True)
     save_to_pickle(os.path.join(args.record_rollouts, 'detector-' + detector.head + '.pkl'), detector)

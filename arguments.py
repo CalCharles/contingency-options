@@ -271,6 +271,9 @@ def get_args():
                         help='parameters for champ in the order len_mean, len_sigma, min_seg_len, max_particles, model_sigma, dynamics model enum (0 is position, 1 is velocity, 2 is displacement). Pre built Paddle and Ball can be input as "paddle", "ball"')
     parser.add_argument('--window', type=int, default=3,
                         help='A window over which to compute changepoint statistics')
+    parser.add_argument('--focus-dumps-name', default='object_dumps.txt',
+                    help='the name of the dump file used for CHAMP')
+
     # environmental variables
     parser.add_argument('--gpu', type=int, default=0,
                         help='gpu number to use (default: 0)')

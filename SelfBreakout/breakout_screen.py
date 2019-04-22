@@ -234,9 +234,7 @@ def abbreviate_obj_dump_file(pth, new_path, get_last=-1):
         new_file.write(line)
     new_file.close()
 
-
-
-def read_obj_dumps(pth, i= 0, rng=-1):
+def read_obj_dumps(pth, i= 0, rng=-1, dumps_name='object_dumps.txt'):
     '''
     TODO: move this out of this file to support reading object dumps from other sources
     i = -1 means count rng from the back
@@ -246,7 +244,7 @@ def read_obj_dumps(pth, i= 0, rng=-1):
     obj_dumps = []
     total_len = 0
     if i < 0:
-        for line in open(os.path.join(pth, 'object_dumps.txt'), 'r'):
+        for line in open(os.path.join(pth, dumps_name), 'r'):
             total_len += 1
         print("length", total_len)
         if rng == -1:
@@ -254,7 +252,7 @@ def read_obj_dumps(pth, i= 0, rng=-1):
         else:
             i = max(total_len - rng, 0)
     current_len = 0
-    for line in open(os.path.join(pth, 'object_dumps.txt'), 'r'):
+    for line in open(os.path.join(pth, dumps_name), 'r'):
         current_len += 1
         if current_len< i:
             continue

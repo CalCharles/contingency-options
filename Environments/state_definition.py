@@ -270,7 +270,7 @@ def load_states(state_function, pth, length_constraint=50000, use_raw = False, r
 	else:
 		dumps = dumps
 	print(len(raw_files), len(dumps))
-	if len(raw_files) < len(dumps):
+	if len(raw_files) < len(dumps) and not use_raw:
 		# raw files not saved for some reason, which means use a dummy array of the same length
 		raw_files = list(range(len(dumps)))
 	states = []

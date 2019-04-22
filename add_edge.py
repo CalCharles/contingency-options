@@ -9,6 +9,10 @@ from Environments.state_definition import GetState, compute_minmax
 from BehaviorPolicies.behavior_policies import behavior_policies
 from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
+from ObjectRecognition.model import (
+    ModelFocusCNN, ModelCollectionDAG,
+    load_param)
+from SelfBreakout.focus_screen import FocusEnvironment
 
 if __name__ == "__main__":
     # used arguments
@@ -23,7 +27,29 @@ if __name__ == "__main__":
         # add Action->Paddle: python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/random/" --train-edge "Action->Paddle" --num-stack 2 --train --num-iters 10000 --save-dir data/action --state-forms bounds --state-names Paddle
         # Using tabular Action->Paddle:  python add_edge.py --model-form tab --optimizer-form TabQ --record-rollouts "data/random/" --train-edge "Action->Paddle" --num-stack 1 --train --num-iters 10000 --save-dir data/action --state-forms bounds --state-names Paddle --num-update-model 1
     args = get_args()
-    true_environment = Screen()
+    # loading vision model
+    paddle_model_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+    net_params = json.loads(open(paddle_model_net_params_path).read())
+    params = load_param('ObjectRecognition/models/paddle.npy')
+    paddle_model = ModelFocusCNN(
+        image_shape=(84, 84),
+        net_params=net_params,
+    )
+    paddle_model.set_parameters(params)
+    ball_model_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+    net_params = json.loads(open(ball_model_net_params_path).read())
+    params = load_param('ObjectRecognition/models/ball.npy')
+    ball_model = ModelFocusCNN(
+        image_shape=(84, 84),
+        net_params=net_params,
+    )
+    ball_model.set_parameters(params)
+    model = ModelCollectionDAG()
+    model.add_model('paddle', paddle_model, [])
+    model.add_model('ball', ball_model, ['paddle'])
+    ####
+
+    true_environment = FocusEnvironment(model)
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)

@@ -18,12 +18,12 @@ class ChangepointDetector():
         '''
         pass
         
-    def load_obj_dumps(self, args):
+    def load_obj_dumps(self, args, dumps_name='object_dumps.txt'):
         '''
         Returns the data used for changepoint analysis
         TODO: only uses location information, only uses head data, has fixed range and segment, stores data (not necessary?)
         '''
-        obj_dumps = read_obj_dumps(args.record_rollouts, i=-1, rng=100000)
+        obj_dumps = read_obj_dumps(args.record_rollouts, i=-1, rng=100000, dumps_name=dumps_name)
         self.tail_data = [np.array(get_individual_data(tnode, obj_dumps, pos_val_hash=1)) for tnode in self.tail]
         self.head_data = np.array(get_individual_data(self.head, obj_dumps, pos_val_hash=1))
         return self.head_data
