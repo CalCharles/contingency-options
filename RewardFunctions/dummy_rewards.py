@@ -60,7 +60,7 @@ class BounceReward(ChangepointReward):
                             if self.anybounce:
                                 rewards.append(1)
                             else:
-                                rewards.append(0.1)
+                                rewards.append(0.25)
                             rewarded = True
             if not rewarded:
                 if self.form == 'dense':

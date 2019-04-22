@@ -36,6 +36,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     # if option_chain is not None: #TODO: implement this
     base_env = proxy_chain[0]
     base_env.set_save(0, args.save_dir, args.save_recycle)
+    print(base_env.save_path)
     proxy_environment.initialize(args, proxy_chain, reward_classes, state_class, behavior_policy)
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)

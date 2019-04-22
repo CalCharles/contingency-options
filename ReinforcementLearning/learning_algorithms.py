@@ -669,10 +669,11 @@ class Evolutionary_optimizer(LearningOptimizer):
         self.reset_current_duration(args.sample_duration, args.reward_check)
         self.sample_indexes = [[[] for j in range(args.num_population)] for i in range(self.models.num_options)]
         self.last_swap = 0
+        self.reassess_num = args.reassess_num
         if args.reassess_num > 0:
-            self.reassess_pool = []
-            self.reassess_values = []
-            self.reentered_list = ([], [])
+            self.reassess_pool = [] # stores the network
+            self.reassess_values = [] # stores the return value
+            self.reentered_list = ([], []) # stores the the index in the returns and index in the pool/values
             for _ in train_models.models:
                 self.reassess_pool.append([None for i in range(args.reassess_num)])
                 self.reassess_values.append([-1 for i in range(args.reassess_num)])
@@ -733,7 +734,7 @@ class Evolutionary_optimizer(LearningOptimizer):
 
     def alter_reentry_list(self, returns):
         oi = self.models.option_index
-        new_values = returns[self.reentered_list[0][oi]] / self.sample_duration
+        new_values = returns[self.reentered_list[0][oi]]
         for i, val in zip(self.reentered_list[1][oi], new_values):
             old_val = self.reassess_values[oi].pop(i)
             net = self.reassess_pool[oi].pop(i)
@@ -741,9 +742,13 @@ class Evolutionary_optimizer(LearningOptimizer):
             j = 0
             while j < len(self.reassess_values[oi]) and new_val > self.reassess_values[oi][j]:
                 j += 1
-            print("reentered: ", old_val, val, new_val, j)
+            # print("reentered: ", old_val, val, new_val, j)
             self.reassess_values[oi].insert(j, new_val)
             self.reassess_pool[oi].insert(j, net)
+            new_reassess = [v for v in zip(self.reassess_values[oi], self.reassess_pool[oi])]
+            new_reassess.sort(key=lambda x: x[0])
+            self.reassess_values[oi] = [v[0] for v in new_reassess]
+            self.reassess_pool[oi] = [v[1] for v in new_reassess]
         self.reentered_list[0][oi] = list()
         self.reentered_list[1][oi] = list()
 
@@ -773,11 +778,11 @@ class Evolutionary_optimizer(LearningOptimizer):
         return np.array(all_returns)
 
     def reassess_insert(self, returns, networks):
-        if args.reassess_num > 0:
+        if self.reassess_num > 0:
             oi = self.models.option_index
             self.alter_reentry_list(returns)
             best_values = returns
-            print(self.reassess_values)
+            # print(self.reassess_values)
             for i in range(len(best_values)):
                 print(best_values[i])
                 if best_values[i] > self.reassess_values[oi][0]:
@@ -791,7 +796,7 @@ class Evolutionary_optimizer(LearningOptimizer):
                     self.reassess_pool[oi].insert(j-1, copy.deepcopy(networks[i]))
                 else:
                     break
-            print(self.reassess_values)
+            print(self.reassess_values[oi])
 
 
     def single_option_returns(self, all_returns, oidx):
@@ -1034,10 +1039,8 @@ class CMAES_optimizer(Evolutionary_optimizer):
         state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(sample_duration, rollouts, 0, use_range=use_range, last_states=args.buffer_steps <= 0, last_buffer = True)    
         all_returns = self.get_corresponding_returns(full_rollout_returns)
         print(all_returns)
-        print(np.sum(all_returns[0], axis=1))
-        print(np.sum(all_returns[1], axis=1))
-        print(np.sum(all_returns[2], axis=1))
-        print(np.sum(all_returns[3], axis=1))
+        for ar in all_returns:
+            print(np.sum(ar, axis=1))
         for midx in range(len(self.models.models)):
             train_models.option_index = midx
             if args.parameterized_option > 0:
@@ -1054,9 +1057,18 @@ class CMAES_optimizer(Evolutionary_optimizer):
                 solutions = self.solutions[train_models.option_index]
             # returns = torch.stack([rollout_returns[self.sample_duration * i:self.sample_duration * (i+1)].sum() / self.sample_duration for i in range(args.num_population)])
             self.reassess_insert(returns, solutions)
+
             cmaes = self.optimizers[train_models.option_index]
             cmaes.tell(solutions, -1*returns)
             self.solutions[train_models.option_index] = cmaes.ask()
+            if np.random.rand() < args.reentry_rate:
+                k = np.random.randint(len(self.reassess_pool[midx]))
+                j = np.random.randint(len(self.solutions[train_models.option_index]))
+                if self.reassess_pool[midx][k] is not None:
+                    new_network = copy.deepcopy(self.reassess_pool[midx][k])
+                    self.reentered_list[0][midx].append(j)
+                    self.reentered_list[1][midx].append(k)
+                    self.solutions[midx].
             self.assign_solutions(train_models, train_models.option_index)
             best = cmaes.result[0]
             mean = cmaes.result[5]
