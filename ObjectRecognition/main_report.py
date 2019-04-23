@@ -23,7 +23,9 @@ from SelfBreakout.breakout_screen import (
 from ChangepointDetection.LinearCPD import LinearCPD
 from ChangepointDetection.CHAMP import CHAMPDetector
 from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
-from ObjectRecognition.model import ModelFocusCNN, ModelFocusBoost, load_param
+from ObjectRecognition.model import (
+    ModelFocusCNN, ModelFocusBoost, 
+    ModelCollectionDAG, load_param)
 from ObjectRecognition.optimizer import CMAEvolutionStrategyWrapper
 from ObjectRecognition.loss import (
     SaliencyLoss, ActionMICPLoss, PremiseMICPLoss,
@@ -115,6 +117,7 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
     cp_mask[changepoints] = True
     save_subpath = util.get_dir(os.path.join(save_path, 'marker'))
     for i, img in enumerate(dataset.get_frame(0, len(all_focus))):
+    # for i, img in enumerate(util.remove_mean(dataset.get_frame(0, len(all_focus)), all_focus)):
         # marker
         file_name = 'marker_%d.png'%(i)
         marker_file_path = os.path.join(save_subpath, file_name)
@@ -138,8 +141,10 @@ def report_model(save_path, dataset, model, prefix, plot_flags, cpd):
     focus = model.forward_all(dataset, batch_size=400, 
                               ret_extra=plot_flags['plot_intensity'])
     if plot_flags['plot_intensity']:
-        save_imgs(focus[1], save_path)
-        focus = focus[0]
+        save_imgs(focus[1]['__train__'], save_path)
+        focus = focus[0]['__train__']
+    else:
+        focus = focus['__train__']
 
     if plot_flags['plot_focus']:
         # compute changepoints if needed
@@ -229,7 +234,7 @@ if __name__ == '__main__':
     Load model
     """
     net_params = json.loads(open(args.net).read())
-    model = load_model(
+    r_model = load_model(
         prefix,
         model_id,
         net_params=net_params,
@@ -238,7 +243,7 @@ if __name__ == '__main__':
     )
     save_path = util.get_dir(os.path.join(prefix, 'focus_img_%s'%model_id))
     if plot_flags['plot_filter']:
-        plot_model_filter(model, save_path)
+        plot_model_filter(r_model, save_path)
 
     # boosting with trained models
     if args.boost:
@@ -254,12 +259,30 @@ if __name__ == '__main__':
         ball_model.set_parameters(ball_params)
 
         # boosting ensemble
-        model = ModelFocusBoost(
+        r_model = ModelFocusBoost(
             ball_model,
-            model,
+            r_model,
             train_flags=[False, True],
             cp_detector=cpd,
         )
+    model = ModelCollectionDAG()
+    if args.premise_path:
+        pmodel_weight_path = args.premise_path
+        pmodel_net_params_text = open(args.premise_net).read()
+        pmodel_net_params = json.loads(pmodel_net_params_text)
+        pmodel_params = load_param(pmodel_weight_path)
+        pmodel = ModelFocusCNN(
+            image_shape=(84, 84),
+            net_params=pmodel_net_params,
+        )
+        pmodel.set_parameters(pmodel_params)
+        # model.add_model('premise', pmodel, [])
+        model.add_model('premise', pmodel, [], augment_fn=util.remove_mean)
+        model.add_model('train', r_model, ['premise'])
+    else:
+        model.add_model('train', r_model, [])
+    model.set_trainable('train')
+    print(model)
 
     """
     Do the report

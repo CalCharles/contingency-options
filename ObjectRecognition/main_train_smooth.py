@@ -8,68 +8,110 @@ from functools import partial
 
 from SelfBreakout.breakout_screen import RandomConsistentPolicy, RotatePolicy
 from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
-from ObjectRecognition.model import ModelFocusCNN, ModelAttentionCNN, load_param
+from ObjectRecognition.model import (
+    ModelFocusCNN, ModelAttentionCNN,
+    ModelCollectionDAG, load_param)
 import ObjectRecognition.add_args as add_args
 import ObjectRecognition.util as util
 
 
 if __name__ == '__main__':
     net_path = 'ObjectRecognition/net_params/attn_base.json'
-    model_path = 'results/cmaes_soln/focus_self/42309_7_smooth_2.pth'
+    model_path = 'results/cmaes_soln/focus_self/ball_bin_long_smooth.pth'
     # model_path = 'results/cmaes_soln/focus_atari_breakout/42101_22_smooth.pth'
     image_shape = (84, 84)
-    n_state = 30
-    is_train = False
+    n_state_used = 40
+    is_train = True
 
     # get dataset
-    dataset = DatasetSelfBreakout(
-        'SelfBreakout/runs',  # object dump path
-        'SelfBreakout/runs/0',  # run states2
-        n_state=n_state,  # set max number of states
-        binarize=0.1,  # binarize image to 0 and 1
-        offset_fix=0,  # offset of episode number
-    )
-    # actor = partial(RotatePolicy, hold_count=5)
-    # dataset = DatasetAtari(
-    #     'BreakoutNoFrameskip-v4',  # atari game name
-    #     actor,  # mock actor
-    #     n_state=n_state,  # set max number of states
-    #     save_path='results',  # save path for gym
-    #     binarize=0.1,  # binarize image to 0 and 1
-    # )
+    n_state = 10000
+    offset_fix = 0
+    GAME_NAME = 'self-b'  # 'self', 'self-b', 'atari'
+    if GAME_NAME == 'self':
+        dataset = DatasetSelfBreakout(
+            'SelfBreakout/runs',
+            'SelfBreakout/runs/0',
+            binarize=0.1,
+            n_state=n_state,
+            offset_fix=offset_fix,
+        )
+    elif GAME_NAME == 'self-b':
+        dataset = DatasetSelfBreakout(
+            'SelfBreakout/runs_bounce',
+            'SelfBreakout/runs_bounce/0',
+            binarize=0.1,
+            n_state=n_state,
+            offset_fix=offset_fix,
+        )
+    elif GAME_NAME == 'atari':
+        dataset = DatasetAtari(
+            'BreakoutNoFrameskip-v4',
+            partial(RandomConsistentPolicy, change_prob=0.35),
+            n_state=n_state,
+            save_path='results',
+            normalized_coor=True,
+            offset_fix=offset_fix,
+        )
 
     # get ball model
-    prev_net_params_path = 'ObjectRecognition/net_params/two_layer_5_5_old.json'
-    prev_weight_path = 'results/cmaes_soln/focus_self/42309_7.npy'
-    # prev_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
-    # prev_weight_path = 'results/cmaes_soln/focus_atari_breakout/42101_22.npy'
-    prev_net_params = json.loads(open(prev_net_params_path).read())
-    prev_model = ModelFocusCNN(
+    prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_base.json'
+    prev_weight_path_1 = 'results/cmaes_soln/focus_self/paddle_bin_long_smooth_2.pth'
+    prev_net_params_1 = json.loads(open(prev_net_params_path_1).read())
+    prev_model_1 = ModelFocusCNN(
         image_shape=(84, 84),
-        net_params=prev_net_params,
+        net_params=prev_net_params_1,
     )
-    prev_model.set_parameters(load_param(prev_weight_path))
+    prev_model_1.set_parameters(load_param(prev_weight_path_1))
+    prev_net_params_path_2 = 'ObjectRecognition/net_params/two_layer.json'
+    prev_weight_path_2 = 'results/cmaes_soln/focus_self/ball_bin_long.npy'
+    prev_net_params_2 = json.loads(open(prev_net_params_path_2).read())
+    prev_model_2 = ModelFocusCNN(
+        image_shape=(84, 84),
+        net_params=prev_net_params_2,
+    )
+    prev_model_2.set_parameters(load_param(prev_weight_path_2))
+    prev_model = ModelCollectionDAG()
+    prev_model.add_model('model_1', prev_model_1, [], augment_fn=util.remove_mean)
+    prev_model.add_model('model_2', prev_model_2, ['model_1'])
+    def prev_forward(xs):
+        return prev_model.forward(xs, ret_numpy=True)['model_2']
+    print('smoothing:', prev_model)
+
+    # get dataset
+    state_idxs = np.random.choice(np.arange(n_state//4), size=n_state_used, 
+                                  replace=False)
+    print(state_idxs)
+    frames = dataset.get_frame(state_idxs)
+    frames = torch.from_numpy(frames).float()
+    focus = prev_forward(frames)
+    focus_attn = util.focus2attn(
+        focus,
+        image_shape,
+        fn=partial(util.gaussian_pdf, normalized=False))
+    if is_train:
+        NC = 20
+        for i in range(0, n_state_used, NC):
+            fig, axes = plt.subplots(ncols=NC, nrows=2, figsize=(NC, 2))
+            for x, y, ax in zip(frames[i:], focus_attn[i:], axes.T):
+                xn = x[0].detach().numpy()
+                ax[0].imshow(xn + y[0])
+                ax[1].imshow(y[0])
+            plt.show()
 
     # create the model
-    frames = dataset.get_frame(0, n_state)
-    frames = torch.from_numpy(frames).float()
     net_params = json.loads(open(net_path).read())
     model = ModelAttentionCNN(image_shape, net_params)
     print(model)
 
+
     # train
     if is_train:
-        model.from_focus_model(prev_model, dataset, n_iter=300)
+        model.from_focus_model(prev_forward, frames, n_iter=500)
     else:
         model.load_state_dict(torch.load(model_path))
         model.eval()
 
     # forward
-    focus = prev_model.forward(frames)
-    focus_attn = util.focus2attn(
-        focus,
-        image_shape,
-        fn=partial(util.gaussian_pdf, normalized=False))
     attn = model.forward(frames, ret_numpy=True)
 
     # plots

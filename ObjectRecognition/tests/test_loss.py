@@ -2,6 +2,7 @@ from __future__ import division, absolute_import, print_function
 from functools import partial
 import json
 import torch
+import copy
 
 import matplotlib.pyplot as plt
 from ObjectRecognition.main_report import plot_focus
@@ -37,7 +38,7 @@ def load_model(model_path, net_params_path, pmodel=None, *args, **kwargs):
 
 # game instance
 n_state = 1000
-GAME_NAME = 'self-b'  # 'self', 'self-b', 'atari'
+GAME_NAME = 'self'  # 'self', 'self-b', 'atari'
 if GAME_NAME == 'self':
     game = DatasetSelfBreakout(
         'SelfBreakout/runs',
@@ -58,7 +59,7 @@ elif GAME_NAME == 'atari':
     game = DatasetAtari(
         'BreakoutNoFrameskip-v4',
         partial(RandomConsistentPolicy, change_prob=0.35),
-        n_state=1000,
+        n_state=n_state,
         save_path='results',
         normalized_coor=True,
         offset_fix=0,
@@ -85,12 +86,12 @@ action_micploss = ActionMICPLoss(
     mi_diffs_coeff= 0.2,
     verbose=True,
 )
-micplosses.append(action_micploss)
+# micplosses.append(action_micploss)
 
 # premise loss
-pmodel_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+pmodel_net_params_path = 'ObjectRecognition/net_params/two_layer_5_5.json'
 net_params = json.loads(open(pmodel_net_params_path).read())
-params = load_param('results/cmaes_soln/focus_self/paddle_bin.npy')
+params = load_param('results/cmaes_soln/focus_self/paddle_bin_long.npy')
 pmodel = ModelFocusCNN(
     image_shape=(84, 84),
     net_params=net_params,
@@ -116,10 +117,10 @@ premise_micploss = PremiseMICPLoss(
     mi_diffs_coeff= 0.0,
     mi_valid_coeff= 0.0,
     mi_cndcp_coeff= 1.0,
-    prox_dist= 0.1,
+    prox_dist= 0.05,
     verbose=True,
 )
-# micplosses.append(premise_micploss)
+micplosses.append(premise_micploss)
 
 # combine every loss together
 micploss = CollectionMICPLoss(*micplosses)
@@ -155,8 +156,8 @@ ideal_ball = {
     'premise': paddle_model_focus['premise'],
     '__train__': ideal_ball,
 }
-fix_jump_focus = paddle_model_focus
-fix_jump_focus = np.zeros(fix_jump_focus['__train__'].shape)
+fix_jump_focus = copy.deepcopy(paddle_model_focus)
+fix_jump_focus['__train__'] = np.zeros(fix_jump_focus['__train__'].shape)
 fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]] = paddle_model_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]]
 
 # plot tracking paddle

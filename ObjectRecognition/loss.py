@@ -252,7 +252,7 @@ class PremiseMICPLoss(FocusChangePointLoss):
 
         # probability of proximal conditioned on changepoint
         frame_shape = self.frame_source.get_shape()[-2:]
-        frame_shape = (frame_shape[0] // 4, frame_shape[1] // 4)
+        frame_shape = (frame_shape[0] // 8, frame_shape[1] // 8)
         is_object_cp = set(object_cp)
         tp, fp, fn, tn = 1e-10, 1e-10, 1e-10, 1e-10
         cp_cnt = np.zeros(frame_shape)
