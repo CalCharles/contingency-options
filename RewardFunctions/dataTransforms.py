@@ -230,15 +230,38 @@ class WindowCorrelateProximity(WindowTransform):
 
     def mode_statistics(self, models, changepoints, trajectory=[], correlate=[], window=-1):
         total = len(trajectory)
-        correlate = [midpoint_separation((t,c)) for t,c in zip(trajectory, correlate)]
+        ncorrelate = [midpoint_separation((t,c)) for t,c in zip(trajectory, correlate)]
+        # print(ncorrelate)
+        for i, v in enumerate(zip(trajectory[0:200], correlate[0:200], ncorrelate[0:200])):
+            print(i in changepoints, v)
+        correlate = ncorrelate
         c_d = {changepoints[i]: correlate[max(0,changepoints[i]-window):min(total, changepoints[i]+window+1)] for i in range(len(changepoints))}
-        print(c_d)
         changepoint_statistics = {key: [c_d[key][np.argmin(np.sum(np.abs(c_d[key]), axis = 1))]][0] for key in c_d.keys()}
         # print(changepoint_statistics)
         dat = [(key, val) for key, val in changepoint_statistics.items()]
         dat.sort(key=lambda x: x[0])
         data = np.array([val for key,val in dat])
         return data
+
+class WindowCorrelateProximityNoHop(WindowTransform):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
+        correlate = [midpoint_separation((t,c)) for t,c in zip(trajectory, correlate)]
+        correlate = correlate_trajectory[max(0,changepoints[1]-window+1):min(len(trajectory),changepoints[1]+window+1)]
+        return correlate[np.argmin(np.abs(c_d[key][:,0]))]
+
+    def mode_statistics(self, models, changepoints, trajectory=[], correlate=[], window=-1):
+        total = len(trajectory)
+        correlate = [midpoint_separation((t,c)) for t,c in zip(trajectory, correlate)]
+        c_d = {changepoints[i]: correlate[max(0,changepoints[i]-window):min(total, changepoints[i]+window+1)] for i in range(len(changepoints))}
+        c_d = {key: np.sum(np.abs(c_d[key]), axis = 1)}
+        print(c_d)
+        changepoint_statistics = {key: [c_d[key][np.argmin(np.sum(np.abs(c_d[key]), axis = 1))]][0] for key in c_d.keys() if np.abs(c_d[key])}
+        # print(changepoint_statistics)
+        dat = [(key, val) for key, val in changepoint_statistics.items()]
+        dat.sort(key=lambda x: x[0])
+        data = np.array([val for key,val in dat])
+        return data
+
 
 arg_transform = {"param": ParameterTransform, "SVel": VelocitySegmentTransform, "SAcc": SegmentAccelerationTransform, 
         "SCorAvg": SegmentCorrelateAverageTransform, "WPos": WindowPositionTransform, "WCorAvg": WindowCorrelateAverageTransform,
