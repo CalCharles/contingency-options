@@ -2,6 +2,8 @@ import os
 from SelfBreakout.breakout_screen import Screen
 from Environments.environment_specification import RawEnvironment
 from file_management import get_edge
+from Models.models import pytorch_model
+import numpy as np
 
 class FocusEnvironment(RawEnvironment):
     '''
@@ -14,6 +16,7 @@ class FocusEnvironment(RawEnvironment):
         self.save_path = ""
         self.screen = Screen()
         self.focus_model = focus_model
+        self.factor_state = None
 
     def set_save(self, itr, save_dir, recycle):
         self.save_path=save_dir
@@ -29,24 +32,32 @@ class FocusEnvironment(RawEnvironment):
 
     def step(self, action):
         # TODO: action is tenor, might not be safe assumption
-        raw_state, factor_state, done = self.screen.step(action, render=True)
+        raw_state, raw_factor_state, done = self.screen.step(action, render=True)
         factor_state = self.focus_model.forward(pytorch_model.wrap(raw_state, cuda=False).unsqueeze(0).unsqueeze(0), ret_numpy=True)
         for key in factor_state.keys():
             factor_state[key] *= 84
-            factor_state[key] = np.squeeze(factor_state)
+            factor_state[key] = (np.squeeze(factor_state[key]), (1.0,))
+        factor_state['Action'] = raw_factor_state['Action']
         self.factor_state = factor_state
         if self.screen.itr != 0:
             object_dumps = open(os.path.join(self.save_path, "focus_dumps.txt"), 'a')
         else:
             object_dumps = open(os.path.join(self.save_path, "focus_dumps.txt"), 'w') # create file if it does not exist
         for key in factor_state.keys():
-            object_dumps.write(key + ":" + " ".join(factor_state[key]) + "\t") # TODO: attributes are limited to single floats
+            object_dumps.write(key + ":" + " ".join([str(fs) for fs in factor_state[key]]) + "\t") # TODO: attributes are limited to single floats
         object_dumps.write("\n") # TODO: recycling does not stop object dumping
 
         return raw_state, factor_state, done
 
     def getState(self):
-        raw_state, factor_state = self.screen.getState()
+        raw_state, raw_factor_state = self.screen.getState()
+        if self.factor_state is None:
+            factor_state = self.focus_model.forward(pytorch_model.wrap(raw_state, cuda=False).unsqueeze(0).unsqueeze(0), ret_numpy=True)
+            for key in factor_state.keys():
+                factor_state[key] *= 84
+                factor_state[key] = (np.squeeze(factor_state[key]), (1.0,))
+            factor_state['Action'] = raw_factor_state['Action']
+            self.factor_state = factor_state
         factor_state = self.factor_state
         return raw_state, factor_state
 

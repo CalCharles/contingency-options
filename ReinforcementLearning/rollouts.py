@@ -122,6 +122,7 @@ class ReinforcementStorage(object):
         else:
             self.buffer_filled -= 1 # if reentering, subtract 1 so that we insert to the same location. Don't reenter at very first
         self.buffer_filled += int(self.buffer_filled < self.buffer_steps)
+        # print(self.buffer_filled)
         self.extracted_state[self.buffer_filled - 1].copy_(extracted_state.squeeze().detach())
         self.current_state[self.buffer_filled - 1].copy_(current_state.squeeze().detach())
         self.resps[self.buffer_filled - 1].copy_(resp.squeeze().detach())
@@ -206,6 +207,7 @@ class ReinforcementStorage(object):
         if start_at + rewards.size(1) > self.buffer_steps:
             roll_num = max(start_at - self.buffer_steps + rewards.size(1), 0)
             self.returns = self.returns.roll(-roll_num, 1)
+            self.returns[-roll_num:] = 0
         # must call reset_lists afterwards
 
         for idx in range(self.num_options):
@@ -214,6 +216,7 @@ class ReinforcementStorage(object):
                 last_values = (torch.arange(start=update_last-1, end = -1, step=-1).float() * torch.ones(self.gamma_dilation, update_last)).t().flatten().cuda().detach()
             else:
                 last_values = (torch.arange(start=update_last-1, end = -1, step=-1).float() * torch.ones(self.gamma_dilation, update_last)).t().flatten().detach()
+            rewards = rewards.clone()
             for i, rew in enumerate(reversed(rewards[idx])):
                 # update the last ten returns
                 # print(i, 11-i)
@@ -221,8 +224,11 @@ class ReinforcementStorage(object):
                 # print(start_at-i, start_at-update_last-i, update_last, torch.pow(gamma,last_values[-min(start_at-i, update_last):]), rew)
                 # print(last_values, self.returns)
                 self.returns[idx, max(start_at-update_last-i, 0):start_at-i] += (torch.pow(gamma,last_values[-min(start_at-i, update_last):]) * rew).unsqueeze(1)
-
-
+            # print("bef", self.returns, rewards, self.buffer_filled, update_last)
+            # if args.buffer_steps < 0: # if we are using a true queue, we will ignore value estimation, since we expect not to draw from the top of the queue too often
+            #     self.returns[idx, max(start_at-update_last, 0):start_at] += (torch.pow(gamma,last_values[-min(start_at, update_last):] + 1) * next_value[idx]).unsqueeze(1)
+            #     self.returns[idx, start_at] = next_value[idx]
+            # print("after", self.returns)
 # TODO: clean up the rollouts
 class RolloutOptionStorage(object):
     def __init__(self, num_processes, obs_shape, action_space, resp_len,
@@ -286,13 +292,14 @@ class RolloutOptionStorage(object):
             self.base_rollouts.reset_length(num_steps + self.lag_num)
             self.base_rollouts.copy_values(0,self.lag_num,lag_rollout,0)
             self.base_rollouts.buffer_filled = self.lag_num
+            # print("lag number", self.lag_num)
             self.buffer_at = 0
         # if num_steps > self.changepoint_queue_len:
         #     self.set_changepoint_queue(num_steps)
         # print("returns", self.num_options, self.returns.shape, num_steps)
 
     def get_current(self):
-        return self.base_rollouts.buffer_get_last(0, self.num_steps)
+        return self.base_rollouts.buffer_get_last(self.lag_num, self.num_steps)
 
     def cuda(self):
         # self.states = self.states.cuda()

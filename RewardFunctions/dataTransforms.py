@@ -232,6 +232,7 @@ class WindowCorrelateProximity(WindowTransform):
         total = len(trajectory)
         correlate = [midpoint_separation((t,c)) for t,c in zip(trajectory, correlate)]
         c_d = {changepoints[i]: correlate[max(0,changepoints[i]-window):min(total, changepoints[i]+window+1)] for i in range(len(changepoints))}
+        print(c_d)
         changepoint_statistics = {key: [c_d[key][np.argmin(np.sum(np.abs(c_d[key]), axis = 1))]][0] for key in c_d.keys()}
         # print(changepoint_statistics)
         dat = [(key, val) for key, val in changepoint_statistics.items()]

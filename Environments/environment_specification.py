@@ -134,6 +134,7 @@ class ProxyEnvironment():
         self.parameterized_option = args.parameterized_option
 
         self.changepoint_queue_len = args.changepoint_queue_len
+        print(self.reward_fns, proxy_chain)
         self.changepoint_shape = self.reward_fns[0].get_trajectories([proxy_chain[0].getState()]).shape[1:]
         self.changepoint_queue = torch.zeros(self.changepoint_queue_len, *self.changepoint_shape).detach()
         self.changepoint_resp_queue = torch.zeros(self.changepoint_queue_len, *self.resp.shape).detach()
@@ -342,6 +343,7 @@ class ProxyEnvironment():
         # if rewards > 0:
         #     error
         self.current_rewards = torch.stack(rewards, dim=0)[:,self.changepoint_filled-length-self.lag_num:self.changepoint_filled-self.lag_num]
+        # print("cp_queue", self.changepoint_queue[self.changepoint_filled-length-self.lag_num:self.changepoint_filled-self.lag_num])
         return self.current_rewards
 
     def determineChanged(self, length):

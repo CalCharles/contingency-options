@@ -132,13 +132,14 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
 
             last_total_steps = total_steps
             completed = learning_algorithm.interUpdateModel(total_steps, rewards, change)
-            if completed:
+            if completed or (done and not args.sample_duration > 0):
                 # print(step)
                 break
 
 
             # print("steptime", time.time() - start)
         # start = time.time()
+        # print(done)
         current_state, current_resp = proxy_environment.getHistState()
         values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0), current_resp.unsqueeze(0))
         v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
@@ -150,18 +151,18 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
 
         cp_state = proxy_environment.changepoint_state([raw_state])
         rollouts.insert(retest, state, current_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), done, current_resp, action, cp_state[0], train_models.currentOptionParam(), train_models.option_index, None, None, action_probs, Q_vals, values) # inserting the last state and unused action
-        retest = True # need to re-insert value with true state
+        retest = args.buffer_steps > 0 # need to re-insert value with true state
         # print("rew, state", rollouts.rewards[0,-50:], rollouts.extracted_state[-50:])
         # print("inserttime", time.time() - start)
         # print("states and actions (es, cs, a, m)", rollouts.extracted_state, rollouts.current_state, rollouts.actions, rollouts.masks)
         # print("actions and Qvals (qv, vp, ap)", rollouts.Qvals, rollouts.value_preds, rollouts.action_probs)
         # start = time.time()
         total_duration += total_steps
-        if done:
-            trace_queue = rollouts.insert_trace(trace_queue)
-            trace_queue = [] # insert first
-        else:
-            trace_queue = rollouts.insert_trace(trace_queue)
+        # if done:
+        #     trace_queue = rollouts.insert_trace(trace_queue)
+        #     trace_queue = [] # insert first
+        # else:
+        #     trace_queue = rollouts.insert_trace(trace_queue)
         # print(rollouts.extracted_state)
         # print(rewards)
         # rollouts.compute_returns(args, values) # don't need to compute returns because they are computed upon reward reception
@@ -177,7 +178,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         final_rewards.append(reward_total)
         #### logging
         # start = time.time()
-        if step != 0 and j >= args.warm_up: # TODO: clean up this to learning algorithm?
+        learning_algorithm.step_counter += 1
+        if j >= args.warm_up: # TODO: clean up this to learning algorithm?
             value_loss, action_loss, dist_entropy, output_entropy, entropy_loss, action_log_probs = learning_algorithm.step(args, train_models, rollouts)
             if args.dist_interval != -1 and j % args.dist_interval == 0:
                 learning_algorithm.distibutional_sparcity_step(args, train_models, rollouts)
@@ -241,5 +243,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             final_rewards = list()
             total_duration = 0
         #### logging
+    if args.save_models and args.train: # no point in saving if not training
+        print("=========SAVING MODELS==========")
+        train_models.save(save_path) # TODO: implement save_options
 
     proxy_environment.close_files()

@@ -32,7 +32,7 @@ def get_cp_models_from_dict(cp_dict):
     keys.pop(0)
     return keys, [cp_dict[k] for k in keys]
 
-def read_obj_dumps(pth, i= 0, rng=-1):
+def read_obj_dumps(pth, i= 0, rng=-1, filename='object_dumps.txt'):
     '''
     TODO: move this out of this file to support reading object dumps from other sources
     i = -1 means count rng from the back
@@ -42,7 +42,7 @@ def read_obj_dumps(pth, i= 0, rng=-1):
     obj_dumps = []
     total_len = 0
     if i < 0:
-        for line in open(pth + '/object_dumps.txt', 'r'):
+        for line in open(os.path.join(pth, filename), 'r'):
             total_len += 1
         print("length", total_len)
         if rng == -1:
@@ -50,7 +50,7 @@ def read_obj_dumps(pth, i= 0, rng=-1):
         else:
             i = max(total_len - rng, 0)
     current_len = 0
-    for line in open(pth + '/object_dumps.txt', 'r'):
+    for line in open(os.path.join(pth, filename), 'r'):
         current_len += 1
         if current_len< i:
             continue

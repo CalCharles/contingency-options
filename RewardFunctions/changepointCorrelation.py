@@ -20,8 +20,21 @@ class ChangepointModels():
         for transformer in self.transforms: # transformers must be ordered if multiple
             data = transformer.mode_statistics(models, changepoints, trajectory, correlate_trajectory, self.window)
             # print(data.shape)
+
             datas.append(data)
-        self.mode_model.fit(datas)
+        ndatas = [[] for _ in range(len(datas))]
+        for d in zip(*datas): # hardcoded outlier removal. TODO: make not hardcoded
+            keep = True
+            for i in range(len(d)):
+                v = d[i]
+                if np.sum(np.abs(v)) > 4:
+                    keep = False
+                if keep:
+                    ndatas[i].append(v)
+        for i in range(len(self.transforms)):
+            ndatas[i] = np.array(ndatas[i])
+        print(datas)
+        self.mode_model.fit(ndatas)
         assignments = self.mode_model.predict(datas)
         self.determiner.fit_narrow_modes(models, self.mode_model, assignments)
 
@@ -41,7 +54,7 @@ class ChangepointModels():
             data = transform.mode_statistics(models, changepoints, trajectory, saliency_trajectory, window=self.window)
             datas.append(data)
         mode_assignments = self.mode_model.predict(datas)
-        print(self.mode_model.mean())
+        # print(self.mode_model.mean())
         # print("datas", mode_assignments)
         mode_assignments = np.stack(mode_assignments, axis=0)
         assignments = self.determiner.collapse_assignments(mode_assignments)

@@ -163,7 +163,7 @@ def get_args():
                     help='minimum percentage of random actions in epsilon greedy (if decaying)')
     parser.add_argument('--greedy-epsilon-decay', type=float, default=-1,
                     help='greedy epsilon decays by half every n updates (-1 is for no use)')
-    parser.add_argument('--behavior-policy', default='',
+    parser.add_argument('--behavior-policy', default='esp',
                         help='defines the behavior policy, as defined in BehaviorPolicies.behavior_policies')
 
     # pretraining arguments TODO: not implemented
@@ -192,7 +192,7 @@ def get_args():
                         help='number of forward steps before update (default: 5)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
                         help='number of forward steps used to compute gradient, -1 for not used (default: -1)')
-    parser.add_argument('--reward-check', type=int, default=1,
+    parser.add_argument('--reward-check', type=int, default=5,
                         help='steps between a check for reward, (default 1)')
     parser.add_argument('--num-update-model', type=int, default=3,
                         help='number of gradient steps before switching options (default: 3)')
@@ -202,7 +202,7 @@ def get_args():
                         help='number of iterations for training (default: 2e3)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--warm-up', type=int, default=200,
+    parser.add_argument('--warm-up', type=int, default=10,
                         help='num updates before changing model (default: 200 (1000 timesteps))')
 
     # Replay buffer settings

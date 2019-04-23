@@ -38,7 +38,7 @@ if __name__ == "__main__":
     head, tail = get_edge(args.train_edge)
     cp_dict = load_from_pickle(os.path.join(changepoints_path, "changepoints-" + head + ".pkl"))
     changepoints, models = get_cp_models_from_dict(cp_dict)
-    obj_dumps = read_obj_dumps(dataset_path)
+    obj_dumps = read_obj_dumps(dataset_path, filename = args.focus_dumps_name)
 
     trajectory = get_individual_data(head, obj_dumps, pos_val_hash=1)
     # TODO: automatically determine if correlate pos_val_hash is 1 or 2
@@ -49,6 +49,8 @@ if __name__ == "__main__":
         correlate_trajectory = get_individual_data(tail[0], obj_dumps, pos_val_hash=1)
 
     combined = np.concatenate([trajectory, correlate_trajectory], axis=1)
+    # print([model.data for model in reversed(models)])
+
 
     changepoint_model = load_from_pickle(os.path.join(changepoints_path, "detector-" + head + ".pkl"))
     # paddle uses "SVel", "SCorAvg"

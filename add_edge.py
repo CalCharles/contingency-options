@@ -13,6 +13,7 @@ from ObjectRecognition.model import (
     ModelFocusCNN, ModelCollectionDAG,
     load_param)
 from SelfBreakout.focus_screen import FocusEnvironment
+import json
 
 if __name__ == "__main__":
     # used arguments
@@ -26,6 +27,7 @@ if __name__ == "__main__":
     # Usage Example:
         # add Action->Paddle: python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/random/" --train-edge "Action->Paddle" --num-stack 2 --train --num-iters 10000 --save-dir data/action --state-forms bounds --state-names Paddle
         # Using tabular Action->Paddle:  python add_edge.py --model-form tab --optimizer-form TabQ --record-rollouts "data/random/" --train-edge "Action->Paddle" --num-stack 1 --train --num-iters 10000 --save-dir data/action --state-forms bounds --state-names Paddle --num-update-model 1
+        # Action->Paddle: python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/random/" --train-edge "Action->Paddle" --changepoint-dir data/integrationgraph --num-stack 2 --factor 6 --train --num-iters 1000 --save-dir data/action --state-forms bounds --state-names Paddle --num-steps 1 --reward-check 5 --num-update-model 1 --greedy-epsilon .1 --lr 1e-2 --init-form smalluni --behavior-policy egr --grad-epoch 5 --entropy-coef .01 --value-loss-coef 0.5 --gamma .9 --save-models --save-dir data/integrationpaddle --save-graph data/intnetpaddle > integration/paddle.txt
     args = get_args()
     # loading vision model
     paddle_model_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
@@ -45,8 +47,8 @@ if __name__ == "__main__":
     )
     ball_model.set_parameters(params)
     model = ModelCollectionDAG()
-    model.add_model('paddle', paddle_model, [])
-    model.add_model('ball', ball_model, ['paddle'])
+    model.add_model('Paddle', paddle_model, [])
+    model.add_model('Ball', ball_model, ['Paddle'])
     ####
 
     true_environment = FocusEnvironment(model)
@@ -55,7 +57,7 @@ if __name__ == "__main__":
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)
     reward_paths = glob.glob(os.path.join(option_chain.save_dir, "*rwd.pkl"))
     print(reward_paths)
-    reward_paths.sort(key=lambda x: int(x.split("_")[2]))
+    reward_paths.sort(key=lambda x: int(x.split("__")[2]))
 
     head, tail = get_edge(args.train_edge)
 
