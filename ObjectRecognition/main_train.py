@@ -180,6 +180,7 @@ if __name__ == '__main__':
         )
         pmodel.set_parameters(pmodel_params)
         model.add_model('premise', pmodel, [])
+        # model.add_model('premise', pmodel, [], augment_fn=util.remove_mean)
         model.add_model('train', train_model, ['premise'])
     else:
         model.add_model('train', train_model, [])

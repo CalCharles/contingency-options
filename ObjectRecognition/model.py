@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from functools import partial
 
+from ObjectRecognition.dataset import Dataset
 import ObjectRecognition.util as util
 
 
@@ -480,7 +481,10 @@ class ModelAttentionCNN(ModelObject):
         n_iter = kwargs.get('n_iter', 100)
 
         # get target attention
-        frames = dataset.get_frame(0, dataset.n_state)
+        if isinstance(dataset, Dataset):
+            frames = dataset.get_frame(0, dataset.n_state)
+        else:
+            frames = dataset
         if isinstance(frames, np.ndarray):
             frames = torch.from_numpy(frames).float()
         focus = focus_model.forward(frames)
@@ -625,7 +629,7 @@ class ModelCollectionDAG():
             if ret_extra:
                 extras['__train__'] = extras[self.train_model_id]
         if ret_extra:
-            outs, extras
+            return outs, extras
         return outs
 
 
@@ -658,9 +662,9 @@ class ModelCollectionDAG():
                     if ret_extra:
                         extras[model_id] = np.vstack((
                             extras[model_id],
-                            forward_extras[[model_id]]))
+                            forward_extras[model_id]))
         if ret_extra:
-            outs, extras
+            return outs, extras
         return outs
 
 

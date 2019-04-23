@@ -77,7 +77,7 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
         # TODO: isolate this for concurrent usage?
         # TODO: more config to CMA-ES
         # initialize pycma class
-        xinit = np.random.rand(self.dim)-0.5  # [-0.5, 0.5]^n
+        xinit = np.random.normal(loc=0.0, scale=1.0, size=self.dim)
         if self.cheating:  # for testing filter generality
             xinit = util.cheat_init_center((10, 10), 3, self.cheating) 
             self.cmaes_params['popsize'] = 2

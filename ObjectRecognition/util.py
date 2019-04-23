@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import torch
 import warnings
 
 
@@ -175,10 +176,48 @@ def focus2attn(focus, input_shape, d=0.04, fn=gaussian_pdf):
     return attn # / np.max(attn, axis=0)
 
 
-# no-op function
-def noop_x(x, y):
-    return x
+"""
+Image-Focus Augmentation Function
+"""
 
+# no-op function
+def noop_x(imgs, focus):
+    return imgs
+
+
+# remove by mean
+def remove_mean(imgs, focus, nb_size=(5, 5)):
+    in_np = isinstance(imgs, np.ndarray)
+    if not in_np:
+        imgs = imgs.detach().numpy()
+    focus = (focus * imgs.shape[2:]).astype(int)
+
+    # get neighborhoods
+    nb_size_2 = (nb_size[0]*2+1, nb_size[1]*2+1)
+    neighbors = np.zeros((focus.shape[0],) + nb_size_2)
+    pad_size = ((nb_size[0], nb_size[0]), (nb_size[1], nb_size[1]))
+    for i, f in enumerate(focus):
+        pad_frame = np.pad(imgs[i][0], pad_size, 'constant')
+        f_x, f_y = f[0]+nb_size[0], f[1]+nb_size[1]
+        neighbors[i, :] = pad_frame[f_x-nb_size[0]:f_x+nb_size[0]+1,
+                                    f_y-nb_size[1]:f_y+nb_size[1]+1]
+    focus_mean = np.mean(neighbors, axis=0)
+    # import matplotlib.pyplot as plt; plt.imshow(focus_mean); plt.show()
+
+    # subtract mean_square_deviation
+    for i, f in enumerate(focus):
+        pad_frame = np.pad(imgs[i][0], pad_size, 'constant')
+        f_x, f_y = f[0]+nb_size[0], f[1]+nb_size[1]
+        pad_frame[f_x-nb_size[0]:f_x+nb_size[0]+1, \
+                  f_y-nb_size[1]:f_y+nb_size[1]+1] -= focus_mean
+        imgs[i, 0, ...] = pad_frame[pad_size[0][0]:-pad_size[0][1], \
+                                    pad_size[1][0]:-pad_size[1][1]]
+    return imgs if in_np else torch.from_numpy(imgs).float()
+
+
+"""
+Image-Focus Augmentation Selection
+"""
 
 # pick first element in list
 def pick_first(x):

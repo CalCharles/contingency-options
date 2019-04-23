@@ -38,6 +38,12 @@ def add_model_argument(parser):
     parser.add_argument('--argmax_mode',
                         choices=['first', 'rand'], default='first',
                         help='argmax mode to choose focus coordinate')
+    parser.add_argument('--premise_path', type=str,
+                        default='results/cmaes_soln/focus_self/paddle.npy',
+                        help='path to network weight for premise recognition')
+    parser.add_argument('--premise_net', type=str,
+                        default='ObjectRecognition/net_params/two_layer.json',
+                        help='path to network params for premise recognition')
 
 
 def add_loss_argument(parser):
@@ -56,9 +62,3 @@ def add_loss_argument(parser):
     parser.add_argument('--attn_premise_micp', type=float, nargs=5, default=None,
                         metavar=('MATCH', 'DIFFS', 'TEMP', 'PROX-DIST', 'ATTN-T'),
                         help='coefficients for premise MICP loss')
-    parser.add_argument('--premise_path', type=str,
-                        default='results/cmaes_soln/focus_self/paddle.npy',
-                        help='path to network weight for premise recognition')
-    parser.add_argument('--premise_net', type=str,
-                        default='ObjectRecognition/net_params/two_layer.json',
-                        help='path to network params for premise recognition')
