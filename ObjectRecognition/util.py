@@ -190,6 +190,7 @@ def remove_mean(imgs, focus, nb_size=(5, 5)):
     in_np = isinstance(imgs, np.ndarray)
     if not in_np:
         imgs = imgs.detach().numpy()
+    imgs = np.array(imgs)
     focus = (focus * imgs.shape[2:]).astype(int)
 
     # get neighborhoods

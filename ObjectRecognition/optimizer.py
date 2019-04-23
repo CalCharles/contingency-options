@@ -78,10 +78,11 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
         # TODO: more config to CMA-ES
         # initialize pycma class
         xinit = np.random.normal(loc=0.0, scale=1.0, size=self.dim)
+        from ObjectRecognition.model import load_param; xinit = load_param('results/cmaes_soln/focus_self/ball_bin.npy')  # TODO: remov
         if self.cheating:  # for testing filter generality
             xinit = util.cheat_init_center((10, 10), 3, self.cheating) 
             self.cmaes_params['popsize'] = 2
-        self.cmaes = cma.CMAEvolutionStrategy(xinit, 1.0, self.cmaes_params)
+        self.cmaes = cma.CMAEvolutionStrategy(xinit, 0.1, self.cmaes_params)
 
 
     # evaluate a list of solutions

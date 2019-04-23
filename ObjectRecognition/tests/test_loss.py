@@ -37,7 +37,7 @@ def load_model(model_path, net_params_path, pmodel=None, *args, **kwargs):
     return model
 
 # game instance
-n_state = 3000
+n_state = 1000
 GAME_NAME = 'self'  # 'self', 'self-b', 'atari'
 if GAME_NAME == 'self':
     game = DatasetSelfBreakout(
