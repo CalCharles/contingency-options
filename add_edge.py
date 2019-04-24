@@ -11,7 +11,7 @@ from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
 from ObjectRecognition.model import (
     ModelFocusCNN, ModelCollectionDAG,
-    load_param)
+    load_param, util)
 from SelfBreakout.focus_screen import FocusEnvironment
 import json
 
@@ -30,9 +30,9 @@ if __name__ == "__main__":
         # Action->Paddle: python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/random/" --train-edge "Action->Paddle" --changepoint-dir data/integrationgraph --num-stack 2 --factor 6 --train --num-iters 1000 --save-dir data/action --state-forms bounds --state-names Paddle --num-steps 1 --reward-check 5 --num-update-model 1 --greedy-epsilon .1 --lr 1e-2 --init-form smalluni --behavior-policy egr --grad-epoch 5 --entropy-coef .01 --value-loss-coef 0.5 --gamma .9 --save-models --save-dir data/integrationpaddle --save-graph data/intnetpaddle > integration/paddle.txt
     args = get_args()
     # loading vision model
-    paddle_model_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+    paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
     net_params = json.loads(open(paddle_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/paddle.npy')
+    params = load_param('ObjectRecognition/models/paddle_bin_long_smooth_2.pth')
     paddle_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     )
     ball_model.set_parameters(params)
     model = ModelCollectionDAG()
-    model.add_model('Paddle', paddle_model, [])
+    model.add_model('Paddle', paddle_model, [], augment_fn=util.remove_mean)
     model.add_model('Ball', ball_model, ['Paddle'])
     ####
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     else:
         num_actions = environments[-1].num_actions
     print(args.state_names, args.state_forms)
-    state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
+    state_class = GetState(head, state_forms=list(zip(args.state_names, args.state_forms)))
     state_class.minmax = compute_minmax(state_class, dataset_path)
     behavior_policy = behavior_policies[args.behavior_policy]()
     # behavior_policy = EpsilonGreedyProbs()

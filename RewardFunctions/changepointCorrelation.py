@@ -22,20 +22,22 @@ class ChangepointModels():
             # print(data.shape)
 
             datas.append(data)
-        ndatas = [[] for _ in range(len(datas))]
-        for d in zip(*datas): # hardcoded outlier removal. TODO: make not hardcoded
-            keep = True
-            for i in range(len(d)):
-                v = d[i]
-                if np.sum(np.abs(v)) > 4:
-                    keep = False
-                if keep:
-                    ndatas[i].append(v)
-        for i in range(len(self.transforms)):
-            ndatas[i] = np.array(ndatas[i])
-        print(datas)
-        self.mode_model.fit(ndatas)
+        # ndatas = [[] for _ in range(len(datas))]
+        # for d in zip(*datas): # hardcoded outlier removal. TODO: make not hardcoded
+        #     keep = True
+        #     for i in range(len(d)):
+        #         v = d[i]
+        #         if np.sum(np.abs(v)) > 4:
+        #             keep = False
+        #         if keep:
+        #             ndatas[i].append(v)
+        # for i in range(len(self.transforms)):
+        #     ndatas[i] = np.array(ndatas[i])
+        self.mode_model.fit(datas)
+        # print(datas)
         assignments = self.mode_model.predict(datas)
+        # for a, value in zip(assignments, datas[0]):
+        #     print(a, value)
         self.determiner.fit_narrow_modes(models, self.mode_model, assignments)
 
     def get_mode(self, trajectory, saliency_trajectory, models=None, changepoints=None):

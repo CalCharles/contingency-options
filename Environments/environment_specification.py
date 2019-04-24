@@ -1,5 +1,5 @@
 import numpy as np
-import os
+import os, cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -127,6 +127,7 @@ class ProxyEnvironment():
         self.lag_num = args.lag_num
         self.behavior_policy = behavior_policy
         self.reset_history()
+        print(proxy_chain[0].getState())
         self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(proxy_chain[0].getState())[0], cuda=args.cuda)
         self.resp = pytorch_model.wrap([0 for i in range(len(self.stateExtractor.fnames))], cuda=args.cuda)
         self.resp_len = len(self.stateExtractor.fnames)
@@ -281,6 +282,14 @@ class ProxyEnvironment():
 
         if done:
             self.reset_history()
+        # bpos = factored_state["Ball"][0]
+        # ppos = factored_state["Paddle"][0]
+        # raw_state[int(bpos[0]), :] = 255
+        # raw_state[:, int(bpos[1])] = 255
+        # raw_state[int(ppos[0]), :] = 255
+        # raw_state[:, int(ppos[1])] = 255
+        # cv2.imshow("frame", raw_state)
+        # cv2.waitKey(5)
         self.raw_state = (raw_state, factored_state)
         # TODO: implement multiprocessing support
         state, resp = self.stateExtractor.get_state(self.raw_state)

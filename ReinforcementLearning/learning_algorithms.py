@@ -403,7 +403,7 @@ class PPO_optimizer(LearningOptimizer):
         # self.old_models.option_index = train_models.option_index
         # print("GRAD EPOCH", args.grad_epoch)
         for _ in range(args.grad_epoch):
-            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index, use_range=use_range, weights=args.prioritized_replay)    
+            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index, use_range=use_range, weights=args.prioritized_replay)
             values, dist_entropy, action_probs, qvs = train_models.determine_action(current_state_eval, resp_eval)
             # _, _, old_action_probs, qvs = self.old_models.determine_action(current_state_eval)
             values, action_probs, qvs = train_models.get_action(values, action_probs, qvs)

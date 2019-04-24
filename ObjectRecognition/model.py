@@ -572,6 +572,10 @@ class ModelCollectionDAG():
         for d_model_id in dep:
             self.model_dir[d_model_id].append(model_id)
 
+    # def cuda(self):
+    #     for key in self.model_list.keys():
+    #         self.model_list[key] = self.model_list[key].cuda() # TODO: write a cpu function
+
 
     # set trainable model, only supported one trainable model
     def set_trainable(self, model_id):

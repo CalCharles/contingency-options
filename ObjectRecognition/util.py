@@ -2,6 +2,8 @@ import os
 import numpy as np
 import torch
 import warnings
+import matplotlib.pyplot as plt
+import cv2
 
 
 # find masks of adjacently different entries
@@ -186,7 +188,7 @@ def noop_x(imgs, focus):
 
 
 # remove by mean
-def remove_mean(imgs, focus, nb_size=(5, 5)):
+def remove_mean(imgs, focus, nb_size=(4, 9)):
     in_np = isinstance(imgs, np.ndarray)
     if not in_np:
         imgs = imgs.detach().numpy()
@@ -211,8 +213,18 @@ def remove_mean(imgs, focus, nb_size=(5, 5)):
         f_x, f_y = f[0]+nb_size[0], f[1]+nb_size[1]
         pad_frame[f_x-nb_size[0]:f_x+nb_size[0]+1, \
                   f_y-nb_size[1]:f_y+nb_size[1]+1] -= focus_mean
+        pad_frame[pad_frame < 0] = 0.0
         imgs[i, 0, ...] = pad_frame[pad_size[0][0]:-pad_size[0][1], \
                                     pad_size[1][0]:-pad_size[1][1]]
+    # for f, img in zip(focus, imgs):
+    #     print(f)
+    #     img = img[::]
+    #     img[:, f[0], :] = 255
+    #     img[:, :, f[1]] = 255
+    #     plt.imshow(np.squeeze(img))
+    #     plt.show()
+        # cv2.imshow("frame", np.squeeze(img))
+        # cv2.waitKey(30)
     return imgs if in_np else torch.from_numpy(imgs).float()
 
 

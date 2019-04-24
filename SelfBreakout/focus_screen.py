@@ -1,4 +1,4 @@
-import os
+import os, time
 from SelfBreakout.breakout_screen import Screen
 from Environments.environment_specification import RawEnvironment
 from file_management import get_edge
@@ -17,6 +17,7 @@ class FocusEnvironment(RawEnvironment):
         self.screen = Screen()
         self.focus_model = focus_model
         self.factor_state = None
+        # self.focus_model.cuda()
 
     def set_save(self, itr, save_dir, recycle):
         self.save_path=save_dir
@@ -32,6 +33,7 @@ class FocusEnvironment(RawEnvironment):
 
     def step(self, action):
         # TODO: action is tenor, might not be safe assumption
+        t = time.time()
         raw_state, raw_factor_state, done = self.screen.step(action, render=True)
         factor_state = self.focus_model.forward(pytorch_model.wrap(raw_state, cuda=False).unsqueeze(0).unsqueeze(0), ret_numpy=True)
         for key in factor_state.keys():
@@ -46,7 +48,7 @@ class FocusEnvironment(RawEnvironment):
         for key in factor_state.keys():
             object_dumps.write(key + ":" + " ".join([str(fs) for fs in factor_state[key]]) + "\t") # TODO: attributes are limited to single floats
         object_dumps.write("\n") # TODO: recycling does not stop object dumping
-
+        # print("elapsed ", time.time() - t)
         return raw_state, factor_state, done
 
     def getState(self):

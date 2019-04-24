@@ -1,9 +1,10 @@
 import numpy as np
 from collections import Counter
+from file_management import default_value_arg
 
 
 class ChangepointDeterminer():
-    def __init__(self):
+    def __init__(self, **kwargs):
         # TODO: change init to take in args, and define based on args
         pass
 
@@ -28,9 +29,9 @@ class PureOverlapDeterminer(ChangepointDeterminer):
     '''
     finds the ``overlap'' between a pair of different modes, and returns pure overlap
     '''
-    def __init__(self, overlap_ratio = .75, min_cluster= 7):
-        self.overlap_ratio = overlap_ratio
-        self.min_cluster = min_cluster
+    def __init__(self, **kwargs):
+        self.overlap_ratio = default_value_arg(kwargs, 'overlap_ratio', .75)
+        self.min_cluster = default_value_arg(kwargs, 'min_cluster', 7)
 
     def fit_narrow_modes(self, changepoint_models, mode_models, assigned_modes):
         overlap = dict()
@@ -85,9 +86,9 @@ class ProximityDeterminer(ChangepointDeterminer):
     '''
     finds modes based on whether they are proximal, assuming that the data is clustered on pairwise proximity
     '''
-    def __init__(self, prox_distance=6, min_cluster = 7):
-        self.prox_distance = prox_distance # TODO: Set proximal distance based on ...
-        self.min_cluster = min_cluster
+    def __init__(self, **kwargs):
+        self.prox_distance = default_value_arg(kwargs, 'prox_distance', 6) # TODO: Set proximal distance based on ...
+        self.min_cluster = default_value_arg(kwargs, 'min_cluster', 7)
 
     def fit_narrow_modes(self, changepoint_models, mode_models, assigned_modes):
         # find clusters with at least min_cluster elements 
@@ -102,6 +103,7 @@ class ProximityDeterminer(ChangepointDeterminer):
         # if a cluster has a mean within a certain distance, then create a narrowed cluster
         self.key_mapping = dict()
         k = 0
+        print(mode_models.mean())
         for i, mean in enumerate(mode_models.mean()[0]):
             # print(mean)
             if np.sum(np.abs(mean)) < self.prox_distance and i in self.used_clusters:
@@ -109,8 +111,8 @@ class ProximityDeterminer(ChangepointDeterminer):
                 k += 1
             elif i in self.used_clusters:
                 self.key_mapping[i] = -1
-        # print(self.key_mapping)
         self.num_mappings = k
+        print(self.key_mapping, self.num_mappings)
 
     def collapse_assignments(self, assigned_modes):
         mode_assignments = []

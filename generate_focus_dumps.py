@@ -12,9 +12,9 @@ from arguments import get_args
 if __name__ == '__main__':
     # python generate_focus_dumps.py --record-rollouts data/integrationpaddle/
     args = get_args()
-    paddle_model_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+    paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
     net_params = json.loads(open(paddle_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/paddle.npy')
+    params = load_param('ObjectRecognition/models/paddle_bin_long_smooth_2.pth')
     paddle_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,

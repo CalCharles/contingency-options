@@ -62,10 +62,10 @@ if __name__ == "__main__":
     clusters = MultipleCluster(args, BayesianGaussianMixture)
 
     # paddle uses "overlap", ball uses "prox", "proxVel"
-    determiner = determiners[args.determiner]()# PureOverlapDeterminer(overlap_ratio = .95, min_cluster= 7)
+    determiner = determiners[args.determiner](prox_distance = args.period) # reusing period to define minimum distance# PureOverlapDeterminer(overlap_ratio = .95, min_cluster= 7)
     option_determiner_model = ChangepointModels(args, changepoint_model, transforms, clusters, determiner)
     option_determiner_model.changepoint_statistics(models, changepoints, trajectory, correlate_trajectory)
-    
+
     try:
         os.makedirs(os.path.join(args.changepoint_dir, args.train_edge))
     except OSError:

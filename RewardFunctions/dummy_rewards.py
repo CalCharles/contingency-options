@@ -120,6 +120,7 @@ class BlockReward(ChangepointReward):
         if len(change_indexes) > 0:
             dists = np.linalg.norm(self.parameters - st[0])
             rewards[change_indexes[0]] = (self.max_dist - dists) / self.max_dist
+        rewards[states[:, -2] == 79] = -1.0
         if self.cuda:
             rewards = rewards.cuda()
         return rewards

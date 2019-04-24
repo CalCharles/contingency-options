@@ -36,12 +36,10 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     # if option_chain is not None: #TODO: implement this
     base_env = proxy_chain[0]
     base_env.set_save(0, args.save_dir, args.save_recycle)
-    print(base_env.save_path)
     proxy_environment.initialize(args, proxy_chain, reward_classes, state_class, behavior_policy)
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)
     behavior_policy.initialize(args, proxy_environment.action_size)
-    print("loading weights", args.load_weights)
     if not args.load_weights:
         train_models.initialize(args, len(reward_classes), state_class, proxy_environment.action_size, parameter_minmax = reward_classes[0].parameter_minmax)
         proxy_environment.set_models(train_models)
