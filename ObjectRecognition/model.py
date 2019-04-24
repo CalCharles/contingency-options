@@ -554,6 +554,8 @@ class ModelCollectionDAG():
         self.model_dep = dict()  # dependency graph
         self.model_dir = dict()  # evaluation direction graph
         self.augment_combine = kwargs.get('augment_combine', util.pick_first)
+
+        # model states
         self.train_model_id = None  # for set_parameters
 
 

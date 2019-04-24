@@ -185,15 +185,8 @@ def noop_x(imgs, focus):
     return imgs
 
 
-# remove by mean
-def remove_mean(imgs, focus, nb_size=(5, 5)):
-    in_np = isinstance(imgs, np.ndarray)
-    if not in_np:
-        imgs = imgs.detach().numpy()
-    imgs = np.array(imgs)
-    focus = (focus * imgs.shape[2:]).astype(int)
-
-    # get neighborhoods
+# get mean of neighborhood around focus
+def image_focus_mean(imgs, focus, nb_size):
     nb_size_2 = (nb_size[0]*2+1, nb_size[1]*2+1)
     neighbors = np.zeros((focus.shape[0],) + nb_size_2)
     pad_size = ((nb_size[0], nb_size[0]), (nb_size[1], nb_size[1]))
@@ -202,10 +195,13 @@ def remove_mean(imgs, focus, nb_size=(5, 5)):
         f_x, f_y = f[0]+nb_size[0], f[1]+nb_size[1]
         neighbors[i, :] = pad_frame[f_x-nb_size[0]:f_x+nb_size[0]+1,
                                     f_y-nb_size[1]:f_y+nb_size[1]+1]
-    focus_mean = np.mean(neighbors, axis=0)
-    # import matplotlib.pyplot as plt; plt.imshow(focus_mean); plt.show()
+    return np.mean(neighbors, axis=0)
 
-    # subtract mean_square_deviation
+
+# subtract image from image batch
+def image_focus_subtract(imgs, focus, focus_mean, nb_size):
+    imgs = np.array(imgs)
+    pad_size = ((nb_size[0], nb_size[0]), (nb_size[1], nb_size[1]))
     for i, f in enumerate(focus):
         pad_frame = np.pad(imgs[i][0], pad_size, 'constant')
         f_x, f_y = f[0]+nb_size[0], f[1]+nb_size[1]
@@ -213,7 +209,47 @@ def remove_mean(imgs, focus, nb_size=(5, 5)):
                   f_y-nb_size[1]:f_y+nb_size[1]+1] -= focus_mean
         imgs[i, 0, ...] = pad_frame[pad_size[0][0]:-pad_size[0][1], \
                                     pad_size[1][0]:-pad_size[1][1]]
+    return imgs
+
+
+# remove by mean of the batch
+def remove_mean_batch(imgs, focus, nb_size=(5, 5)):
+    in_np = isinstance(imgs, np.ndarray)
+    if not in_np:
+        imgs = imgs.detach().numpy()
+    focus = (focus * imgs.shape[2:]).astype(int)
+    focus_mean = image_focus_mean(imgs, focus, nb_size)
+    imgs = image_focus_subtract(imgs, focus, focus_mean, nb_size)
     return imgs if in_np else torch.from_numpy(imgs).float()
+
+
+# remove by mean, memorized mean
+class RemoveMeanMemory:
+
+    def __init__(self, nb_size):
+        self.nb_size = (5, 5)
+        self.n_mean = 0
+        self.mean = np.zeros((nb_size[0]*2+1, nb_size[1]*2+1))
+
+
+    # remove this batch with memorized mean and update it
+    def remove_mean_memory(self, imgs, focus):
+        in_np = isinstance(imgs, np.ndarray)
+        if not in_np:
+            imgs = imgs.detach().numpy()
+        focus = (focus * imgs.shape[2:]).astype(int)
+        focus_mean = image_focus_mean(imgs, focus, self.nb_size)
+        self.mean = (self.n_mean * self.mean + focus.shape[0] * focus_mean) \
+                    / (self.n_mean + focus.shape[0])
+        self.n_mean = self.n_mean + focus.shape[0]
+        imgs = image_focus_subtract(imgs, focus, self.mean, self.nb_size)
+        return imgs if in_np else torch.from_numpy(imgs).float()
+
+
+    # call routine
+    def __call__(self, imgs, focus):
+        return self.remove_mean_memory(imgs, focus)
+
 
 
 """
