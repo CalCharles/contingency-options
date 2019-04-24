@@ -153,15 +153,26 @@ class ReinforcementStorage(object):
         self.compute_returns(args, rewards, self.value_preds[:, start_at-1], start_at)
         self.reset_lists()
 
-    def buffer_get_last(self, i, n):
+    def buffer_get_last(self, i, n, names=[]):
         # TODO: choose values to get from the queue
         # TODO: add responsibility
         # i is the starting index (0 from the most recent)
         # n is the number taken
         # changepoint is getting from the changepoint queue
-        full_state = [ov[max(self.buffer_filled - i - n,0):self.buffer_filled - i] for ov in self.option_agnostic]
-        full_state += [ov[:, max(self.buffer_filled - i - n,0):self.buffer_filled - i] for ov in self.option_specific]
-        return tuple(full_state)
+        if len(names) > 0:
+            res = []
+            for na in names:
+                if na in self.option_agnostic_names:
+                    res.append(self.name_dict[na][max(self.buffer_filled - i - n,0):self.buffer_filled - i])
+                else:
+                    res.append(self.name_dict[na][:, max(self.buffer_filled - i - n,0):self.buffer_filled - i])
+            return tuple(res)
+        else:
+            return tuple([oa[i] for oa in self.option_agnostic] + [os[:,i] for os in self.option_specific])
+
+        # full_state = [ov[max(self.buffer_filled - i - n,0):self.buffer_filled - i] for ov in self.option_agnostic]
+        # full_state += [ov[:, max(self.buffer_filled - i - n,0):self.buffer_filled - i] for ov in self.option_specific]
+        # return tuple(full_state)
 
     def get_values(self, i, names=[]):
         if len(names) > 0:
@@ -298,8 +309,8 @@ class RolloutOptionStorage(object):
         #     self.set_changepoint_queue(num_steps)
         # print("returns", self.num_options, self.returns.shape, num_steps)
 
-    def get_current(self):
-        return self.base_rollouts.buffer_get_last(self.lag_num, self.num_steps)
+    def get_current(self, names=[]):
+        return self.base_rollouts.buffer_get_last(self.lag_num, self.num_steps, names= names)
 
     def cuda(self):
         # self.states = self.states.cuda()

@@ -173,7 +173,8 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         # print(name, rollouts.extracted_state, rollouts.rewards, rollouts.actions)
 
         #### logging
-        reward_total = rollouts.base_rollouts.rewards.sum(dim=1)[train_models.option_index]
+        # print(rollouts.base_rollouts.rewards.shape)
+        reward_total = rollouts.get_current(names=['rewards'])[0][train_models.option_index].sum(dim=0)
         # print("reward_total", reward_total.shape)
         final_rewards.append(reward_total)
         #### logging
