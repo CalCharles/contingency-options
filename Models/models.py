@@ -144,6 +144,7 @@ class Model(nn.Module):
         Q_vals = self.QFunction(x)
         values = self.critic_linear(x)
         probs = F.softmax(action_probs, dim=1)
+        # print(probs)
         log_probs = F.log_softmax(action_probs, dim=1)
 
         dist_entropy = -(log_probs * probs).sum(-1).mean()

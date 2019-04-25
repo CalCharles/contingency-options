@@ -7,6 +7,8 @@ def get_args():
     parser = argparse.ArgumentParser(description='RL')
     # parser.add_argument('--algo', default='a2c',
     #                     help='algorithm to use: a2c, ppo, evo')
+    parser.add_argument('--true-environment', action='store_true', default=False,
+                        help='triggers the baseline methods')
     # # optimization hyperparameters
     parser.add_argument('--lr', type=float, default=7e-4,
                         help='learning rate (default: 1e-6)')
@@ -189,7 +191,7 @@ def get_args():
     parser.add_argument('--lag-num', type=int, default=2,
                         help='lag between states executed and those used for learning, to delay for reward computation (default: 2)')
     parser.add_argument('--num-steps', type=int, default=1,
-                        help='number of forward steps before update (default: 5)')
+                        help='number of reward checks before update (default: 1)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
                         help='number of forward steps used to compute gradient, -1 for not used (default: -1)')
     parser.add_argument('--reward-check', type=int, default=5,
@@ -309,6 +311,8 @@ def get_args():
         args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
     if args.dp_gmm[0] == 'far':
         args.dp_gmm = [10, 6000, 1e-10, 'diag', 20]
+    if args.dp_gmm[0] == 'further':
+        args.dp_gmm = [10, 6000, 1e-30, 'diag', 20]
     if args.champ_parameters[0] == "Paddle":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-1, 0]
     elif args.champ_parameters[0] == "Ball": 

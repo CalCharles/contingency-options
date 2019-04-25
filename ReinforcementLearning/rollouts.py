@@ -148,7 +148,7 @@ class ReinforcementStorage(object):
     def insert_rewards_at(self, args, rewards, start_at):
         if self.buffer_filled + rewards.size(1) > self.buffer_steps:
             roll_num = max(start_at - self.buffer_steps + rewards.size(1), 0)
-            self.returns = self.returns.roll(-roll_num, 1)
+            self.rewards = self.rewards.roll(-roll_num, 1)
         self.rewards[:, max(start_at - rewards.size(1), 0):start_at] = rewards.detach()
         self.compute_returns(args, rewards, self.value_preds[:, start_at-1], start_at)
         self.reset_lists()
@@ -199,6 +199,7 @@ class ReinforcementStorage(object):
             return tuple([oa[idxes] for oa in self.option_agnostic] + [os[:,idxes] for os in self.option_specific])
 
     def get_from(self, i, j, names=[]): # i from the beginning, j from the end
+        # print(self.returns.squeeze())
         if len(names) > 0:
             res = []
             for n in names:
@@ -215,7 +216,7 @@ class ReinforcementStorage(object):
         gamma = args.gamma
         tau = args.tau
         return_format = args.return_enum
-        if start_at + rewards.size(1) > self.buffer_steps:
+        if start_at + rewards.size(1) > self.buffer_steps and args.buffer_steps > 0:
             roll_num = max(start_at - self.buffer_steps + rewards.size(1), 0)
             self.returns = self.returns.roll(-roll_num, 1)
             self.returns[-roll_num:] = 0
@@ -235,6 +236,7 @@ class ReinforcementStorage(object):
                 # print(start_at-i, start_at-update_last-i, update_last, torch.pow(gamma,last_values[-min(start_at-i, update_last):]), rew)
                 # print(last_values, self.returns)
                 self.returns[idx, max(start_at-update_last-i, 0):start_at-i] += (torch.pow(gamma,last_values[-min(start_at-i, update_last):]) * rew).unsqueeze(1)
+            # print(self.returns[idx,start_at - rewards.size(1) - update_last:start_at].squeeze())
             # print("bef", self.returns, rewards, self.buffer_filled, update_last)
             # if args.buffer_steps < 0: # if we are using a true queue, we will ignore value estimation, since we expect not to draw from the top of the queue too often
             #     self.returns[idx, max(start_at-update_last, 0):start_at] += (torch.pow(gamma,last_values[-min(start_at, update_last):] + 1) * next_value[idx]).unsqueeze(1)

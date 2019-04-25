@@ -112,9 +112,14 @@ class ChangepointDetectionReward(ChangepointReward):
         # print("states shape", trajectory.shape, saliency_trajectory.shape)
         assignments, cps = self.model.get_mode(trajectory, saliency_trajectory)
         rewards = []
+        # print(assignments, cps)
+        rewarded = False
         for asmt in assignments:
-            if asmt == self.desired_mode:
+            # if asmt == self.desired_mode:
+            #### DANGEROUS LINE ####
+            if asmt == self.desired_mode and not rewarded:
                 rewards.append(1)
+                rewarded = True
             else:
                 rewards.append(0)
         rewards.append(0) # match the number of changepoints

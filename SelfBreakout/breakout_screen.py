@@ -23,6 +23,7 @@ class Screen(RawEnvironment):
         self.ball = Ball(np.array([46, np.random.randint(20, 36)]), 1, vel)
         self.paddle = Paddle(np.array([71, 84//2]), 1, np.zeros((2,), dtype = np.int64))
         self.actions = Action(np.zeros((2,), dtype = np.int64), 0)
+        self.reward = 0
         self.blocks = []
         for i in range(5):
             for j in range(20):
@@ -74,6 +75,7 @@ class Screen(RawEnvironment):
     def step(self, action, render=False, duplicate_actions=1):
         done = False
         for i in range(duplicate_actions):
+            self.reward = 0
             self.actions.take_action(action[0])
             if len(self.save_path) != 0:
                 if self.itr != 0:
@@ -87,7 +89,10 @@ class Screen(RawEnvironment):
                     if obj1.name == obj2.name:
                         continue
                     else:
+                        preattr = obj2.attribute
                         obj1.interact(obj2)
+                        if preattr != obj2.attribute:
+                            self.reward = 1
             for ani_obj in self.animate:
                 ani_obj.move()
             extracted_state = {obj.name: (obj.getMidpoint(), (obj.getAttribute(), )) for obj in self.objects}

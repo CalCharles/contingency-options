@@ -13,6 +13,7 @@ class Paddle(RawEnvironment):
         self.itr = 0
         self.save_path = ""
         self.screen = Screen()
+        self.reward= 0
 
     def set_save(self, itr, save_dir, recycle):
         self.save_path=save_dir
@@ -35,6 +36,7 @@ class Paddle(RawEnvironment):
         elif action == 2:
             action[0] = 3
         raw_state, factor_state, done = self.screen.step(action, render=True)
+        self.reward = self.screen.reward
         if factor_state["Action"][1][0] < 2:
             factor_state["Action"] = (factor_state["Action"][0], 0)
         elif factor_state["Action"][1][0] == 2:

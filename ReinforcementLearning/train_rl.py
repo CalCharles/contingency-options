@@ -67,6 +67,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     option_actions = {option.name: collections.Counter() for option in train_models.models}
     total_duration = 0
     total_elapsed = 0
+    true_reward = 0
     learning_algorithm.sample_duration = args.sample_duration
     sample_schedule = args.sample_schedule
     start = time.time()
@@ -102,6 +103,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
                 trace_queue.append((current_state.clone().detach(), action.clone().detach()))
                 state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
+                true_reward += base_env.reward
                 # print(action_list, action)
                 # print("step check (al, s)", action_list, state)
                 #### logging
@@ -118,6 +120,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # time.sleep(.1)
             # print(m, args.reward_check)
             rewards = proxy_environment.computeReward(m+1)
+            # print(rewards)
             change, target = proxy_environment.determineChanged(m+1)
             proxy_environment.determine_swaps(m+1, needs_rewards=True) # doesn't need to generate rewards
             # print("reward time", time.time() - start)
@@ -228,16 +231,17 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 
             el, vl, al = unwrap_or_none(entropy_loss), unwrap_or_none(value_loss), unwrap_or_none(action_loss)
             total_elapsed += total_duration
-            log_stats = "Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {}, value loss {}, policy loss {}, average_reward {}".format(j, total_elapsed,
+            log_stats = "Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {}, value loss {}, policy loss {}, average_reward {}, true_reward {}".format(j, total_elapsed,
                        int(total_elapsed / (end - start)),
                        final_rewards.mean(),
                        np.median(final_rewards.cpu()),
                        final_rewards.min(),
                        final_rewards.max(), el,
-                       vl, al, torch.stack(average_rewards).sum()/acount)
+                       vl, al, torch.stack(average_rewards).sum()/acount, true_reward / total_steps)
             if acount > 300:
                 average_counts.pop(0)
                 average_rewards.pop(0)
+            true_reward = 0.0
             print(log_stats)
             final_rewards = list()
             total_duration = 0

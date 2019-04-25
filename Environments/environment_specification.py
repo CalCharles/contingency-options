@@ -128,6 +128,8 @@ class ProxyEnvironment():
         self.behavior_policy = behavior_policy
         self.reset_history()
         print(proxy_chain[0].getState())
+        print(self.stateExtractor.get_state(proxy_chain[0].getState())[0].shape)
+        self.state_shape = self.stateExtractor.get_state(proxy_chain[0].getState())[0].shape
         self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(proxy_chain[0].getState())[0], cuda=args.cuda)
         self.resp = pytorch_model.wrap([0 for i in range(len(self.stateExtractor.fnames))], cuda=args.cuda)
         self.resp_len = len(self.stateExtractor.fnames)
@@ -232,12 +234,19 @@ class ProxyEnvironment():
         '''
         shape_dim0 = self.num_hist # make sure this is 1 if no history is to be used
         state_size = int(np.prod(self.state_size))
+        # print(self.extracted_state.shape, self.current_state.shape, self.current_resp, self.resp)
         if self.num_hist > 1:
             self.current_state[:(shape_dim0-1)*state_size] = self.current_state[-(shape_dim0-1)*state_size:]
             self.current_resp[:-self.resp_len] = self.current_resp[self.resp_len:]
-        self.current_state[-state_size:] = self.extracted_state # unsqueeze 0 is for dummy multi-process code
-        # print(self.current_resp, self.resp)
-        self.current_resp[-self.resp_len:] = self.resp
+        if len(self.state_shape) < 2: # TODO: a hacked result, try to fix?
+            self.current_state[-state_size:] = self.extracted_state # unsqueeze 0 is for dummy multi-process code
+            # print(self.current_resp, self.resp)
+            self.current_resp[-self.resp_len:] = self.resp
+        else:
+            self.current_state = self.extracted_state # unsqueeze 0 is for dummy multi-process code
+            # print(self.current_resp, self.resp)
+            self.current_resp = self.resp
+
         return self.current_state
 
     def getState(self):
@@ -282,6 +291,7 @@ class ProxyEnvironment():
 
         if done:
             self.reset_history()
+        # print(action_list)
         # bpos = factored_state["Ball"][0]
         # ppos = factored_state["Paddle"][0]
         # raw_state[int(bpos[0]), :] = 255
@@ -290,6 +300,7 @@ class ProxyEnvironment():
         # raw_state[:, int(ppos[1])] = 255
         # cv2.imshow("frame", raw_state)
         # cv2.waitKey(5)
+        # print(bpos)
         self.raw_state = (raw_state, factored_state)
         # TODO: implement multiprocessing support
         state, resp = self.stateExtractor.get_state(self.raw_state)

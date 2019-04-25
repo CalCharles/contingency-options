@@ -17,6 +17,7 @@ class FocusEnvironment(RawEnvironment):
         self.screen = Screen()
         self.focus_model = focus_model
         self.factor_state = None
+        self.reward = 0
         # self.focus_model.cuda()
 
     def set_save(self, itr, save_dir, recycle):
@@ -35,6 +36,7 @@ class FocusEnvironment(RawEnvironment):
         # TODO: action is tenor, might not be safe assumption
         t = time.time()
         raw_state, raw_factor_state, done = self.screen.step(action, render=True)
+        self.reward = self.screen.reward
         factor_state = self.focus_model.forward(pytorch_model.wrap(raw_state, cuda=False).unsqueeze(0).unsqueeze(0), ret_numpy=True)
         for key in factor_state.keys():
             factor_state[key] *= 84

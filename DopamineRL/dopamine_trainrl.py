@@ -8,8 +8,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 
 from Environments.environment_specification import ProxyEnvironment
-from ReinforcementLearning.models import pytorch_model
-from ReinforcementLearning.rollouts import RolloutOptionStorage
+from Models.models import pytorch_model
 from file_management import save_to_pickle
 
 def sample_actions( probs, deterministic):
@@ -29,17 +28,20 @@ def unwrap_or_none(val):
         return -1.0
 
 def train_dopamine(args, save_path, true_environment, train_models, proxy_environment,
-            proxy_chain, reward_classes, state_class, behavior_policy):
+            proxy_chain, reward_classes, state_class, num_actions, behavior_policy):
     print("#######")
     print("Training Options")
     print("#######")
     # if option_chain is not None: #TODO: implement this
     base_env = proxy_chain[0]
     base_env.set_save(0, args.save_dir, args.save_recycle)
+    snum = args.num_stack 
+    args.num_stack = 1
     proxy_environment.initialize(args, proxy_chain, reward_classes, state_class, behavior_policy)
+    args.num_stack = snum
     if args.save_models:
         save_to_pickle(os.path.join(save_path, "env.pkl"), proxy_environment)
-    behavior_policy.initialize(args, state_class.action_num)
+    behavior_policy.initialize(args, num_actions)
     train_models.initialize(args, len(reward_classes), state_class, proxy_environment.action_size)
     proxy_environment.set_models(train_models)
     proxy_environment.set_save(0, args.save_dir, args.save_recycle)
@@ -50,10 +52,14 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
     cp_state = proxy_environment.changepoint_state([raw_state])
     # print("initial_state (s, hs, rs, cps)", state, hist_state, raw_state, cp_state)
     # print(cp_state.shape, state.shape, hist_state.shape, state_class.shape)
-    rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), state_class.action_num, state.shape, hist_state.shape, -1, args.changepoint_queue_len, len(train_models.models), cp_state[0].shape)
+    # rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), proxy_environment.action_size, cr.flatten().shape[0],
+    #     state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, args.trace_len, 
+    #     args.trace_queue_len, args.dilated_stack, args.target_stack, args.dilated_queue_len, train_models.currentOptionParam().shape[1:], len(train_models.models), cp_state[0].shape,
+    #     args.lag_num, args.cuda)
     option_actions = {option.name: collections.Counter() for option in train_models.models}
     total_duration = 0
     total_elapsed = 0
+    true_reward = 0
     start = time.time()
     fcnt = 0
     final_rewards = list()
@@ -63,21 +69,25 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
     val= None
     train_models.currentModel().begin_episode(pytorch_model.unwrap(hist_state))
     for j in range(args.num_iters):
-        rollouts.set_parameters(args.num_steps)            
         raw_actions = []
-        rollouts.cuda()
+        last_total_steps, total_steps = 0, 0
         for step in range(args.num_steps):
+            # start = time.time()
             fcnt += 1
+            total_steps += 1
             current_state, current_resp = proxy_environment.getHistState()
             estate = proxy_environment.getState()
-            reward = proxy_environment.computeReward(rollouts, 1)
+            if args.true_environment:
+                reward = pytorch_model.wrap([[base_env.reward]])
+            else:
+                reward = proxy_environment.computeReward(1)
+            true_reward += base_env.reward
             # print(current_state, reward[train_models.option_index])
-            action = train_models.currentModel().forward(current_state, current_resp, pytorch_model.unwrap(reward[train_models.option_index]))
+            action = train_models.currentModel().forward(current_state, pytorch_model.unwrap(reward[train_models.option_index]))
             # print("ap", action)
             action = pytorch_model.wrap([action])
             cp_state = proxy_environment.changepoint_state([raw_state])
             # print(state, action)
-            rollouts.insert_no_out(step, state, current_state, action, train_models.option_index, cp_state[0], pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda))
             # print("step states (cs, s, cps, act)", current_state, estate, cp_state, action) 
             # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
 
@@ -91,10 +101,9 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
 
             if done:
                 # print("reached end")
-                rollouts.cut_current(step+1)
-                reward = proxy_environment.computeReward(rollouts, 1)
                 train_models.currentModel().end_episode(pytorch_model.unwrap(reward[train_models.option_index]))
-                train_models.currentModel().begin_episode(pytorch_model.unwrap(proxy_environment.getHistState()))
+                state, resp = proxy_environment.getHistState()
+                train_models.currentModel().begin_episode(pytorch_model.unwrap(state))
                 # print(step)
                 break
         # var = [v for v in tf.trainable_variables() if v.name == "Online/fully_connected/weights:0"][0]
@@ -108,14 +117,12 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
         # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
 
         cp_state = proxy_environment.changepoint_state([raw_state])
-        rollouts.insert_no_out(step + 1, state, current_state, action, train_models.option_index, cp_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda)) # inserting the last state and unused action
         # print("states and actions (es, cs, a, m)", rollouts.extracted_state, rollouts.current_state, rollouts.actions, rollouts.masks)
         # print("actions and Qvals (qv, vp, ap)", rollouts.Qvals, rollouts.value_preds, rollouts.action_probs)
 
         total_duration += step + 1
-        rewards = proxy_environment.computeReward(rollouts, step+1)
         # print("rewards", rewards)
-        rollouts.insert_rewards(rewards)
+        # rollouts.insert_rewards(rewards)
         # print(rollouts.extracted_state)
         # print(rewards)
         # rollouts.compute_returns(args, values)
@@ -126,10 +133,8 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
         # print(name, rollouts.extracted_state, rollouts.rewards, rollouts.actions)
 
         #### logging
-        reward_total = rollouts.rewards.sum(dim=1)[train_models.option_index]
-        final_rewards.append(reward_total)
         option_counter[name] += step + 1
-        option_value[name] += reward_total.data  
+        option_value[name] += true_reward 
         #### logging
         if j % args.save_interval == 0 and args.save_models and args.train: # no point in saving if not training
             print("=========SAVING MODELS==========")
@@ -149,17 +154,11 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
                     for i in range(len(option_actions[name])):
                         option_actions[name][i] = 0
             end = time.time()
-            final_rewards = torch.stack(final_rewards)
-            el, vl, al = unwrap_or_none(pytorch_model.wrap([0])), unwrap_or_none(pytorch_model.wrap([0])), unwrap_or_none(pytorch_model.wrap([0]))
             total_elapsed += total_duration
-            log_stats = "Updates {}, num timesteps {}, FPS {}, mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}, entropy {}, value loss {}, policy loss {}".format(j, total_elapsed,
+            log_stats = "Updates {}, num timesteps {}, FPS {}, reward {}".format(j, total_elapsed,
                        int(total_elapsed / (end - start)),
-                       final_rewards.mean(),
-                       np.median(final_rewards.cpu()),
-                       final_rewards.min(),
-                       final_rewards.max(), el,
-                       vl, al)
+                       true_reward/ (args.num_steps * args.log_interval))
             print(log_stats)
-            final_rewards = list()
+            true_reward = 0.0
             total_duration = 0
         #### logging

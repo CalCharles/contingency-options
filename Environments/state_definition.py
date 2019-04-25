@@ -107,7 +107,9 @@ class Feature(): # feature
 
 class Raw(): # raw
 	def compute_comparison(self, state, target, correlate):
-		return state[0].flatten().tolist()
+		# print(state[0])
+		# print(np.expand_dims(state[0], axis=2).shape)
+		return [state[0].tolist()]
 
 class Sub(): # sub # TODO: implement
 	def compute_comparison(self, state, target, correlate):
@@ -174,6 +176,7 @@ class GetState(StateGet):
 			comp = f.compute_comparison(state, self.target, name)
 			resp.append(len(comp))
 			estate += comp
+		# print(np.array(estate).shape)
 		return np.array(estate), resp 
 
 	def determine_delta_target(self, states):
@@ -310,7 +313,7 @@ state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), 'vis
 					"vel": Velocity(), "acc": Acceleration(), "xprox": XProximity(), 'bin': BinaryExistence(),
 					"feature": Feature(), "raw": Raw(), "sub": Sub(), "multifull": MultiFull()}
 # TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ, bin has hardcoded size, as does multifull
-state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "acc": [2], 'bin': [100], "multifull": [300], "feature": [1], "raw": [64, 64], "sub": [4,4]}
+state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "acc": [2], 'bin': [100], "multifull": [300], "feature": [1], "raw": [84, 84, 1], "sub": [4,4]}
 # class GetRaw(StateGet):
 # 	'''
 # 	Returns the raw_state

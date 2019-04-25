@@ -38,11 +38,9 @@ def add_model_argument(parser):
     parser.add_argument('--argmax_mode',
                         choices=['first', 'rand'], default='first',
                         help='argmax mode to choose focus coordinate')
-    parser.add_argument('--premise_path', type=str,
-                        default='results/cmaes_soln/focus_self/paddle.npy',
+    parser.add_argument('--premise_path', type=str, default=None,
                         help='path to network weight for premise recognition')
-    parser.add_argument('--premise_net', type=str,
-                        default='ObjectRecognition/net_params/two_layer.json',
+    parser.add_argument('--premise_net', type=str, default=None,
                         help='path to network params for premise recognition')
 
 

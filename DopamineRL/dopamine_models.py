@@ -3,7 +3,8 @@ import tensorflow as tf
 import cv2
 slim = tf.contrib.slim
 from dopamine.discrete_domains import gym_lib, atari_lib
-from ReinforcementLearning.models import Model, pytorch_model
+from Models.models import Model, pytorch_model
+from file_management import default_value_arg
 
 
 from dopamine.agents.dqn import dqn_agent
@@ -28,25 +29,33 @@ def create_dqn_network(minmax):
 
 
 class DQNWrapper(Model):
-  def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
-    super(DQNWrapper, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
+  def __init__(self, **kwargs):
+    super(DQNWrapper, self).__init__(**kwargs)
+    args, num_inputs, num_outputs, factor = self.get_args(kwargs)
+    self.minmax = default_value_arg(kwargs, 'minmax', None)
+    network = create_dqn_network(self.minmax)
+    observation_shape = (num_inputs, )
+    if args.true_environment:
+      network = atari_lib.nature_dqn_network 
+      observation_shape = (84,84)
+
     self.sess = tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))
     self.dope_dqn = dqn_agent.DQNAgent(self.sess,
            num_outputs,
-           observation_shape=(num_inputs, ),
+           observation_shape=observation_shape,
            observation_dtype=tf.float32,
-           stack_size=1,
-           network=create_dqn_network(self.minmax),
+           stack_size=args.num_stack,
+           network=network,
            gamma=args.gamma,
            update_horizon=3,
-           min_replay_history=10000,
+           min_replay_history=20000,
            update_period=4,
            target_update_period=8000,
            epsilon_fn=dqn_agent.linearly_decaying_epsilon,
            epsilon_train=args.greedy_epsilon,
            epsilon_eval=0.001,
            epsilon_decay_period=250000,
-           tf_device='/cpu:*',
+           tf_device='/gpu:3',
            use_staging=True,
            max_tf_checkpoints_to_keep=4,
            optimizer=tf.train.RMSPropOptimizer(
@@ -102,8 +111,16 @@ def create_rainbow_network(minmax):
 
 
 class RainbowWrapper(Model):
-  def __init__(self, args, num_inputs, num_outputs, name="option", factor=8, minmax=None, sess=None):
-    super(RainbowWrapper, self).__init__(args, num_inputs, num_outputs, name=name, factor=factor, minmax=minmax, sess=None)
+  def __init__(self, **kwargs):
+    super(RainbowWrapper, self).__init__(**kwargs)
+    args, num_inputs, num_outputs, factor = self.get_args(kwargs)
+    self.minmax = default_value_arg(kwargs, 'minmax', None)
+    network = create_rainbow_network(self.minmax)
+    observation_shape = (num_inputs, )
+    if args.true_environment:
+      network = atari_lib.rainbow_network 
+      observation_shape = (84,84)
+
     self.sess = tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))
     # local_device_protos = device_lib.list_local_devices()
     # print([x.name for x in local_device_protos])
@@ -111,28 +128,29 @@ class RainbowWrapper(Model):
     #            atari_lib.NATURE_DQN_DTYPE,
     #            atari_lib.NATURE_DQN_STACK_SIZE,)
     # print(num_inputs)
+
     self.dope_rainbow = rainbow_agent.RainbowAgent(self.sess,
            num_outputs,
-           observation_shape=(num_inputs, ),
+           observation_shape=observation_shape,
            observation_dtype=tf.float32,
-           stack_size=1,
-           network=create_rainbow_network(self.minmax),
+           stack_size=args.num_stack,
+           network=network,
            num_atoms=51,
            vmax=args.value_bounds[1],
            gamma=args.gamma,
-           update_horizon=3,
-           min_replay_history=args.buffer_steps,
+           update_horizon=1,
+           min_replay_history=20000,
            update_period=4,
            target_update_period=8000,
            epsilon_fn=dqn_agent.linearly_decaying_epsilon,
-           epsilon_train=args.greedy_epsilon,
+           epsilon_train=0.01,
            epsilon_eval=0.001,
            epsilon_decay_period=250000,
            replay_scheme='prioritized',
-           tf_device='/gpu:*',
+           tf_device='/gpu:3',
            use_staging=True,
            optimizer=tf.train.AdamOptimizer(
-               learning_rate=args.lr, epsilon=0.0003125),
+               learning_rate=.00025, epsilon=0.0003125),
            summary_writer=None,
            summary_writing_frequency=500)
     self.sess.run(tf.global_variables_initializer())

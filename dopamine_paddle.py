@@ -12,7 +12,7 @@ from Environments.state_definition import GetState, compute_minmax
 from BehaviorPolicies.behavior_policies import behavior_policies
 from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
-from RewardFunctions.dummy_rewards import BounceReward, Xreward
+from RewardFunctions.dummy_rewards import BounceReward, Xreward, BlockReward
 
 if __name__ == "__main__":
     # used arguments
@@ -20,22 +20,26 @@ if __name__ == "__main__":
         # changepoint-dir (where option chain is stored)
         # save-dir (where saved data is stored)
         # model-form
-        # optimizer-form
+        # true-environment
         # train-edge
         # state-forms
         # state-names
     # Example usage: 
     # python paddle_bounce.py --model-form tab --optimizer-form TabQ --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 100000 --save-dir data/paddleballtest --state-forms prox --state-names Paddle --base-node Paddle --changepoint-dir data/paddlegraph --factor 8 --greedy-epsilon .2 --lr .01 --normalize --behavior-policy egq --gamma .99 > out.txt
     # python paddle_bounce.py --model-form fourier --optimizer-form SARSA --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 100000 --save-dir data/paddleballpg --state-forms xprox --state-names Paddle --base-node Paddle --changepoint-dir data/paddlegraphpg --factor 10 --num-layers 1 --greedy-epsilon .1 --lr .001 --normalize --behavior-policy egq --save-dir data/xstates/ --optim base > out.txt
+    # python dopamine_paddle.py --record-rollouts data/integrationpaddle --changepoint-dir data/dopegraph --model-form rainbow --true-environment --train-edge "Action->Reward" --state-forms raw --state-names Action --num-steps 5 --num-stack 4 --num-iters 2000000 --log-interval 200 --save-dir ../datasets/caleb_data/dopamine/rainbow/ --optim base > baselines/rainbow.txt
     args = get_args()
     # true_environment = Paddle()
-    true_environment = PaddleNoBlocks()
+    # true_environment = PaddleNoBlocks()
+    true_environment = Screen()
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)
 
 
     head, tail = get_edge(args.train_edge)
+    
+    reward_classes = [BlockReward(args)]
 
     if args.reward_form == 'x':
         reward_classes = [Xreward(args)]
@@ -51,7 +55,7 @@ if __name__ == "__main__":
     else:
         num_actions = environments[-1].num_actions
     print(args.state_names, args.state_forms)
-    state_class = GetState(num_actions, head, state_forms=list(zip(args.state_names, args.state_forms)))
+    state_class = GetState(head, state_forms=list(zip(args.state_names, args.state_forms)))
     state_class.minmax = compute_minmax(state_class, dataset_path)
     for reward_class in reward_classes:
         reward_class.traj_dim = state_class.shape
@@ -59,4 +63,4 @@ if __name__ == "__main__":
     behavior_policy = behavior_policies[args.behavior_policy]()
     # behavior_policy = EpsilonGreedyProbs()
     train_dopamine(args, option_chain.save_dir, true_environment, train_models, proxy_environment,
-            proxy_chain, reward_classes, state_class, behavior_policy=behavior_policy)
+            proxy_chain, reward_classes, state_class, num_actions, behavior_policy=behavior_policy)
