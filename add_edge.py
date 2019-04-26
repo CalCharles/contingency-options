@@ -31,7 +31,7 @@ if __name__ == "__main__":
         # Action->Paddle: python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/random/" --train-edge "Action->Paddle" --changepoint-dir data/integrationgraph --num-stack 2 --factor 6 --train --num-iters 1000 --save-dir data/action --state-forms bounds --state-names Paddle --num-steps 1 --reward-check 5 --num-update-model 1 --greedy-epsilon .1 --lr 1e-2 --init-form smalluni --behavior-policy egr --grad-epoch 5 --entropy-coef .01 --value-loss-coef 0.5 --gamma .9 --save-models --save-dir data/integrationpaddle --save-graph data/intnetpaddle > integration/paddle.txt
         # python add_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/integrationpaddle/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 30 --state-forms prox vel --state-names Paddle Ball --changepoint-dir ./data/integrationgraph/ --lr 5e-3 --behavior-policy esp --reward-form bounce --gamma .87 --init-form xuni --factor 8 --num-layers 1 --base-form basic --select-ratio .2 --num-population 10 --sample-duration 100 --sample-schedule 12 --warm-up 0 --log-interval 1 --scale 2 --reward-check 10 --save-models --save-dir data/integrationbounce > integration/ball.txt
     args = get_args()
-    # torch.cuda.set_device(args.gpu)
+    torch.cuda.set_device(args.gpu)
 
     # loading vision model
     paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'

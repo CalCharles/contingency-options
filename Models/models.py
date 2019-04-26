@@ -243,6 +243,7 @@ class BasicModel(Model):
 
         # print("normin", x)
         if self.num_layers > 0:
+            # print(self.l1.weight, x)
             x = self.l1(x)
             x = self.acti(x)
         # if torch.isnan(x.sum()):

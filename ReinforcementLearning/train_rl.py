@@ -68,6 +68,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     total_duration = 0
     total_elapsed = 0
     true_reward = 0
+    ep_reward = 0
     learning_algorithm.sample_duration = args.sample_duration
     sample_schedule = args.sample_schedule
     start = time.time()
@@ -104,12 +105,15 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 trace_queue.append((current_state.clone().detach(), action.clone().detach()))
                 state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
                 true_reward += base_env.reward
+                ep_reward += base_env.reward
                 # print(action_list, action)
                 # print("step check (al, s)", action_list, state)
                 #### logging
                 option_actions[train_models.currentName()][int(pytorch_model.unwrap(action.squeeze()))] += 1
                 #### logging
                 if done:
+                    print("Episode Reward: ", ep_reward, " ", fcnt)
+                    ep_reward = 0
                     if not args.sample_duration > 0:
                         # print("reached end")
                         # print(step)

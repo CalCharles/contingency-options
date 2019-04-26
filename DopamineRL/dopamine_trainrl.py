@@ -60,6 +60,7 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
     total_duration = 0
     total_elapsed = 0
     true_reward = 0
+    ep_reward = 0
     start = time.time()
     fcnt = 0
     final_rewards = list()
@@ -82,6 +83,7 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
             else:
                 reward = proxy_environment.computeReward(1)
             true_reward += base_env.reward
+            ep_reward += base_env.reward
             # print(current_state, reward[train_models.option_index])
             action = train_models.currentModel().forward(current_state, pytorch_model.unwrap(reward[train_models.option_index]))
             # print("ap", action)
@@ -101,6 +103,8 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
 
             if done:
                 # print("reached end")
+                print("Episode Reward: ", ep_reward)
+                ep_reward = 0
                 train_models.currentModel().end_episode(pytorch_model.unwrap(reward[train_models.option_index]))
                 state, resp = proxy_environment.getHistState()
                 train_models.currentModel().begin_episode(pytorch_model.unwrap(state))

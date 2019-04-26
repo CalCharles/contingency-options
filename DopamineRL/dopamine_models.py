@@ -147,12 +147,13 @@ class RainbowWrapper(Model):
            epsilon_eval=0.001,
            epsilon_decay_period=250000,
            replay_scheme='prioritized',
-           tf_device='/gpu:3',
+           tf_device='/gpu:2',
            use_staging=True,
            optimizer=tf.train.AdamOptimizer(
                learning_rate=.00025, epsilon=0.0003125),
            summary_writer=None,
            summary_writing_frequency=500)
+    self.dope_rainbow.eval_mode = False
     self.sess.run(tf.global_variables_initializer())
 
   def forward(self, x, reward):

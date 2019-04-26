@@ -111,6 +111,10 @@ class ProxyEnvironment():
         for i, env in enumerate(self.proxy_chain[1:]):
             env.proxy_chain = self.proxy_chain[:len(self.proxy_chain) - i - 1] 
             env.iscuda = args.cuda # TODO: changes to this probably will cause breaking
+            if args.cuda:
+                current_cuda = torch.device('cuda:' + str(args.gpu))
+                env.changepoint_queue, env.changepoint_action_queue, env.changepoint_resp_queue = env.changepoint_queue.to(current_cuda), env.changepoint_action_queue.to(current_cuda), env.changepoint_resp_queue.to(current_cuda)
+                env.extracted_state, env.resp, env.current_state, env.current_resp = env.extracted_state.to(current_cuda), env.resp.to(current_cuda), env.current_state.to(current_cuda), env.current_resp.to(current_cuda)
         self.reward_fns = reward_fns
         self.stateExtractor = state_get
         self.iscuda = args.cuda
@@ -238,6 +242,10 @@ class ProxyEnvironment():
         if self.num_hist > 1:
             self.current_state[:(shape_dim0-1)*state_size] = self.current_state[-(shape_dim0-1)*state_size:]
             self.current_resp[:-self.resp_len] = self.current_resp[self.resp_len:]
+        try:
+            len(self.state_shape) < 2
+        except AttributeError as e:
+            self.state_shape = (2,)
         if len(self.state_shape) < 2: # TODO: a hacked result, try to fix?
             self.current_state[-state_size:] = self.extracted_state # unsqueeze 0 is for dummy multi-process code
             # print(self.current_resp, self.resp)
