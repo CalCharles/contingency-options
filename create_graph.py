@@ -101,7 +101,7 @@ color_defaults = [
     '#17becf'  # blue-teal
 ]
 
-def load_from_txt(self, txt_pth):
+def load_from_txt(txt_pth):
     for filename in glob.glob(os.path.join(txt_pth, "/")):
         f = filename.open(os.path.join(txt_pth, filename), 'r')
         last_5_ep_rewards = []
@@ -133,7 +133,7 @@ python visualize.py trained_models/pong_vanilla/ trained_models/pongH2pong
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='RL')
     parser.add_argument('--log_dir', metavar='log_dir', nargs='+')
-    parser.add_argument('--txt_dir', metavar='log_dir', nargs='+')
+    parser.add_argument('--txt_dir', metavar='text_dir', nargs='+')
     parser.add_argument('--model', default='a2c')
     parser.add_argument('--title', default='Graph')
     parser.add_argument('--plotall', action = 'store_true', default=False)
@@ -164,6 +164,41 @@ if __name__=='__main__':
             for idx, (x,y) in enumerate(curves):
                 plt.plot(x, y, label = names[idx])
         
+        else:
+            # show average curve + std
+            tx, ty = zip(*curves)
+            
+            # min_len = min(map(len, tx))
+            # tx, ty = tx[0][:min_len], [t[:min_len] for t in ty]
+
+            max_len = max(map(len, tx))
+            tx = max(tx, key=lambda x: len(x))
+            ty = [t+[t[-1]]*(max_len-len(t)) for t in ty]
+
+            ty = np.array(ty)
+            y_mean = np.mean(ty, 0)
+            y_err = np.std(ty, 0)
+
+            root_name = root_dir.strip('/').split('/')[-1]
+            if args.labels is not None:
+                root_name = args.labels[m_idx]
+
+            plt.plot(tx, y_mean, label=root_name, color=color_defaults[m_idx])
+            plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx])
+
+    for m_idx, root_dir in enumerate(args.txt_dir[1:]):
+
+        # look for all the possible sub log dirs
+        pths = glob.glob(root_dir+'/*.txt')
+        curves = []
+        names = []
+        for pth in pths:
+            tx, ty = load_from_txt(pth)
+            if tx is not None:
+                curves.append((tx, ty))
+                names.append(root.strip('/').split('/')[-1])
+                xlim = max(xlim, max(tx))
+
         else:
             # show average curve + std
             tx, ty = zip(*curves)
