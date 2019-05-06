@@ -1,9 +1,11 @@
 import os
 import numpy as np
 import torch
+import torch.nn as nn
 import warnings
 import matplotlib.pyplot as plt
 import cv2
+from PIL import Image
 
 
 # find masks of adjacently different entries
@@ -167,15 +169,19 @@ def step2d_fn(x, y, dist):
 
 
 # convert from focus to frame intensity in [0.0, 1.0]
-def focus2attn(focus, input_shape, d=0.04, fn=gaussian_pdf):
+def focus2attn(focus, input_shape, d=0.02, fn=gaussian_pdf):
     attn = np.zeros((focus.shape[0], 1) + input_shape)
     for i, f in enumerate(focus):
         xs = np.linspace(0, 1, input_shape[0], endpoint=False) - f[0]
         ys = np.linspace(0, 1, input_shape[1], endpoint=False) - f[1]
         attn[i, ...] = fn(xs[:, None], ys[None, :], d)
-        # attn[i, ...] = gaussian_pdf(xs[:, None], ys[None, :], d, False)
-        # attn[i, ...] = step2d_fn(xs[:, None], ys[None, :], d)
     return attn # / np.max(attn, axis=0)
+
+
+# torch softmax
+def nn_logsoftmax(img):
+    img_size = img.size()
+    return nn.LogSoftmax()(img.view(img_size[0], -1)).view(*img_size)
 
 
 """
@@ -280,3 +286,25 @@ Image-Focus Augmentation Selection
 # pick first element in list
 def pick_first(x):
     return x[0]
+
+
+# save image
+bg = np.array(Image.open("frame_mean.png"))
+bg = 255.0 * bg[:, :, None] * np.ones(4)[None, None, :] / bg.max()
+bg[:, :, 3] = 255.0
+# bg = 255.0 * bg / bg.max()
+bg_p = 0.3
+def imsave(save_path, img):
+    # import matplotlib.pyplot as plt
+    # img =  plt.cm.get_cmap('inferno')(img)
+    rescaled = (255.0 / img.max() * (img - img.min()))
+    # rescaled[:, :, 3] = 255.0
+    # rescaled = (1.0 - bg_p) * rescaled + bg_p * bg
+    im = Image.fromarray(rescaled.astype(np.uint8))
+    im.save(save_path)
+
+
+# save image of skew counting
+def count_imsave(save_path, cnt, cm=np.ones(3)):
+    cnt = np.sqrt(1.0 - (1 - cnt / np.max(cnt))**2)
+    imsave(save_path, cnt[:, :, None] * cm[None, None, :])

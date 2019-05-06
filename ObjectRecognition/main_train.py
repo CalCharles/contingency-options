@@ -179,7 +179,8 @@ if __name__ == '__main__':
             net_params=pmodel_net_params,
         )
         pmodel.set_parameters(pmodel_params)
-        model.add_model('premise', pmodel, [])
+        # model.add_model('premise', pmodel, [])
+        model.add_model('premise', pmodel, [], augment_fn=util.remove_mean_batch)
         # model.add_model('premise', pmodel, [],
         #                 augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
         model.add_model('train', train_model, ['premise'])

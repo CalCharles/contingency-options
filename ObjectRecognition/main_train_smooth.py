@@ -16,12 +16,13 @@ import ObjectRecognition.util as util
 
 
 if __name__ == '__main__':
-    net_path = 'ObjectRecognition/net_params/attn_base.json'
-    model_path = 'results/cmaes_soln/focus_self/ball_bin_long_smooth.pth'
+    net_path = 'ObjectRecognition/net_params/attn_softmax.json'
+    model_path = 'results/cmaes_soln/focus_self/ball_bin_long_smooth_softmax.pth'
     # model_path = 'results/cmaes_soln/focus_atari_breakout/42101_22_smooth.pth'
     image_shape = (84, 84)
-    n_state_used = 40
+    n_state_used = 100
     is_train = True
+    is_preview = False
 
     # get dataset
     n_state = 10000
@@ -71,7 +72,8 @@ if __name__ == '__main__':
     )
     prev_model_2.set_parameters(load_param(prev_weight_path_2))
     prev_model = ModelCollectionDAG()
-    prev_model.add_model('model_1', prev_model_1, [], augment_fn=util.remove_mean)
+    prev_model.add_model('model_1', prev_model_1, [], 
+                         augment_fn=util.remove_mean_batch)
     prev_model.add_model('model_2', prev_model_2, ['model_1'])
     def prev_forward(xs):
         return prev_model.forward(xs, ret_numpy=True)['model_2']
@@ -88,7 +90,7 @@ if __name__ == '__main__':
         focus,
         image_shape,
         fn=partial(util.gaussian_pdf, normalized=False))
-    if is_train:
+    if is_train and is_preview:
         NC = 20
         for i in range(0, n_state_used, NC):
             fig, axes = plt.subplots(ncols=NC, nrows=2, figsize=(NC, 2))

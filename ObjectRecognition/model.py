@@ -492,7 +492,7 @@ class ModelAttentionCNN(ModelObject):
             focus,
             self.input_shape,
             fn=partial(util.gaussian_pdf, normalized=False))
-        focus_attn = 10 * focus_attn - 1  # rescale
+        # focus_attn = 10 * focus_attn - 1  # rescale
         focus_attn = torch.from_numpy(focus_attn).float()
 
         # train
@@ -500,8 +500,9 @@ class ModelAttentionCNN(ModelObject):
         optimizer = optim.Adam(self.parameters(), lr=lr)
         for t in range(n_iter):
             output = self(frames)
-            loss = (output - focus_attn).pow(2).mean() \
-                   + (lda_1 + 1) * output.abs().mean()
+            # loss = (output - focus_attn).pow(2).mean() \
+            #        + (lda_1 + 1) * output.abs().mean()
+            loss = -(util.nn_logsoftmax(output) * focus_attn).mean()
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

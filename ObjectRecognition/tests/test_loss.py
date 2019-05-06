@@ -36,8 +36,12 @@ def load_model(model_path, net_params_path, pmodel=None, *args, **kwargs):
     model.set_trainable('test_model')
     return model
 
+# flags
+is_plot_focus = False
+
+
 # game instance
-n_state = 1000
+n_state = 2000
 GAME_NAME = 'self'  # 'self', 'self-b', 'atari'
 if GAME_NAME == 'self':
     game = DatasetSelfBreakout(
@@ -71,10 +75,10 @@ dmiloss = SaliencyLoss(
     c_fn_2=partial(util.hinged_mean_square_deviation, 
                    alpha_d=0.3),  # TODO: parameterize this
     frame_dev_coeff= 0.0,
-    focus_dev_coeff= 20.0,
+    focus_dev_coeff= 0.0,
     frame_var_coeff= 0.0,
-    belief_dev_coeff= 0.0,
-    nb_size= (10, 10),
+    belief_dev_coeff= 1.0,
+    nb_size= (5, 5),
     verbose=True,
 )
 
@@ -161,7 +165,7 @@ fix_jump_focus['__train__'] = np.zeros(fix_jump_focus['__train__'].shape)
 fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]] = paddle_model_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]]
 
 # plot tracking paddle
-if False:
+if is_plot_focus:
     L, R = 20, 30
     plot_focus(game, range(L, R), ideal_paddle['__train__'][L:R])
     plot_focus(game, range(L, R), ideal_ball['__train__'][L:R])

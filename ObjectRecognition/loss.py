@@ -79,7 +79,7 @@ class SaliencyLoss(FocusLoss):
         return  self.frame_dev_coeff*frame_dev \
             + self.focus_dev_coeff*focus_dev \
             - self.frame_var_coeff*frame_var \
-            - self.belief_dev_coeff*belief_dev
+            + self.belief_dev_coeff*belief_dev
 
 
     # feature deviation from consecutive elements
@@ -124,14 +124,27 @@ class SaliencyLoss(FocusLoss):
         assert pre_frames.shape[0] == n_frames
         assert post_frames.shape[0] == n_frames
 
-        focus_diff = np.sum((focus[1:] - focus[:-1])**2, axis=1)
+        focus_diff = np.sum((focus[1:] - focus[:-1])**2, axis=1)**0.5
         pre_frame_diff = np.sum(
             (frames[1:] - pre_frames).reshape(n_frames, -1)**2,
             axis=1)
         post_frame_diff = np.sum(
             (frames[:-1] - post_frames).reshape(n_frames, -1)**2,
             axis=1)
-        return np.mean(focus_diff * pre_frame_diff * post_frame_diff)
+
+        # TODO: remove
+        # import seaborn as sns; import matplotlib.pyplot as plt
+        # try:
+        #     fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 10)); axes = axes.flatten()
+        #     sns.distplot(focus_diff * pre_frame_diff * post_frame_diff, rug=True, ax=axes[0]); axes[0].set_title('focus * pre * post')
+        #     sns.distplot(focus_diff * (pre_frame_diff + post_frame_diff), rug=True, ax=axes[1]); axes[1].set_title('focus * (pre + post)')
+        #     sns.distplot(focus_diff + pre_frame_diff + post_frame_diff, rug=True, ax=axes[2]); axes[2].set_title('focus + pre + post')
+        #     sns.distplot(pre_frame_diff * post_frame_diff, rug=True, ax=axes[3]); axes[3].set_title('pre * post')
+        #     plt.show()
+        # except:
+        #     plt.clf()
+
+        return np.std(focus_diff * (pre_frame_diff + post_frame_diff))
 
 
     def __str__(self, prefix=''):
@@ -251,28 +264,32 @@ class PremiseMICPLoss(FocusChangePointLoss):
                 np.sum(prox_mask), np.sum(match_mask), np.sum(diffs_mask)))
 
         # probability of proximal conditioned on changepoint
-        frame_shape = self.frame_source.get_shape()[-2:]
-        frame_shape = (frame_shape[0] // 8, frame_shape[1] // 8)
+        K = 4
+        frame_shape_old = self.frame_source.get_shape()[-2:]
+        frame_shape = (frame_shape_old[0] // K, frame_shape_old[1] // K)
         is_object_cp = set(object_cp)
-        tp, fp, fn, tn = 1e-10, 1e-10, 1e-10, 1e-10
+        # tp, fp, fn, tn = 1e-10, 1e-10, 1e-10, 1e-10
         cp_cnt = np.zeros(frame_shape)
         prox_cnt = np.zeros(frame_shape)
         cp_prox_cnt = np.zeros(frame_shape)
         total_cnt = np.zeros(frame_shape)
+        last_obj_x = None
         for i, obj_fx in enumerate(object_focus):
             obj_x = (obj_fx * frame_shape).astype(int)
             total_cnt[obj_x[0], obj_x[1]] += 1
             if prox_mask[i]:
-                prox_cnt[obj_x[0], obj_x[1]] += 1
-                if i in is_object_cp:
-                    tp += 1
-                else:
-                    fp += 1
-            else:
-                if i in is_object_cp:
-                    fn += 1
-                else:
-                    tn += 1
+                if i == 0 or not prox_mask[i-1] or any(last_obj_x != obj_x):
+                    prox_cnt[obj_x[0], obj_x[1]] += 1
+                    last_obj_x = obj_x
+            #     if i in is_object_cp:
+            #         tp += 1
+            #     else:
+            #         fp += 1
+            # else:
+            #     if i in is_object_cp:
+            #         fn += 1
+            #     else:
+            #         tn += 1
         for cpi in object_cp:
             obj_x = (object_focus[cpi] * frame_shape).astype(int)
             premise_x = (premise_focus[cpi] * frame_shape).astype(int)
@@ -285,11 +302,20 @@ class PremiseMICPLoss(FocusChangePointLoss):
         cndcp_score = np.mean(2 * cp_prox_cnt[cnt_valid]
                               / (cp_cnt[cnt_valid] + prox_cnt[cnt_valid])) \
                               if np.sum(cnt_valid) > 0.0 else 0.0
+        # cnt_valid = prox_cnt > 0.0
+        # cndcp_score = np.mean(cp_prox_cnt[cnt_valid]
+        #                       / prox_cnt[cnt_valid]) \
+        #                       if np.sum(cnt_valid) > 0.0 else 0.0
         # util.confuse_metrics(cp_prox_cnt, prox_cnt-cp_prox_cnt, 
         #                      cp_cnt-cp_prox_cnt, none_cnt)
         
         # print('tp', int(tp), 'fp', int(fp), 'fn', int(fn), 'tn', int(tn))
         # util.confuse_metrics(tp, fp, fn, tn)
+
+        # import cv2
+        # util.count_imsave('tp.png', cv2.resize(cp_prox_cnt, dsize=frame_shape_old, interpolation=cv2.INTER_NEAREST), cm=np.array([0.3, 1.0, 0.3]))
+        # util.count_imsave('fp.png', cv2.resize(prox_cnt - cp_prox_cnt, dsize=frame_shape_old, interpolation=cv2.INTER_NEAREST), cm=np.array([1.0, 0.3, 0.3]))
+        # util.count_imsave('fn.png', cv2.resize(cp_cnt - cp_prox_cnt, dsize=frame_shape_old, interpolation=cv2.INTER_NEAREST), cm=np.array([0.3, 0.3, 1.0]))
 
         return np.sum(match_mask)/n_focus, \
                np.sum(diffs_mask)/n_focus, \

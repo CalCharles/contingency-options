@@ -13,7 +13,6 @@ import torch
 import matplotlib.pyplot as plt
 import cma
 from functools import partial
-from scipy.misc import imsave
 
 from arguments import get_args
 
@@ -94,7 +93,7 @@ def save_imgs(imgs, save_path):
     for i, img in enumerate(imgs):
         file_name = 'intensity_%d.png'%(i)
         file_path = os.path.join(save_subpath, file_name)
-        imsave(file_path, util.feature_normalize(img[0]))
+        util.imsave(file_path, util.feature_normalize(img[0]))
     print('focus intensity saved under', save_subpath)
 
 
@@ -109,7 +108,7 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
         # focused neighbor image
         file_name = 'focus_img_%d.png'%(i)
         file_path = os.path.join(save_path, file_name)
-        imsave(file_path, img)
+        util.imsave(file_path, img)
     print('saved under', save_path)
 
     pos_cnt = np.zeros(dataset.get_shape()[-2:])
@@ -121,39 +120,42 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
         # marker
         file_name = 'marker_%d.png'%(i)
         marker_file_path = os.path.join(save_subpath, file_name)
-        marker_pos = (all_focus[i] * dataset.get_shape()[2:]).astype(int)
+        marker_pos = np.around(all_focus[i] * dataset.get_shape()[2:]).astype(int)
         img[0, marker_pos[0], :] = 1
         img[0, :, marker_pos[1]] = 1
         if cp_mask[i]:
             img = 1 - img
         pos_cnt[marker_pos[0], marker_pos[1]] += 1
-        imsave(marker_file_path, img[0])
+        util.imsave(marker_file_path, img[0])
     print('focus by marker saved under', save_subpath)
 
     if np.sum(pos_cnt) > 0:
-        pos_cnt = np.sqrt(1.0 - (pos_cnt / np.max(pos_cnt) - 1)**2)
         pos_cnt_file_path = os.path.join(save_path, 'counter_pos.png')
-        imsave(pos_cnt_file_path, pos_cnt)
+        util.count_imsave(pos_cnt_file_path, pos_cnt)
         print('position count saved at', pos_cnt_file_path)
 
 
 def report_model(save_path, dataset, model, prefix, plot_flags, cpd):
     focus = model.forward_all(dataset, batch_size=400, 
                               ret_extra=plot_flags['plot_intensity'])
+
     if plot_flags['plot_intensity']:
         save_imgs(focus[1]['__train__'], save_path)
-        focus = focus[0]['__train__']
+        focus = focus[0]
     else:
-        focus = focus['__train__']
+        focus = focus
+
+    if plot_flags['plot_loss']:
+        print('loss eval:', plot_flags['plot_loss'].forward(focus))
 
     if plot_flags['plot_focus']:
         # compute changepoints if needed
         changepoints = []
         if plot_flags['plot_cp']:
-            _, changepoints = cpd.generate_changepoints(focus)
+            _, changepoints = cpd.generate_changepoints(focus['__train__'])
 
         # plot and save into directories
-        save_focus_img(dataset, focus, save_path, changepoints)
+        save_focus_img(dataset, focus['__train__'], save_path, changepoints)
 
 if __name__ == '__main__':
     import argparse
@@ -175,6 +177,8 @@ if __name__ == '__main__':
                         help='indicate changepoint frames (with --plot-focus)')
     parser.add_argument('--plot-intensity', action='store_true', default=False,
                         help='plot focus intensity (output before argmax)')
+    parser.add_argument('--plot-loss', action='store_true', default=False,
+                        help='evaluate and plot loss function')
     add_args.add_changepoint_argument(parser)
     add_args.add_dataset_argument(parser)
     add_args.add_model_argument(parser)
@@ -188,6 +192,7 @@ if __name__ == '__main__':
         'plot_focus': args.plot_focus,
         'plot_cp': args.plot_cp,
         'plot_intensity': args.plot_intensity,
+        'plot_loss': args.plot_loss,
     }
 
     # CHAMP parameters
@@ -284,6 +289,25 @@ if __name__ == '__main__':
         model.add_model('train', r_model, [])
     model.set_trainable('train')
     print(model)
+
+    """
+    Load a loss
+    """
+    if plot_flags['plot_loss']:
+        premise_micploss = PremiseMICPLoss(
+            dataset,
+            'premise',
+            mi_match_coeff= 0.0,
+            mi_diffs_coeff= 0.0,
+            mi_valid_coeff= 0.0,
+            mi_cndcp_coeff= 1.0,
+            prox_dist= 0.090,
+            verbose=True,
+        )
+        micploss = CollectionMICPLoss(premise_micploss)
+        loss = CombinedLoss(micploss)
+        print(loss)
+        plot_flags['plot_loss'] = loss
 
     """
     Do the report
