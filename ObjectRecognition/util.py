@@ -321,3 +321,10 @@ def imsave(save_path, img):
 def count_imsave(save_path, cnt, cm=np.ones(3)):
     cnt = np.sqrt(1.0 - (1 - cnt / np.max(cnt))**2)
     imsave(save_path, cnt[:, :, None] * cm[None, None, :])
+
+
+# binarize frames
+def binarize(frames, binarize):
+    frames[frames < binarize] = 0.0
+    frames[frames >= binarize] = 1.0
+    return frames

@@ -68,10 +68,13 @@ def load_param(param_path, ext=None):
 
 class ModelObject(nn.Module):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super(ModelObject, self).__init__()
         self.use_prior = False
         self.parameter_count = -1
+
+        # preprocessing
+        self.binarize = kwargs.get('binarize', None)
 
 
     # set parameter corresponding to given param type
@@ -120,7 +123,7 @@ class ModelObject(nn.Module):
             prev_out = None
             for i in range(game_env.n_state):
                 frames = game_env.get_frame(i, i+1)  # batch format
-                frames = torch.from_numpy(frames).float()
+                frames = self.preprocess(frames)
                 forward_out = self.forward(frames,
                                         prev_out=prev_out, 
                                         ret_numpy=True,
@@ -135,7 +138,7 @@ class ModelObject(nn.Module):
             for l in range(0, game_env.n_state, batch_size):
                 r = min(l + batch_size, game_env.n_state)
                 frames = game_env.get_frame(l, r)
-                frames = torch.from_numpy(frames).float()
+                frames = self.preprocess(frames)
                 forward_out = self.forward(frames,
                                         ret_numpy=True,
                                         ret_extra=ret_extra)
@@ -148,6 +151,15 @@ class ModelObject(nn.Module):
         if ret_extra:
             return outputs, extra
         return outputs
+
+
+    # preprocess input
+    def preprocess(self, frames):
+        if self.binarize:
+            frames = util.binarize(frames, self.binarize)
+        if isinstance(frames, np.ndarray):
+            frames = torch.from_numpy(frames).float()
+        return frames
 
 
 """
@@ -217,7 +229,7 @@ def prior_filter(prevs, shape):
 
 class ModelFocusCNN(ModelObject, ModelFocusInterface):
     def __init__(self, image_shape, net_params, *args, **kwargs):
-        super(ModelFocusCNN, self).__init__()
+        super(ModelFocusCNN, self).__init__(*args, **kwargs)
 
         # interface parameters
         if len(image_shape) == 2:
@@ -265,7 +277,7 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
             out = layer(out).detach()
         if prev_out is not None:  # apply prior filter if specified
             pfilter = prior_filter(prev_out, out.size())
-            pfilter = torch.from_numpy(pfilter).float()
+            pfilter = self.preprocess(pfilter)
             out = torch.mul(out, pfilter)
         focus_out = self.argmax_xy(out)
 
@@ -323,7 +335,7 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
 # Boosting from multiple neuron network based on change points
 class ModelFocusBoost(ModelObject, ModelFocusInterface):
     def __init__(self, cp_detector, *models, **kwargs):
-        super(ModelFocusBoost, self).__init__()
+        super(ModelFocusBoost, self).__init__(*args, **kwargs)
 
         # save models in sequential hierarchy
         self.models = models
@@ -420,7 +432,7 @@ Attention models: given a image, return a same-size attention intensity
 
 class ModelAttentionCNN(ModelObject):
     def __init__(self, image_shape, net_params):
-        super(ModelAttentionCNN, self).__init__()
+        super(ModelAttentionCNN, self).__init__(*args, **kwargs)
 
         # interface parameters
         if len(image_shape) == 2:
@@ -621,6 +633,7 @@ class ModelCollectionDAG():
                 cur_img = self.augment_combine(prev_img)
 
             # forward the model
+            cur_img = cur_model.preprocess(cur_img)
             if ret_extra:
                 outs[model_id], extras[model_id] = cur_model.forward(cur_img,
                     ret_numpy=ret_numpy,
