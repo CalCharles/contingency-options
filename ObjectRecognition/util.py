@@ -204,16 +204,21 @@ def remove_mean(imgs, focus, nb_size=(4, 9)):
     # get neighborhoods
 # get mean of neighborhood around focus
 def image_focus_mean(imgs, focus, nb_size):
+    all_mean = np.mean(imgs, axis=0).reshape(imgs.shape[-2:])
     nb_size_2 = (nb_size[0]*2+1, nb_size[1]*2+1)
     neighbors = np.zeros((focus.shape[0],) + nb_size_2)
     pad_size = ((nb_size[0], nb_size[0]), (nb_size[1], nb_size[1]))
     for i, f in enumerate(focus):
-        pad_frame = np.pad(imgs[i][0], pad_size, 'constant')
+        pad_frame = np.pad(imgs[i][0] - all_mean, pad_size, 'constant')
         f_x, f_y = f[0]+nb_size[0], f[1]+nb_size[1]
         neighbors[i, :] = pad_frame[f_x-nb_size[0]:f_x+nb_size[0]+1,
                                     f_y-nb_size[1]:f_y+nb_size[1]+1]
-    # import matplotlib.pyplot as plt; plt.imshow(np.mean(neighbors, axis=0)); plt.show()
-    return np.mean(neighbors, axis=0)
+    focus_mean = np.mean(neighbors, axis=0)
+
+    EPS = 0.01
+    focus_mean[focus_mean <= EPS] = 0.0
+    focus_mean[focus_mean > EPS] = 1.0
+    return focus_mean
 
 
 # subtract image from image batch
