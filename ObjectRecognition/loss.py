@@ -278,9 +278,9 @@ class PremiseMICPLoss(FocusChangePointLoss):
             obj_x = (obj_fx * frame_shape).astype(int)
             total_cnt[obj_x[0], obj_x[1]] += 1
             if prox_mask[i]:
-                if i == 0 or not prox_mask[i-1] or any(last_obj_x != obj_x):
-                    prox_cnt[obj_x[0], obj_x[1]] += 1
-                    last_obj_x = obj_x
+                # if i == 0 or not prox_mask[i-1] or any(last_obj_x != obj_x):
+                #     last_obj_x = obj_x
+                prox_cnt[obj_x[0], obj_x[1]] += 1
             #     if i in is_object_cp:
             #         tp += 1
             #     else:
@@ -297,11 +297,13 @@ class PremiseMICPLoss(FocusChangePointLoss):
             if prox_mask[cpi]:
                 cp_prox_cnt[obj_x[0], obj_x[1]] += 1
         none_cnt = total_cnt - cp_cnt - prox_cnt + cp_prox_cnt
-        cnt_valid = np.logical_and(cp_prox_cnt > 0.0, 
-                                   prox_cnt - cp_prox_cnt > 0.0)
+        # cnt_valid = np.logical_and(cp_prox_cnt > 0.0, 
+        #                            prox_cnt - cp_prox_cnt > 0.0)
+        cnt_valid = cp_cnt + prox_cnt > 0.0
         cndcp_score = np.mean(2 * cp_prox_cnt[cnt_valid]
                               / (cp_cnt[cnt_valid] + prox_cnt[cnt_valid])) \
                               if np.sum(cnt_valid) > 0.0 else 0.0
+        logger.info('cnt_valid= %g'%(np.sum(cnt_valid)))
         # cnt_valid = prox_cnt > 0.0
         # cndcp_score = np.mean(cp_prox_cnt[cnt_valid]
         #                       / prox_cnt[cnt_valid]) \
@@ -349,7 +351,7 @@ class PremiseMICPLoss(FocusChangePointLoss):
 # MICP with multiple premises
 class CollectionMICPLoss(FocusLoss):
 
-    def __init__(self, *micp_losses, **kwargs):
+    def __init__(self, micp_losses, **kwargs):
         self.micp_losses = list(micp_losses)
         self.agg_fn = kwargs.get('agg_fn', sum)
         self.cp_detector = kwargs.get('cp_detector', LinearCPD(np.pi/4))
@@ -392,29 +394,31 @@ class AttentionPremiseMICPLoss:
     def __init__(self, frame_source, premise, *args, **kwargs):
         self.frame_source = frame_source
         self.premise = premise  # produce focus
-        self.batch_size = kwargs.get('batch_size', 100)
         self.prox_dist = kwargs.get('prox_dist', 0.1)
         self.attn_t = kwargs.get('attn_t', 0.5)  # threshold for being object
 
         self.mi_match_coeff = kwargs.get('mi_match_coeff', 1.0)
         self.mi_diffs_coeff = kwargs.get('mi_diffs_coeff', 1.0)
-        self.temp_loss_coeff = kwargs.get('temp_loss_coeff', 1.0)
+        self.active_attn_coeff = kwargs.get('active_attn_coeff', 1.0)
         self.verbose = kwargs.get('verbose', False)
 
 
     # evaluate focus loss
-    def forward(self, attn):
-        premise_focus = attn[self.premise]
+    def forward(self, focus, attn):
         train_attn = attn['__train__']
+        # train_attn = 1.0 / (1 + np.exp(-train_attn))
 
-        mi_match, mi_diffs = self._mutual_info(train_attn, premise_focus)
-        temp_loss = np.mean((train_attn > self.attn_t).astype(float))
+        mi_match, mi_diffs = 0.0, 0.0
+        if self.mi_match_coeff > 0 or self.mi_diffs_coeff > 0:
+            premise_focus = focus[self.premise]
+            mi_match, mi_diffs = self._mutual_info(train_attn, premise_focus)
+        active_attn = np.mean(train_attn)
         mi_loss = self.mi_diffs_coeff*mi_diffs \
                   - self.mi_match_coeff*mi_match \
-                  + self.temp_loss_coeff*temp_loss
+                  + self.active_attn_coeff*active_attn
         if self.verbose:
-            logger.info('match= %f, diffs= %f, temp= %f'%(
-                        mi_match, mi_diffs, temp_loss))
+            logger.info('match= %f, diffs= %f, active= %f'%(
+                        mi_match, mi_diffs, active_attn))
         return mi_loss
 
 
@@ -434,6 +438,20 @@ class AttentionPremiseMICPLoss:
         v_idx = prox_cnt > 0
         match_cnt = (object_cp_mask & prox_mask).sum(axis=1).sum(axis=1)
         diffs_cnt = (object_cp_mask ^ prox_mask).sum(axis=1).sum(axis=1)
+
+        # import matplotlib.pyplot as plt
+        # i = 0
+        # fig, axes = plt.subplots(nrows=2, ncols=10, figsize=(15, 3))
+        # for m, d in zip(object_cp_mask, prox_mask):
+        #     axes[0, i].imshow(m[0])
+        #     axes[0, i].axis('off')
+        #     axes[1, i].imshow(d[0])
+        #     axes[1, i].axis('off')
+        #     i = (i+1) % 10
+        #     if i == 0:
+        #         plt.show()
+        #         fig, axes = plt.subplots(nrows=2, ncols=10, figsize=(15, 3))
+
         return np.sum(match_cnt[v_idx] / prox_cnt[v_idx]) / n_focus, \
                np.sum(diffs_cnt[v_idx] / prox_cnt[v_idx]) / n_focus
 
@@ -449,24 +467,40 @@ class AttentionPremiseMICPLoss:
 
     # pretty print
     def __str__(self, prefix=''):
-        return prefix + 'AttentionMICPLoss'
+        return (prefix + 'AttentionPremiseMICPLoss:' + \
+            'prox_dist= %g, attn_t= %g, ' + \
+            'mi_match= %g, mi_diffs= %g, ' + \
+            'active_attn= %g')%(
+            self.prox_dist, self.attn_t,
+            self.mi_match_coeff, self.mi_diffs_coeff,
+            self.active_attn_coeff)
 
 
 # Aggregation of Loss
 class CombinedLoss(FocusLoss):
 
-    def __init__(self, *losses, **kwargs):
-        self.losses = losses
+    def __init__(self, focus_losses, attn_losses=[], **kwargs):
+        self.focus_losses = focus_losses
+        self.attn_losses = attn_losses
         self.agg_fn = kwargs.get('agg_fn', sum)
 
 
     # evaluate focus loss
     def forward(self, focus):
-        return self.agg_fn([loss.forward(focus) for loss in self.losses])
+        if isinstance(focus, tuple) and len(focus) == 2:
+            focus, attn = focus
+            return self.agg_fn(
+                [loss.forward(focus) for loss in self.focus_losses] +
+                [loss.forward(focus, attn) for loss in self.attn_losses])
+
+        # else...
+        return self.agg_fn([loss.forward(focus) for loss in self.focus_losses])
 
 
     # pretty print
     def __str__(self, prefix=''):
-        return prefix + 'CombinedLoss: agg_fn= %s\n%s'%(
-            self.agg_fn.__str__(),
-            '\n'.join(loss.__str__(prefix=prefix+'\t') for loss in self.losses))
+        fstrs = [loss.__str__(prefix=prefix+'\t') for loss in self.focus_losses]
+        astrs = [loss.__str__(prefix=prefix+'<a>\t')
+                 for loss in self.attn_losses]
+        return prefix + 'CombinedLoss: agg_fn= %s\n%s\n%s'%(
+            self.agg_fn.__str__(), '\n'.join(fstrs), '\n'.join(astrs))

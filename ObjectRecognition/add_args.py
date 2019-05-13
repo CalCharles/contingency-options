@@ -58,5 +58,5 @@ def add_loss_argument(parser):
                         metavar=('MATCH', 'DIFFS', 'VALID', 'CNDCP', 'PROX-DIST'),
                         help='coefficients for premise MICP loss')
     parser.add_argument('--attn_premise_micp', type=float, nargs=5, default=None,
-                        metavar=('MATCH', 'DIFFS', 'TEMP', 'PROX-DIST', 'ATTN-T'),
+                        metavar=('MATCH', 'DIFFS', 'ACTIVE', 'PROX-DIST', 'ATTN-T'),
                         help='coefficients for premise MICP loss')

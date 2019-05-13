@@ -169,7 +169,7 @@ if __name__ == '__main__':
         )
 
     # paddle model for premise MICP loss
-    if args.premise_micp or args.attn_premise_micp:
+    if args.premise_micp:
         pmodel_weight_path = args.premise_path
         pmodel_net_params_text = open(args.premise_net).read()
         pmodel_net_params = json.loads(pmodel_net_params_text)
@@ -197,7 +197,9 @@ if __name__ == '__main__':
             - mutual information with action
             - OR MI with premise
     """
-    seq_loss = []
+    focus_loss = []
+    attn_loss = []
+    ret_both = False
     if args.saliency:
         saliencyloss = SaliencyLoss(
             dataset,
@@ -210,7 +212,7 @@ if __name__ == '__main__':
             nb_size= (10, 10),  # TODO: auto-parameter?
             verbose=args.verbose,
         )
-        seq_loss.append(saliencyloss)
+        focus_loss.append(saliencyloss)
     if args.action_micp or args.premise_micp:
         seq_micploss = []
         if args.action_micp:
@@ -235,25 +237,26 @@ if __name__ == '__main__':
             )
             seq_micploss.append(premise_micploss)
         micploss = CollectionMICPLoss(
-            *seq_micploss,
+            seq_micploss,
             agg_fn=np.mean,
             cp_detector=cpd,
         )
-        seq_loss.append(micploss)
+        focus_loss.append(micploss)
     if args.attn_premise_micp:
         attn_premise_micploss = AttentionPremiseMICPLoss(
             dataset,
             'premise',
             mi_match_coeff=args.attn_premise_micp[0],  # ?
             mi_diffs_coeff=args.attn_premise_micp[1],  # ?
-            temp_loss_coeff=args.attn_premise_micp[2],  # ?
+            active_attn_coeff=args.attn_premise_micp[2],  # ?
             prox_dist=args.attn_premise_micp[3],  # ?
             attn_t=args.attn_premise_micp[4],  # ?
             batch_size=500,
             verbose=args.verbose,
         )
-        seq_loss.append(attn_premise_micploss)
-    loss = CombinedLoss(*seq_loss)
+        ret_both = True
+        attn_loss.append(attn_premise_micploss)
+    loss = CombinedLoss(focus_loss, attn_loss)
     logger.info(loss)
 
 
@@ -280,6 +283,7 @@ if __name__ == '__main__':
         model, 
         loss.forward, 
         cmaes_opt, 
+        ret_both=ret_both,
         verbose=args.verbose,
     )
     logger.info("result params: %s", str(result))

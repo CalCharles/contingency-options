@@ -305,7 +305,7 @@ if __name__ == '__main__':
             verbose=True,
         )
         micploss = CollectionMICPLoss(premise_micploss)
-        loss = CombinedLoss(micploss)
+        loss = CombinedLoss([micploss])
         print(loss)
         plot_flags['plot_loss'] = loss
 

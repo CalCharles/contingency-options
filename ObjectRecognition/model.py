@@ -262,7 +262,7 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
     def forward(self, img, prev_out=None, ret_numpy=True, ret_extra=False):
         out = img
         for layer in self.layers:
-            out = layer(out)
+            out = layer(out).detach()
         if prev_out is not None:  # apply prior filter if specified
             pfilter = prior_filter(prev_out, out.size())
             pfilter = torch.from_numpy(pfilter).float()
@@ -278,18 +278,20 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
 
     # pick max coordinate
     def argmax_xy(self, out):
-        batch_size = out.size(0)
-        row_size = out.size(2)
-        col_size = out.size(3)
+        out = out.detach().numpy()
+        batch_size = out.shape[0]
+        row_size = out.shape[2]
+        col_size = out.shape[3]
         
         if self.argmax_mode == 'first':
             # first argmax
-            mx, argmax = out.reshape((batch_size, -1)).max(1)
+            argmax = np.argmax(out.reshape((batch_size, -1)), axis=1)
         elif self.argmax_mode == 'rand':
             # random argmax for tie-breaking
             out = out.reshape((batch_size, -1))
+            out_max = np.max(out, axis=1)
             argmax = np.array([np.random.choice(np.flatnonzero(line == line_max)) 
-                               for line, line_max in zip(out, out.max(1)[0])])
+                               for line, line_max in zip(out, out_max)])
         else:
             raise ValueError('argmax_mode %s invalid'%(self.argmax_mode))
         
