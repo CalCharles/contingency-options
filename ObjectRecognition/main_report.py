@@ -282,8 +282,9 @@ if __name__ == '__main__':
         )
         pmodel.set_parameters(pmodel_params)
         # model.add_model('premise', pmodel, [])
-        model.add_model('premise', pmodel, [], 
-                        augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
+        model.add_model('premise', pmodel, [], augment_fn=util.remove_mean_batch)
+        # model.add_model('premise', pmodel, [], 
+        #                 augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
         model.add_model('train', r_model, ['premise'])
     else:
         model.add_model('train', r_model, [])

@@ -212,6 +212,7 @@ def image_focus_mean(imgs, focus, nb_size):
         f_x, f_y = f[0]+nb_size[0], f[1]+nb_size[1]
         neighbors[i, :] = pad_frame[f_x-nb_size[0]:f_x+nb_size[0]+1,
                                     f_y-nb_size[1]:f_y+nb_size[1]+1]
+    # import matplotlib.pyplot as plt; plt.imshow(np.mean(neighbors, axis=0)); plt.show()
     return np.mean(neighbors, axis=0)
 
 
@@ -289,17 +290,24 @@ def pick_first(x):
 
 
 # save image
-bg = np.array(Image.open("frame_mean.png"))
-bg = 255.0 * bg[:, :, None] * np.ones(4)[None, None, :] / bg.max()
-bg[:, :, 3] = 255.0
-# bg = 255.0 * bg / bg.max()
-bg_p = 0.3
-def imsave(save_path, img):
-    # import matplotlib.pyplot as plt
-    # img =  plt.cm.get_cmap('inferno')(img)
+def imsave_bg(save_path, img):
+    bg = np.array(Image.open("frame_mean.png"))
+    bg = 255.0 * bg[:, :, None] * np.ones(4)[None, None, :] / bg.max()
+    bg[:, :, 3] = 255.0
+    bg = 255.0 * bg / bg.max()
+    bg_p = 0.3
+    import matplotlib.pyplot as plt
+    img =  plt.cm.get_cmap('inferno')(img)
     rescaled = (255.0 / img.max() * (img - img.min()))
-    # rescaled[:, :, 3] = 255.0
-    # rescaled = (1.0 - bg_p) * rescaled + bg_p * bg
+    rescaled[:, :, 3] = 255.0
+    rescaled = (1.0 - bg_p) * rescaled + bg_p * bg
+    im = Image.fromarray(rescaled.astype(np.uint8))
+    im.save(save_path)
+
+
+# save image
+def imsave(save_path, img):
+    rescaled = (255.0 / img.max() * (img - img.min()))
     im = Image.fromarray(rescaled.astype(np.uint8))
     im.save(save_path)
 
