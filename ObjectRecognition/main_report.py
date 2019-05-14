@@ -287,7 +287,10 @@ if __name__ == '__main__':
                          augment_fn=partial(util.remove_mean_batch, nb_size=(8, 8)))
         # model.add_model('premise', pmodel, [], 
         #                 augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
-        model.add_model('train', r_model, ['premise'])
+
+        # model.add_model('train', r_model, ['premise'])
+        model.add_model('train', r_model, ['premise'],
+                        augment_pt=util.JumpFiltering(5, 0.2))
     else:
         model.add_model('train', r_model, [])
     model.set_trainable('train')

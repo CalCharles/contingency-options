@@ -184,13 +184,59 @@ def nn_logsoftmax(img):
     return nn.LogSoftmax()(img.view(img_size[0], -1)).view(*img_size)
 
 
+# pick first element in list
+def pick_first(x):
+    return x[0]
+
+
+# save image
+def imsave_bg(save_path, img):
+    bg = np.array(Image.open("frame_mean.png"))
+    bg = 255.0 * bg[:, :, None] * np.ones(4)[None, None, :] / bg.max()
+    bg[:, :, 3] = 255.0
+    bg = 255.0 * bg / bg.max()
+    bg_p = 0.3
+    import matplotlib.pyplot as plt
+    img =  plt.cm.get_cmap('inferno')(img)
+    rescaled = (255.0 / img.max() * (img - img.min()))
+    rescaled[:, :, 3] = 255.0
+    rescaled = (1.0 - bg_p) * rescaled + bg_p * bg
+    im = Image.fromarray(rescaled.astype(np.uint8))
+    im.save(save_path)
+
+
+# save image
+def imsave(save_path, img):
+    rescaled = (255.0 / img.max() * (img - img.min()))
+    im = Image.fromarray(rescaled.astype(np.uint8))
+    im.save(save_path)
+
+
+# save image of skew counting
+def count_imsave(save_path, cnt, cm=np.ones(3)):
+    cnt = np.sqrt(1.0 - (1 - cnt / np.max(cnt))**2)
+    imsave(save_path, cnt[:, :, None] * cm[None, None, :])
+
+
+# binarize frames
+def binarize(frames, binarize):
+    frames[frames < binarize] = 0.0
+    frames[frames >= binarize] = 1.0
+    return frames
+
+
 """
 Image-Focus Augmentation Function
 """
 
-# no-op function
+# no-op function on image
 def noop_x(imgs, focus):
     return imgs
+
+
+# no-op function on focus
+def noop_y(imgs, focus):
+    return focus
 
 
 # remove by mean
@@ -284,47 +330,89 @@ class RemoveMeanMemory:
         return self.remove_mean_memory(imgs, focus)
 
 
-
 """
-Image-Focus Augmentation Selection
+Jump protection
 """
 
-# pick first element in list
-def pick_first(x):
-    return x[0]
+# augmented focus position for jumping
+class JumpAugmentFocus:
+
+    def __init__(self, focus):
+        self.v = None
+        self.conf_focus = np.array(focus)
+        self.pred_focus = np.array(focus)
+        self.t = 1
 
 
-# save image
-def imsave_bg(save_path, img):
-    bg = np.array(Image.open("frame_mean.png"))
-    bg = 255.0 * bg[:, :, None] * np.ones(4)[None, None, :] / bg.max()
-    bg[:, :, 3] = 255.0
-    bg = 255.0 * bg / bg.max()
-    bg_p = 0.3
-    import matplotlib.pyplot as plt
-    img =  plt.cm.get_cmap('inferno')(img)
-    rescaled = (255.0 / img.max() * (img - img.min()))
-    rescaled[:, :, 3] = 255.0
-    rescaled = (1.0 - bg_p) * rescaled + bg_p * bg
-    im = Image.fromarray(rescaled.astype(np.uint8))
-    im.save(save_path)
+    # update with new focus
+    def update(self, next_focus):
+        self.v = np.array(next_focus) - self.conf_focus  # minus conf_focus or pred_focus?
+        self.conf_focus = np.array(next_focus)
+        self.pred_focus = np.array(next_focus)
+        self.t += 1
 
 
-# save image
-def imsave(save_path, img):
-    rescaled = (255.0 / img.max() * (img - img.min()))
-    im = Image.fromarray(rescaled.astype(np.uint8))
-    im.save(save_path)
+    # step with predicted velocity
+    def step(self):
+        self.pred_focus += self.v
+        self.t += 1
 
 
-# save image of skew counting
-def count_imsave(save_path, cnt, cm=np.ones(3)):
-    cnt = np.sqrt(1.0 - (1 - cnt / np.max(cnt))**2)
-    imsave(save_path, cnt[:, :, None] * cm[None, None, :])
+    # expected distance error
+    def dist(self, next_focus):
+        return np.sum((next_focus - self.conf_focus)**2)**0.5
 
 
-# binarize frames
-def binarize(frames, binarize):
-    frames[frames < binarize] = 0.0
-    frames[frames >= binarize] = 1.0
-    return frames
+# jump filtering based on current and expected positions
+class JumpFiltering:
+
+    def __init__(self, jump_count_t, jump_threshold):
+        self.jump_count_t = jump_count_t
+        self.jump_threshold = jump_threshold
+        self.cur_pos = None
+        self.jump_pos = None
+
+
+    # remove this batch with memorized mean and update it
+    def jump_filter(self, imgs, focus):
+        # if first time
+        if self.cur_pos is None:
+            self.cur_pos = JumpAugmentFocus(focus)
+            self.jump_pos = None
+            return focus
+
+        # if next time...
+        if self.cur_pos.dist(focus) <= self.jump_threshold:
+            # non-jump, it's okay
+            self.cur_pos.update(focus)
+            self.jump_pos = None
+        else:
+            # jump, update jump_pos
+            if self.jump_pos is None:
+                self.jump_pos = JumpAugmentFocus(focus)
+            else:
+                if self.jump_pos.dist(focus) <= self.jump_threshold:
+                    self.jump_pos.update(focus)
+                else:
+                    self.jump_pos = JumpAugmentFocus(focus)
+
+            # check if jumping is valid
+            if self.jump_pos.t >= self.jump_count_t:
+                self.cur_pos = self.jump_pos
+                self.jump_pos = None
+            else:
+                self.cur_pos.step()
+
+        return np.clip(self.cur_pos.pred_focus, 0.0, 83.0/84.0)  # TODO: eps?
+
+
+    # call routine
+    def __call__(self, imgs, focus):
+        assert 0 <= len(focus.shape) <= 2
+        if len(focus.shape) == 1:
+            new_focus = self.jump_filter(imgs, focus)
+        if len(focus.shape) == 2:
+            new_focus = np.zeros(focus.shape)
+            for i in range(focus.shape[0]):
+                new_focus[i] = self.jump_filter(imgs, focus[i])
+        return new_focus

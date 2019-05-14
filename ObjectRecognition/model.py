@@ -670,7 +670,8 @@ class ModelCollectionDAG():
 
     def __init__(self, *args, **kwargs):
         self.model_list = dict()  # model collection
-        self.model_augment = dict()  # operation after forward
+        self.model_augment_pt = dict()  # postprocessing after forward
+        self.model_augment_fn = dict()  # operation after forward
         self.model_dep = dict()  # dependency graph
         self.model_dir = dict()  # evaluation direction graph
         self.augment_combine = kwargs.get('augment_combine', util.pick_first)
@@ -681,14 +682,17 @@ class ModelCollectionDAG():
 
     # add model node to the graph
     # e.g. add_model('ball', ball_model, ['paddle'])
-    def add_model(self, model_id, model, dep, augment_fn=util.noop_x):
+    def add_model(self, model_id, model, dep, 
+                  augment_pt=util.noop_y,
+                  augment_fn=util.noop_x):
         if model_id in self.model_list.keys():
             raise ValueError('model %s already exists'%model_id)
         for d_model_id in dep:
             if d_model_id not in self.model_list.keys():
                 raise ValueError('dependency model "%s" unknown'%d_model_id)
         self.model_list[model_id] = model
-        self.model_augment[model_id] = augment_fn
+        self.model_augment_pt[model_id] = augment_pt
+        self.model_augment_fn[model_id] = augment_fn
         self.model_dep[model_id] = dep
         self.model_dir[model_id] = []
         for d_model_id in dep:
@@ -728,7 +732,8 @@ class ModelCollectionDAG():
         augment_img = dict()
         for model_id in toposort(self.model_dir):
             cur_model = self.model_list[model_id]
-            cur_augment = self.model_augment[model_id]
+            cur_augment_pt = self.model_augment_pt[model_id]
+            cur_augment_fn = self.model_augment_fn[model_id]
 
             # get input image
             prev_img = [augment_img[d_model_id] 
@@ -748,9 +753,10 @@ class ModelCollectionDAG():
                 outs[model_id] = cur_model.forward(cur_img,
                     ret_numpy=ret_numpy,
                     ret_extra=ret_extra)
+            outs[model_id] = cur_augment_pt(cur_img, outs[model_id])
 
             # update augmented image
-            augment_img[model_id] = cur_augment(cur_img, outs[model_id])
+            augment_img[model_id] = cur_augment_fn(cur_img, outs[model_id])
 
         if self.train_model_id:
             outs['__train__'] = outs[self.train_model_id]
