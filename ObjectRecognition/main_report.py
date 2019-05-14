@@ -216,7 +216,7 @@ if __name__ == '__main__':
             offset_fix=args.offset_fix,  # offset of episode number
         )  # 10.0, 0.1, 1.0, 0.0005
     elif args.game == 'atari':
-        actor = partial(RotatePolicy, hold_count=10)
+        actor = partial(RotatePolicy, hold_count=4)
         dataset = DatasetAtari(
             'BreakoutNoFrameskip-v4',  # atari game name
             actor,  # mock actor
