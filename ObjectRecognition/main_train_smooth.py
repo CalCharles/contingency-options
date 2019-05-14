@@ -17,17 +17,16 @@ import ObjectRecognition.util as util
 
 if __name__ == '__main__':
     net_path = 'ObjectRecognition/net_params/attn_softmax.json'
-    model_path = 'results/cmaes_soln/focus_self/ball_bin_long_smooth_softmax.pth'
-    # model_path = 'results/cmaes_soln/focus_atari_breakout/42101_22_smooth.pth'
+    model_path = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth.pth'
     image_shape = (84, 84)
     n_state_used = 100
     is_train = True
-    is_preview = False
+    is_preview = True
 
     # get dataset
     n_state = 10000
     offset_fix = 0
-    GAME_NAME = 'self-b'  # 'self', 'self-b', 'atari'
+    GAME_NAME = 'atari'  # 'self', 'self-b', 'atari'
     if GAME_NAME == 'self':
         dataset = DatasetSelfBreakout(
             'SelfBreakout/runs',
@@ -45,9 +44,12 @@ if __name__ == '__main__':
             offset_fix=offset_fix,
         )
     elif GAME_NAME == 'atari':
+        # actor = partial(RandomConsistentPolicy, change_prob=0.35)
+        actor = partial(RotatePolicy, hold_count=4)
         dataset = DatasetAtari(
             'BreakoutNoFrameskip-v4',
-            partial(RandomConsistentPolicy, change_prob=0.35),
+            actor,
+            binarize=0.1,
             n_state=n_state,
             save_path='results',
             normalized_coor=True,
@@ -55,16 +57,16 @@ if __name__ == '__main__':
         )
 
     # get ball model
-    prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_base.json'
-    prev_weight_path_1 = 'results/cmaes_soln/focus_self/paddle_bin_long_smooth_2.pth'
+    prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_softmax.json'
+    prev_weight_path_1 = 'results/cmaes_soln/focus_atari_breakout/paddle_bin_smooth.pth'
     prev_net_params_1 = json.loads(open(prev_net_params_path_1).read())
     prev_model_1 = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=prev_net_params_1,
     )
     prev_model_1.set_parameters(load_param(prev_weight_path_1))
-    prev_net_params_path_2 = 'ObjectRecognition/net_params/two_layer.json'
-    prev_weight_path_2 = 'results/cmaes_soln/focus_self/ball_bin_long.npy'
+    prev_net_params_path_2 = 'ObjectRecognition/net_params/two_layer_5_5_old.json'
+    prev_weight_path_2 = 'results/cmaes_soln/focus_atari_breakout/42531_2.npy'
     prev_net_params_2 = json.loads(open(prev_net_params_path_2).read())
     prev_model_2 = ModelFocusCNN(
         image_shape=(84, 84),
@@ -73,9 +75,10 @@ if __name__ == '__main__':
     prev_model_2.set_parameters(load_param(prev_weight_path_2))
     prev_model = ModelCollectionDAG()
     prev_model.add_model('model_1', prev_model_1, [], 
-                         augment_fn=util.remove_mean_batch)
+                         augment_fn=partial(util.remove_mean_batch, nb_size=(8, 8)))
     prev_model.add_model('model_2', prev_model_2, ['model_1'])
     def prev_forward(xs):
+        # return prev_model.forward(xs, ret_numpy=True)['model_1']
         return prev_model.forward(xs, ret_numpy=True)['model_2']
     print('smoothing:', prev_model)
 

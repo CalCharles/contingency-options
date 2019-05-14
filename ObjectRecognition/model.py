@@ -178,6 +178,7 @@ class ModelFocusInterface(nn.Module):
 
 
     # push input forward
+    @torch.no_grad()
     def forward(self, img, prev_out=None):
         raise NotImplementedError
 
@@ -271,6 +272,7 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
 
 
     # push input forward
+    @torch.no_grad()
     def forward(self, img, prev_out=None, ret_numpy=True, ret_extra=False):
         out = img
         for layer in self.layers:
@@ -346,6 +348,7 @@ class ModelFocusBoost(ModelObject, ModelFocusInterface):
 
 
     # push input forward
+    @torch.no_grad()
     def forward(self, imgs, batch_size=100):
         n_img = imgs.shape[0]
         outputs = np.zeros((n_img,) + self.output_size(), dtype=float)
@@ -431,7 +434,7 @@ Attention models: given a image, return a same-size attention intensity
 # TODO: refactor focus into attention
 
 class ModelAttentionCNN(ModelObject):
-    def __init__(self, image_shape, net_params):
+    def __init__(self, image_shape, net_params, *args, **kwargs):
         super(ModelAttentionCNN, self).__init__(*args, **kwargs)
 
         # interface parameters
@@ -616,6 +619,7 @@ class ModelCollectionDAG():
 
 
     # forward
+    @torch.no_grad()
     def forward(self, img, ret_numpy=False, ret_extra=False):
         outs = dict()
         extras = dict()

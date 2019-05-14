@@ -108,7 +108,7 @@ if __name__ == '__main__':
         )  # 10.0, 0.1, 1.0, 0.0005
     elif args.game == 'atari':
         # actor = partial(RandomConsistentPolicy, change_prob=0.35)
-        actor = partial(RotatePolicy, hold_count=5)
+        actor = partial(RotatePolicy, hold_count=4)
         dataset = DatasetAtari(
             'BreakoutNoFrameskip-v4',  # atari game name
             actor,  # mock actor
@@ -180,7 +180,8 @@ if __name__ == '__main__':
         )
         pmodel.set_parameters(pmodel_params)
         # model.add_model('premise', pmodel, [])
-        model.add_model('premise', pmodel, [], augment_fn=util.remove_mean_batch)
+        model.add_model('premise', pmodel, [], 
+                        augment_fn=partial(util.remove_mean_batch, nb_size=(8, 8)))
         # model.add_model('premise', pmodel, [],
         #                 augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
         model.add_model('train', train_model, ['premise'])
