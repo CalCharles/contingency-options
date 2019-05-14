@@ -334,6 +334,108 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
             self.net_params)
 
 
+# focus model using mean and variance
+class ModelFocusMeanVar(ModelObject, ModelFocusInterface):
+    def __init__(self, img_mean, img_var, *args, **kwargs):
+        super(ModelFocusMeanVar, self).__init__(*args, **kwargs)
+
+        # mean and variance
+        assert img_mean.shape == img_var.shape
+        assert len(img_mean.shape) == 3
+        self.img_mean = img_mean
+        self.img_var = img_var
+        self.match_shape = self.img_mean.shape
+        self.pad_shape = ((self.match_shape[-2]+1)//2, (self.match_shape[-1]+1)//2)
+
+        # extra...
+        self.argmax_mode = kwargs.get('argmax_mode', 'first')  # 'first', 'rand'
+
+
+    # push input forward
+    @torch.no_grad()
+    def forward(self, imgs, prev_out=None, ret_numpy=True, ret_extra=False):
+        match_field = np.zeros((imgs.shape[0],) + imgs.shape[-2:])
+        for i in range(imgs.shape[0]):  # batch
+            for j in range(imgs.shape[1]):  # channel
+                pad_frame = np.pad(imgs[i, j], self.pad_shape, 'constant')
+                for x in range(imgs.shape[2]):
+                    for y in range(imgs.shape[3]):
+                        match_field[i, x, y] += self.match(
+                            pad_frame[x:x+self.match_shape[-2],
+                                      y:y+self.match_shape[-1]]
+                        )
+
+        focus_out = self.argmax_xy(match_field)
+        focus_out = focus_out if ret_numpy \
+                    else torch.from_numpy(focus_out).float()
+        if ret_extra:
+            return focus_out, match_field
+        return focus_out
+
+
+    # matching function
+    def match(self, img):
+        return -((img - self.img_mean)**2 / self.img_var).sum(-1).sum(-1).sum(-1)
+
+
+    # pick max coordinate
+    def argmax_xy(self, out):
+        batch_size = out.shape[0]
+        row_size = out.shape[1]
+        col_size = out.shape[2]
+        
+        if self.argmax_mode == 'first':
+            # first argmax
+            argmax = np.argmax(out.reshape((batch_size, -1)), axis=1)
+        elif self.argmax_mode == 'rand':
+            # random argmax for tie-breaking
+            out = out.reshape((batch_size, -1))
+            out_max = np.max(out, axis=1)
+            argmax = np.array([np.random.choice(np.flatnonzero(line == line_max)) 
+                               for line, line_max in zip(out, out_max)])
+        else:
+            raise ValueError('argmax_mode %s invalid'%(self.argmax_mode))
+        
+        argmax %= row_size * col_size  # in case of multiple filters
+        argmax_coor = np.array([np.unravel_index(argmax_i, (row_size, col_size)) 
+                                for argmax_i in argmax], dtype=float)
+        argmax_coor = argmax_coor / np.array([row_size, col_size])
+        return argmax_coor
+
+
+    # train frmo focus model
+    @staticmethod
+    def from_focus_model(focus_model_forward, dataset, nb_size, batch_size=100):
+        n_channel = 1  # dataset.get_shape()[-3]  # TODO: properly do this
+        match_size = (n_channel, nb_size[0]*2+1, nb_size[1]*2+1)
+        img_stack = np.zeros((dataset.n_state,) + match_size)
+        cur_n = 0
+
+        for l in range(0, dataset.n_state, batch_size):
+            print(l)  # TODO: remove
+            r = min(l + batch_size, dataset.n_state)
+            frames = dataset.get_frame(l, r)
+            focus = focus_model_forward(frames)
+            neighbor = util.extract_neighbor(dataset, focus, np.arange(l, r),
+                                             nb_size=nb_size)
+            N = 10
+            import matplotlib.pyplot as plt
+            fig, axes = plt.subplots(ncols=N, figsize=(N*1.5, 1.5))
+            for ax, i in zip(axes, range(N)):
+                ax.imshow(neighbor[i])
+                ax.axis('off')
+            plt.show()
+            img_stack[l:r, 0] = neighbor  # properly channels
+
+        return ModelFocusMeanVar(np.mean(img_stack, axis=0),
+                                 np.var(img_stack, axis=0))
+
+
+    # pretty print
+    def __str__(self, prefix=''):
+        return prefix + 'FocusMeanVar:'
+
+
 # Boosting from multiple neuron network based on change points
 class ModelFocusBoost(ModelObject, ModelFocusInterface):
     def __init__(self, cp_detector, *models, **kwargs):
