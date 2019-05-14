@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from functools import partial
+from Models.models import pytorch_model
 
 from ObjectRecognition.dataset import Dataset
 import ObjectRecognition.util as util
@@ -284,13 +285,13 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
         focus_out = focus_out if ret_numpy \
                     else torch.from_numpy(focus_out).float()
         if ret_extra:
-            return focus_out, out.detach().numpy()
+            return focus_out, pytorch_model.unwrap(out)
         return focus_out
 
 
     # pick max coordinate
     def argmax_xy(self, out):
-        out = out.detach().numpy()
+        out = pytorch_model.unwrap(out)
         batch_size = out.shape[0]
         row_size = out.shape[2]
         col_size = out.shape[3]
@@ -475,7 +476,7 @@ class ModelAttentionCNN(ModelObject):
         out = img
         for layer in self.layers:
             out = layer(out)
-        return out if not ret_numpy else out.detach().numpy()
+        return out if not ret_numpy else pytorch_model.unwrap(out)
 
 
     # input size of this network
@@ -569,6 +570,7 @@ class ModelCollectionDAG():
         self.model_dep = dict()  # dependency graph
         self.model_dir = dict()  # evaluation direction graph
         self.augment_combine = kwargs.get('augment_combine', util.pick_first)
+        self.iscuda = False
 
         # model states
         self.train_model_id = None  # for set_parameters
@@ -589,9 +591,11 @@ class ModelCollectionDAG():
         for d_model_id in dep:
             self.model_dir[d_model_id].append(model_id)
 
-    # def cuda(self):
-    #     for key in self.model_list.keys():
-    #         self.model_list[key] = self.model_list[key].cuda() # TODO: write a cpu function
+    def cuda(self):
+        for key in self.model_list.keys():
+            self.model_list[key] = self.model_list[key].cuda() # TODO: write a cpu function
+        self.iscuda = True
+        return self
 
 
     # set trainable model, only supported one trainable model
@@ -633,7 +637,11 @@ class ModelCollectionDAG():
                 cur_img = self.augment_combine(prev_img)
 
             # forward the model
+            # print(cur_img)
             cur_img = cur_model.preprocess(cur_img)
+            # print(cur_img)
+            if self.iscuda and not cur_img.is_cuda:
+                cur_img = cur_img.cuda()
             if ret_extra:
                 outs[model_id], extras[model_id] = cur_model.forward(cur_img,
                     ret_numpy=ret_numpy,

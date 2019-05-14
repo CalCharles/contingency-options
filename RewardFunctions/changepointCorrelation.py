@@ -55,8 +55,10 @@ class ChangepointModels():
         for transform in self.transforms:
             data = transform.mode_statistics(models, changepoints, trajectory, saliency_trajectory, window=self.window)
             datas.append(data)
+        # for x,y in zip(*datas):
+        #     print(x,y)
         mode_assignments = self.mode_model.predict(datas)
-        # print(self.mode_model.mean())
+        print(self.mode_model.mean())
         # print("datas", mode_assignments, changepoints)
         mode_assignments = np.stack(mode_assignments, axis=0)
         assignments = self.determiner.collapse_assignments(mode_assignments)

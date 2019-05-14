@@ -102,7 +102,6 @@ class SegmentCorrelateAverageTransform(SegmentTransform):
         data = np.array([val for key,val in dat])
         changepoints.pop(-1)
         return data
-    
 
 class WindowTransform(InputTransformer):
     def __init__(self):

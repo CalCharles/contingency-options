@@ -54,6 +54,16 @@ class Ball(animateObject):
 		self.name = "Ball"
 		self.losses = 0
 		self.paddlehits = 0
+
+		# MODE 1
+		paddle_interact = {-2: np.array([-1, -1]), -1: np.array([-1, -1]), 0: np.array([-1, -1]), 1: np.array([-2, -1]),
+			2: np.array([-2, -1]), 3: np.array([-2, 1]), 4: np.array([-2, 1]), 5: np.array([-1, 1]), 6: np.array([-1, 1]),
+			7: np.array([-1, 1])}
+
+		# MODE 2
+		# paddle_interact = {-2: np.array([-1, -1]), -1: np.array([-1, -1]), 0: np.array([-1, -1]), 1: np.array([-2, -1]),
+		# 	2: np.array([-2, -1]), 3: np.array([-2, 1]), 4: np.array([-2, 1]), 5: np.array([-1, 1]), 6: np.array([-1, 1]),
+		# 	7: np.array([-1, 1])}
 		# self.nohit_delay = 0
 
 	def interact(self, other):

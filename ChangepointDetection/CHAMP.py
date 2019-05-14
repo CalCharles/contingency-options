@@ -293,6 +293,8 @@ class CHAMPDetector(ChangepointDetector):
             self.model_class = LinearDynamicalVelocityFitter
         elif champ_parameters[7] == 2:
             self.model_class = LinearDynamicalDisplacementFitter
+        elif champ_parameters[7] == 3:
+            self.model_class = LinearDisplacementFitter
         print(champ_parameters)
         self.params = CHAMP_parameters(champ_parameters[0], champ_parameters[1], champ_parameters[2], champ_parameters[3], champ_parameters[4], champ_parameters[5], champ_parameters[6]) # paddle parameters (also change sigma in DynamicsModels)
 
@@ -305,7 +307,7 @@ class CHAMPDetector(ChangepointDetector):
                 print(cpt)
                 print("model: \n", seg_model.A)
                 print("data: \n", seg_model.data)
-                print("predictions: \n", np.dot(seg_model.data, seg_model.A))
+                print("predictions: \n", seg_model.predictions)
                 print("diff: ", seg_model.diff)
                 print("log likelihood: ", seg_model.logLikelihood)
             print(changepoints)

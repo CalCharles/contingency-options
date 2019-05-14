@@ -1,11 +1,11 @@
 import numpy as np
-import os, cv2
+import os, cv2, time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import imageio as imio
-from Models.models import pytorch_model
+from Models.models import pytorch_model, models
 
 
 
@@ -47,23 +47,41 @@ class RawEnvironment():
 
 
 class ChainMDP(RawEnvironment):
-    def __init__(self, num_states):
+    def __init__(self, num_states, num_dims, terminal_state):
         super(ChainMDP, self).__init__()
-        self.minmax = (0,num_states)
+        self.minmax = (np.array([0 for i in range(num_dims)]),np.array([num_states for i in range(num_dims)]))
         self.num_states = num_states
-        self.initial_state = np.array([self.num_states//2])
+        self.initial_state = np.array([self.num_states//2 for i in range(num_dims)])
         self.current_state = self.initial_state
+        self.num_actions = num_dims * 2 + 1
+        self.num_dims = num_dims
+        self.terminal_state = terminal_state
+        self.reward = 0
 
     def step(self, action):
-        if action == 0 and self.current_state[0] > 0:
-            v = self.current_state[0] - 1
-            self.current_state = np.array([v])
-        elif action == 1:
+        action = int(pytorch_model.unwrap(action[0]))
+        # print("action", action)
+        if action == 0: # noop
             pass
-        elif action == 2 and self.current_state[0] < self.num_states-1:
-            v = self.current_state[0] + 1
-            self.current_state = np.array([v])
-        done = self.current_state[0] == self.num_states - 1
+        elif action % 2 == 1:
+            v = self.current_state[(action-1) // 2]
+            if v != 0:
+                ncs = self.current_state.copy()
+                ncs[(action-1) // 2] -= 1
+                self.current_state = ncs
+        elif action % 2 == 0:
+            v = self.current_state[(action-1) // 2]
+            if v != self.num_states - 1:
+                ncs = self.current_state.copy()
+                ncs[(action-1) // 2] += 1
+                self.current_state = ncs
+        done = False
+        if self.terminal_state:
+            done = True
+            for i in range(self.num_dims):
+                done = done and ((self.current_state[i] == self.num_states - 1) or (self.current_state[i] == 0))
+            if done:
+                self.current_state =self.initial_state
         if len(self.save_path) != 0:
             state_path = os.path.join(self.save_path, str(self.itr//2000))
             try:
@@ -80,8 +98,9 @@ class ChainMDP(RawEnvironment):
             object_dumps.write("chain:"+str(self.current_state[0]) + "\t\n")
             object_dumps.close()
         self.itr += 1
-        if self.itr % 20 == 0:
+        if self.itr % 100 == 0:
             self.current_state =self.initial_state
+            done = True
 
         # if done:
         #     self.current_state[0] = 0
@@ -134,8 +153,9 @@ class ProxyEnvironment():
         print(proxy_chain[0].getState())
         print(self.stateExtractor.get_state(proxy_chain[0].getState())[0].shape)
         self.state_shape = self.stateExtractor.get_state(proxy_chain[0].getState())[0].shape
-        self.extracted_state = pytorch_model.wrap(self.stateExtractor.get_state(proxy_chain[0].getState())[0], cuda=args.cuda)
-        self.resp = pytorch_model.wrap([0 for i in range(len(self.stateExtractor.fnames))], cuda=args.cuda)
+        fs, fr = self.stateExtractor.get_state(proxy_chain[0].getState())
+        self.extracted_state = pytorch_model.wrap(fs, cuda=args.cuda)
+        self.resp = pytorch_model.wrap(fr, cuda=args.cuda)
         self.resp_len = len(self.stateExtractor.fnames)
         self.insert_extracted()
         self.parameterized_option = args.parameterized_option
@@ -203,9 +223,9 @@ class ProxyEnvironment():
         self.models = models
 
     def duplicate(self, args):
-        if len(self.reward_fns) > len(self.models.models) or args.model_form == 'adjust':
-            self.reward_fns[0].parameter_minmax = None
-            print(self.name)
+        if len(self.reward_fns) > len(self.models.models) or args.model_form == 'adjust' or (args.model_form == 'population' and type(self.models.models[0]) != models['population']):
+            # self.reward_fns[0].parameter_minmax = None
+            print(self.name, self.reward_fns)
             self.models.duplicate(len(self.reward_fns), args, self.stateExtractor, self.action_size, self.reward_fns[0].parameter_minmax)
 
     def set_proxy_chain(self, proxy_chain):
@@ -355,6 +375,8 @@ class ProxyEnvironment():
         rewards = []
         # print(rollout.changepoint_queue.shape)
         # print(states)
+        # print(self.reward_fns)
+        # start=time.time()
         for reward_fn in self.reward_fns:
             rwd = reward_fn.compute_reward(states,actions,resps)
             if len(rwd) < length: #queue not yet filled enough
@@ -363,14 +385,14 @@ class ProxyEnvironment():
                 rwd = torch.cat([ext, rwd], dim = 0)
             # print(rwd.shape, length)
             rewards.append(rwd)
+        # print(time.time() - start)
         # print(torch.stack(rewards, dim=0)[:,-length:].shape)
         # print(states, rollout.extracted_state)
-        # print(length, torch.stack(rewards, dim=0).shape, torch.stack(rewards, dim=0)[:,-length:].shape)
-        # error
-        # print(rewards, rollout.lag_num, -length-rollout.lag_num)
-        # if rewards > 0:
-        #     error
+        # print(length, self.lag_num, self.changepoint_filled)
+        # print(states, rewards)
         self.current_rewards = torch.stack(rewards, dim=0)[:,self.changepoint_filled-length-self.lag_num:self.changepoint_filled-self.lag_num]
+        # print(torch.stack(rewards, dim=0).shape)
+        # print(self.current_rewards)
         # print("cp_queue", self.changepoint_queue[self.changepoint_filled-length-self.lag_num:self.changepoint_filled-self.lag_num])
         return self.current_rewards
 

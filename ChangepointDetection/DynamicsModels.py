@@ -237,4 +237,38 @@ class LinearDynamicalVelocityFitter(ModelFitter):
 
         self.params.diff = diff
         self.params.logLikelihood = term1 + term2 + term3
-        self.params.modelEvidence = self.params.logLikelihood + np.log(n)  # LL - 1/2 (2 ln n)
+        self.params.modelEvidence = self.params.logLikelihood - np.log(n)  # LL - 1/2 (2 ln n)
+
+class LinearDisplacementFitter(ModelFitter):
+    def __init__(self, sigma=.01):
+        self.params = LinearDynamicalParams(sigma=sigma) # LinearStateParams
+
+    def fitSegment(self, data, start, end):
+        '''
+        assume input data of the form: [Pos[0], Pos[1] ... Pos[N], Pos[N+1]]^T 
+        '''
+        if end == -1000: # -1000 is a magic number
+            end = len(data) - 2
+
+        data = np.squeeze(data)
+        X = data[start+1:end+1]
+        Xnext = data[start+2:end+2]
+        self.params.data = data[start+1:end+2]
+        self.params.datain = X
+        self.params.datapred = Xnext
+        
+        # print(Xinv_r)
+        self.params.A = np.mean(Xnext - X, axis=0)
+
+        predictions = data[start+1:end+1] + self.params.A
+        diff = np.sum(np.abs(self.params.datapred - predictions))
+        self.params.predictions = predictions
+        self.params.diff = diff
+        
+        n = end - start
+        term1 = (-n/2.0) * np.log(2.0*np.pi)
+        term2 = (-n/2.0) * np.log(self.params.sigma**2)
+        term3 = -(diff/(2*self.params.sigma**2))
+
+        self.params.logLikelihood = term1 + term2 + term3
+        self.params.modelEvidence = self.params.logLikelihood - np.log(n)  # LL - 1/2 (2 ln n)

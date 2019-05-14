@@ -1,4 +1,4 @@
-import os, collections, time, copy
+import os, collections, time, copy, cv2
 import numpy as np
 import torch
 import torch.nn as nn
@@ -21,7 +21,7 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
     if reward_classes is not None:
         proxy_environment.reward_fns = reward_classes
     args.changepoint_queue_len = max(args.changepoint_queue_len, args.num_iters)
-    proxy_environment.initialize(args, proxy_chain, proxy_environment.reward_fns, proxy_environment.stateExtractor, behavior_policy)
+    proxy_environment.initialize(args, proxy_chain, proxy_environment.reward_fns, state_class, behavior_policy)
     print(base_env.save_path)
     behavior_policy.initialize(args, num_actions)
     train_models = proxy_environment.models
@@ -56,6 +56,7 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
         train_models.option_index = i
         train_models.currentModel().test = True
         raw_states[train_models.currentName()] = []
+
         for j in range(args.num_iters):
             fcnt += 1
             raw_actions = []
@@ -69,6 +70,9 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
             action = behavior_policy.take_action(ap, qv)
             rollouts.insert(False, state, current_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), done, current_resp, action, cp_state[0], train_models.currentOptionParam(), train_models.option_index, None, None, action_probs, Q_vals, values)
             state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
+            cv2.imshow('frame',raw_state[0])
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
             raw_states[train_models.currentName()].append(raw_state)
             option_actions[train_models.currentName()][int(pytorch_model.unwrap(action.squeeze()))] += 1
             if done:
@@ -82,13 +86,12 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
         print("Episode Reward: ", ep_reward, " ", fcnt)
         rewards = proxy_environment.computeReward(args.num_iters)
         # print(rewards.shape)
-        print(rewards.sum())
-        rollouts.insert_rewards(rewards, total_duration)
+        # print(rewards.sum())
+        rollouts.insert_rewards(args, rewards)
         total_duration += j
-        rollouts.compute_returns(args, values)
-        rollouts.cpu()
-        save_rols = copy.copy(rollouts)
-        save_to_pickle(os.path.join(args.save_dir, "rollouts.pkl"), save_rols)
+        save_rols = copy.deepcopy(rollouts)
+        if len(args.save_dir) > 0:
+            save_to_pickle(os.path.join(args.save_dir, "rollouts.pkl"), save_rols)
 
-        reward_total = rollouts.rewards.sum(dim=1)[train_models.option_index] / args.num_iters
+        reward_total = rollouts.base_rollouts.rewards.sum(dim=1)[train_models.option_index] / args.num_iters
         print("Rewards for Policy:", reward_total)

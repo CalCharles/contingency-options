@@ -49,7 +49,7 @@ def get_states(args, true_environment, length_constraint=50000, raws = None, dum
     states, resps, raws, dumps = load_states(state_class.get_state, dataset_path, length_constraint = length_constraint, use_raw = use_raw, raws=raws, dumps=dumps)
     return states, resps, num_actions, state_class, environments, raws, dumps
 
-def get_option_actions(pth, train_edge, num_actions, weighting_lambda, length_constraint = 50000):
+def get_option_actions(pth, train_edge, num_actions, weighting_lambda, length_constraint = 50000, use_hot_actions = True):
     head, tail = get_edge(train_edge)
     action_file = open(os.path.join(pth, tail[0] + "_actions.txt"), 'r')
     actions = []
@@ -59,8 +59,9 @@ def get_option_actions(pth, train_edge, num_actions, weighting_lambda, length_co
         if len(actions) > length_constraint:
             actions.pop(0)
     action_file.close()
-    actions = hot_actions(actions, num_actions)
-    actions = smooth_weight(actions, weighting_lambda)
+    if use_hot_actions:
+        actions = hot_actions(actions, num_actions)
+        actions = smooth_weight(actions, weighting_lambda)
     return actions
 
 def get_option_rewards(dataset_path, reward_fns, actions, length_constraint=50000, raws= None, dumps = None):
@@ -71,11 +72,12 @@ def get_option_rewards(dataset_path, reward_fns, actions, length_constraint=5000
         rewards.append(reward.tolist())
     return rewards
 
-def generate_trace_training(actions, rewards, states, resps, num_steps):
+def generate_trace_training(actions, rewards, states, resps, num_steps, gamma=.99):
     trace_actions = [[] for i in range(len(rewards))]
     trace_states = [[] for i in range(len(rewards))]
     trace_resps = [[] for i in range(len(rewards))]
     trace_distance = [[] for i in range(len(rewards))]
+    trace_returns = [[] for i in range(len(rewards))]
     states = states.tolist()
     recording = [0 for _ in range(len(rewards))]
     for i in reversed(range(len(rewards[0]))):
@@ -84,15 +86,19 @@ def generate_trace_training(actions, rewards, states, resps, num_steps):
             if r == 1:
                 recording[j] = num_steps
             if recording[j] > 0: # TODO: recording as an unordered collection, could keep as trajectories
+                print(a)
                 trace_actions[j].append(a)
                 trace_states[j].append(s)
                 trace_resps[j].append(rsp)
                 trace_distance[j].append(num_steps - recording[j])
+                # print(np.power(gamma, num_steps - recording[j]))
+                trace_returns[j].append(np.power(gamma, num_steps - recording[j]))
                 recording[j] -= 1
             elif np.sum(recording) == 0:
                 trace_actions[j].append(a)
                 trace_states[j].append(s)
                 trace_resps[j].append(rsp)
+                trace_returns[j].append(np.power(gamma, num_steps - recording[j]))
                 trace_distance[j].append(-1)
         # print(a,s)
 
@@ -100,13 +106,16 @@ def generate_trace_training(actions, rewards, states, resps, num_steps):
     trace_states = [np.array(vec) for vec in trace_states]
     trace_resps = [np.array(vec) for vec in trace_resps]
     trace_distance = [np.array(vec) for vec in trace_distance]
-    return trace_actions, trace_states, trace_resps
+    trace_returns = [np.array(vec) for vec in trace_returns]
+    print([(a.shape, s.shape) for a,s in zip(trace_actions, trace_states)])
+    return trace_actions, trace_states, trace_returns, trace_resps
 
 def generate_distilled_training(rewards):
     indexes = []
     all_rewards = np.sum(rewards, axis=0)
     all_indexes = np.where(all_rewards > .5)[0]
-    match_indexes = [np.where((all_rewards + rewards[i]) > 1.0)[0] for i in range(len(rewards))]
+    # print(np.array(rewards[0]) > 1.0)
+    match_indexes = [np.where(np.array(rewards[i]) >= 1.0)[0] for i in range(len(rewards))]
     # print(all_rewards, rewards)
     actions = []
     ris = [0 for i in range(len(rewards))]
@@ -133,10 +142,12 @@ def generate_target_training(actions, indexes, states, resps, state_class, rewar
     indexes = indexes.tolist()
     indexes = [0] + indexes
     indexes.append(len(states))
-    rstates, resps, raws, dumps = load_states(reward_fns[0].get_state, dataset_path, length_constraint=length_constraint, raws=raws, dumps=dumps)
+    rstates, _, raws, dumps = load_states(reward_fns[0].get_state, dataset_path, length_constraint=length_constraint, raws=raws, dumps=dumps)
     change_indexes, param_idx, hindsight_targets = reward_fns[0].state_class.determine_delta_target(rstates)
     i = 0
     ci = change_indexes[i]
+    # print(resps.shape, np.array([hindsight_targets[0].shape[0] for _ in range(len(resps))]).shape)
+    # resps = np.concatenate((resps, np.array([[hindsight_targets[0].shape[0]] for _ in range(len(resps))])), axis=1)
     for a, idx1, idx2 in zip(actions, indexes[:-1], indexes[1:]):
         while ci < idx1:
             i += 1
@@ -248,7 +259,7 @@ class CMAES_optimizer():
             self.models.currentModel().mean.set_parameters(mean)
         return loss.mean()
 
-def supervised_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values):
+def supervised_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values, targets):
     loss = F.binary_cross_entropy(action_probs.squeeze(), pytorch_model.wrap(true_values, cuda=True).squeeze()) # TODO: cuda support required
     loss += -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean() * .01
     # print(action_probs[:5], true_values[:5], loss)
@@ -258,7 +269,7 @@ def supervised_criteria(models, values, dist_entropy, action_probs, Q_vals, opti
     optimizer.step()
     return loss
 
-def action_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values):
+def action_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values, targets):
     dist_ent = -(action_probs.squeeze() * torch.log(action_probs.squeeze() + 1e-10)).sum(dim=1).mean()
     batch_mean = action_probs.squeeze().mean(dim=0)
     batch_ent = -((batch_mean + 1e-10) * torch.log(batch_mean + 1e-10)).sum()
@@ -271,10 +282,12 @@ def action_criteria(models, values, dist_entropy, action_probs, Q_vals, optimize
     optimizer.step()
     return loss
 
-def Q_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values):
+def Q_criteria(models, values, dist_entropy, action_probs, Q_vals, optimizer, true_values, targets):
     # we should probably include the criteria
-    loss = (Q_vals - true_values).pow(2).mean()
-    print(Q_vals[0][0])
+    # print(true_values, Q_vals.shape, pytorch_model.wrap(targets, cuda=True).squeeze().long().shape)
+    # print(pytorch_model.wrap(targets, cuda=True).squeeze().long())
+    # print(Q_vals.gather(1, pytorch_model.wrap(targets, cuda=True).unsqueeze(1).long()))
+    loss = (Q_vals.gather(1, pytorch_model.wrap(targets, cuda=True).unsqueeze(1).long()) - pytorch_model.wrap(true_values, cuda=True).squeeze()).pow(2).mean()
     # for optimizer in optimizers:
     optimizer.zero_grad()
     loss.backward()
@@ -310,6 +323,7 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
     parameter_minmax = None
     if args.model_form.find("param") != -1:
         parameter_minmax = (np.min(targets, axis=0), np.max(targets, axis=0))
+        # state_class.sizes.append(parameter_minmax[0].shape)
     print(parameter_minmax)
     if not args.load_weights:
         state_class.action_num = num_actions
@@ -319,6 +333,7 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
         train_models.initialize(args, len(reward_classes), state_class, num_actions, parameter_minmax=parameter_minmax)
         train_models.session(args)
         proxy_environment.duplicate(args)
+    print(state_class.fnames)
     train_models.train()    
     # print(len([desired_actions[:] for i in range(len(train_models.models))]))
     print("train_models", len(train_models.models))
@@ -346,6 +361,9 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
             if args.model_form.find("param") != -1:
                 param_vals = targets[idxes]
                 train_models.currentModel().option_values = pytorch_model.wrap(param_vals, cuda=args.cuda)
+            if args.optimizer_form in ["DQN", "SARSA"]:
+                param_vals = targets[oidx][idxes]
+                # print(targets[oidx][idxes])
             # start = np.random.randint(len(odesired))
             # idxes = [(idx + start) % len(odesired) for idx in range(batch_size)]
             # print(pytorch_model.wrap(ostates[idxes], cuda=args.cuda), pytorch_model.wrap(oresps[idxes], cuda=args.cuda))
@@ -356,7 +374,7 @@ def fit(args, save_dir, true_environment, train_models, state_class, desired, st
             # print(states[idxes])
             # print(action_probs,(action_probs.squeeze() * torch.log(action_probs.squeeze())).sum(dim=1).mean())
             # print(train_models.currentModel().mean.action_probs.weight)
-            loss = criteria(train_models, values, dist_entropy, action_probs, Q_vals, optimizers[oidx], odesired[idxes])
+            loss = criteria(train_models, values, dist_entropy, action_probs, Q_vals, optimizers[oidx], odesired[idxes], param_vals)
             # print(train_models.currentModel().mean.action_probs.weight)
             total_loss += loss.detach()
             if i % args.log_interval == 0:

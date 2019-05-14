@@ -151,7 +151,7 @@ class ChangepointMarkovReward(ChangepointReward):
         self.eps = args.eps
         self.betas = args.betas
         self.weight_decay = args.weight_decay
-        self.max_dev = .1 # TODO: this doesn't need to be hardcoded
+        self.max_dev = .5 # TODO: this doesn't need to be hardcoded
 
     def form_batch(self, data):
         ''' 
@@ -257,6 +257,12 @@ class ChangepointMarkovReward(ChangepointReward):
         model.variance = var
         self.markovModel = model
 
+    def setvar(self, var):
+        if type(var) == torch.tensor:
+            self.markovModel.variance = var
+        else: 
+            self.markovModel.variance = pytorch_model.wrap(var, cuda=self.cuda)
+
     def compute_fit(self, traj):
         '''
         traj: a trajectory as [num in trajectory, state dim]
@@ -268,14 +274,17 @@ class ChangepointMarkovReward(ChangepointReward):
         t_traj = pairs[:,1]
         probs = self.markovModel.compute_prob(n_traj, t_traj)
         probs = torch.sum(probs, dim=2).squeeze()
-        # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-3:])
+        # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-1:], self.markovModel.variance)
         return probs
 
     def compute_reward(self, states, actions, resps):
+        # print(states)
+        # print(actions)
         probs = self.compute_fit(states)
         reward = torch.ones(probs.size()) * -1
         # print(states.squeeze(), actions.squeeze(), probs)
         reward[probs <= self.max_dev] = 2
+        # print(probs, self.max_dev, reward)
         # print(reward)
         # print(self.max_dev)
         if self.cuda:
