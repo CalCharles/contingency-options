@@ -290,7 +290,7 @@ if __name__ == '__main__':
 
         # model.add_model('train', r_model, ['premise'])
         model.add_model('train', r_model, ['premise'],
-                        augment_pt=util.JumpFiltering(5, 0.2))
+                        augment_pt=util.JumpFiltering(5, 0.05))
     else:
         model.add_model('train', r_model, [])
     model.set_trainable('train')

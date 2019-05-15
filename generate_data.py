@@ -8,22 +8,22 @@ from Models.models import pytorch_model
 
 if __name__ == '__main__':
     torch.cuda.set_device(1)
-    paddle_model_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+    paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
     net_params = json.loads(open(paddle_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/atari/paddle_bin.npy')
+    params = load_param('ObjectRecognition/models/atari/paddle_bin_smooth.pth')
     paddle_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
-        binarize = 0.1
+        binarize = 0.01
     )
     paddle_model.set_parameters(params)
-    ball_model_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
+    ball_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
     net_params = json.loads(open(ball_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/self/ball.npy')
+    params = load_param('ObjectRecognition/models/atari/42531_2_smooth.pth')
     ball_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
-        binarize = 0.1
+        binarize = 0.01
     )
     ball_model.set_parameters(params)
     model = ModelCollectionDAG()

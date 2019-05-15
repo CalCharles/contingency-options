@@ -116,6 +116,7 @@ class ProxyEnvironment():
         create a dummy placeholder
         '''
         self.name = name
+        self.proxy_chain = [None]
 
     def initialize(self, args, proxy_chain, reward_fns, state_get, behavior_policy):
         '''

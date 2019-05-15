@@ -33,6 +33,8 @@ if __name__ == "__main__":
         # train (used for trainable rewards)
         # segment
     # atari action->paddle: python get_reward.py --record-rollouts data/atarirandom/ --changepoint-dir data/atarigraph/ --train-edge "Action->Paddle" --transforms SVel SCorAvg --determiner overlap --reward-form markov --segment --train --num-stack 2 --focus-dumps-name focus_dumps.txt --dp-gmm atari
+    # python get_reward.py --record-rollouts data/atarirandom/ --changepoint-dir data/atarigraph/ --train-edge "Action->Paddle" --transforms WProx --determiner prox --reward-form changepoint --num-stack 1 --focus-dumps-name focus_dumps.txt --dp-gmm atari
+    # python get_reward.py --record-rollouts data/ataripaddle/ --changepoint-dir data/atarigraph/ --train-edge "Paddle->Ball" --transforms WProx --determiner prox --reward-form changepoint --num-stack 1 --focus-dumps-name focus_dumps.txt --dp-gmm atariball --period 5
     dataset_path = args.record_rollouts
     changepoints_path = args.record_rollouts # these are the same for creating rewards
     head, tail = get_edge(args.train_edge)
@@ -66,7 +68,7 @@ if __name__ == "__main__":
     clusters = MultipleCluster(args, BayesianGaussianMixture)
 
     # paddle uses "overlap", ball uses "prox", "proxVel"
-    determiner = determiners[args.determiner](prox_distance = args.period, overlap_ratio=.5, min_cluster=20) # reusing period to define minimum distance# PureOverlapDeterminer(overlap_ratio = .95, min_cluster= 7)
+    determiner =     determiners[args.determiner](prox_distance = args.period, overlap_ratio=.5, min_cluster=15) # reusing period to define minimum distance# PureOverlapDeterminer(overlap_ratio = .95, min_cluster= 7)
     option_determiner_model = ChangepointModels(args, changepoint_model, transforms, clusters, determiner)
     option_determiner_model.changepoint_statistics(models, changepoints, trajectory, correlate_trajectory)
 
@@ -84,9 +86,9 @@ if __name__ == "__main__":
 
         save_to_pickle(os.path.join(args.changepoint_dir, args.train_edge, "reward__function__" + str(i) +"__rwd.pkl"), reward_function)
         reward_fns.append(reward_function)
-    if args.train:
-        minvar = np.min(np.array([rf.markovModel.variance.tolist() for rf in reward_fns]), axis=0)
-        print(minvar)
-        for i, rf in enumerate(reward_fns):
-            rf.setvar(minvar)
-            save_to_pickle(os.path.join(args.changepoint_dir, args.train_edge, "reward__function__" + str(i) +"__rwd.pkl"), rf)
+    # if args.train:
+    #     minvar = np.min(np.max([rf.markovModel.variance.tolist() for rf in reward_fns]), axis=0)
+    #     print(minvar)
+    #     for i, rf in enumerate(reward_fns):
+    #         rf.setvar(minvar)
+    #         save_to_pickle(os.path.join(args.changepoint_dir, args.train_edge, "reward__function__" + str(i) +"__rwd.pkl"), rf)

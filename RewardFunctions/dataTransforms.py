@@ -252,13 +252,13 @@ class WindowCorrelateProximityNoHop(WindowTransform):
         total = len(trajectory)
         correlate = [midpoint_separation((t,c)) for t,c in zip(trajectory, correlate)]
         c_d = {changepoints[i]: correlate[max(0,changepoints[i]-window):min(total, changepoints[i]+window+1)] for i in range(len(changepoints))}
-        print("data", c_d)
+        # print("data", c_d)
         dev_d = {key: np.sum(np.max(c_d[key], axis = 0) - np.min(c_d[key], axis = 0)) for key in c_d.keys()}
         changepoint_statistics = {key: c_d[key][np.argmin(np.sum(np.abs(c_d[key]), axis = 1))] + [dev_d[key], key] for key in c_d.keys()}
         # print(changepoint_statistics)
         dat = [(key, val) for key, val in changepoint_statistics.items()]
         dat.sort(key=lambda x: x[0])
-        print("data", dat[:100])
+        # print("data", dat[:100])
         data = np.array([val for key,val in dat])
         return data
 

@@ -253,7 +253,9 @@ class ChangepointMarkovReward(ChangepointReward):
         print(self.model.As[0].weight)
         print([val for val in zip(batch.squeeze(), model.forward(batch).squeeze())])
         var = torch.var(model.compute_error(self.pairs[m]), dim=0)
-        var[var < .3] = .3
+        var[var < 4] = 4
+        var[var > 6] = 6
+        print(var)
         model.variance = var
         self.markovModel = model
 
@@ -272,6 +274,7 @@ class ChangepointMarkovReward(ChangepointReward):
         pairs = self.pytorch_form_batch(traj)
         n_traj = self.markovModel(pairs[:,0])
         t_traj = pairs[:,1]
+        # print(n_traj.squeeze())
         probs = self.markovModel.compute_prob(n_traj, t_traj)
         probs = torch.sum(probs, dim=2).squeeze()
         # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-1:], self.markovModel.variance)
@@ -282,7 +285,7 @@ class ChangepointMarkovReward(ChangepointReward):
         # print(actions)
         probs = self.compute_fit(states)
         reward = torch.ones(probs.size()) * -1
-        # print(states.squeeze(), actions.squeeze(), probs)
+        # print(states.squeeze(), actions.squeeze())
         reward[probs <= self.max_dev] = 2
         # print(probs, self.max_dev, reward)
         # print(reward)

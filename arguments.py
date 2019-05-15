@@ -324,20 +324,22 @@ def get_args():
     args = parser.parse_args()
     if args.dp_gmm[0] == 'default':
         args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
-    if args.dp_gmm[0] == 'atari':
+    elif args.dp_gmm[0] == 'ataripaddle':
         args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
-    if args.dp_gmm[0] == 'far':
+    elif args.dp_gmm[0] == 'atariball':
         args.dp_gmm = [10, 6000, 1e-10, 'diag', 20]
-    if args.dp_gmm[0] == 'further':
+    elif args.dp_gmm[0] == 'far':
+        args.dp_gmm = [10, 6000, 1e-10, 'diag', 20]
+    elif args.dp_gmm[0] == 'further':
         args.dp_gmm = [10, 6000, 1e-30, 'diag', 20]
     if args.champ_parameters[0] == "Paddle":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-1, 0]
-    if args.champ_parameters[0] == "PaddleAtari":
+    elif args.champ_parameters[0] == "PaddleAtari":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1, 3]
     elif args.champ_parameters[0] == "Ball": 
         args.champ_parameters = [15, 10, 2, 100, 100, 2, 1, 0] 
-    if args.champ_parameters[0] == "BallAtari":
-        args.champ_parameters = [15, 10, 2, 100, 100, 2, 1, 3]
+    elif args.champ_parameters[0] == "BallAtari":
+        args.champ_parameters = [3, 5, 1, 100, 100, 2, 1, 3]
     else:
         args.champ_parameters = [float(p) for p in args.champ_parameters]
     if len(args.behavior_policy) == 0:

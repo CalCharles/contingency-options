@@ -107,11 +107,11 @@ class ProximityDeterminer(ChangepointDeterminer):
         for i, mean in enumerate(mode_models.mean()[0]):
             # print(mean)
             if np.sum(np.abs(mean)) < self.prox_distance and i in self.used_clusters:
-                self.key_mapping[i] = k
-                k += 1
+                self.key_mapping[i] = 0
+                k+= 1
             elif i in self.used_clusters:
                 self.key_mapping[i] = -1
-        self.num_mappings = k
+        self.num_mappings = min(k, 1)
         print(self.key_mapping, self.num_mappings)
 
     def collapse_assignments(self, assigned_modes):

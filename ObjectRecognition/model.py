@@ -381,6 +381,7 @@ class ModelFocusMeanVar(ModelObject, ModelFocusInterface):
 
     # pick max coordinate
     def argmax_xy(self, out):
+        # return util.argmax2d(out, self.argmax_mode)
         batch_size = out.shape[0]
         row_size = out.shape[1]
         col_size = out.shape[2]
@@ -753,15 +754,18 @@ class ModelCollectionDAG():
             # print(cur_img)
             if self.iscuda and not cur_img.is_cuda:
                 cur_img = cur_img.cuda()
-            if ret_extra:
-                outs[model_id], extras[model_id] = cur_model.forward(cur_img,
-                    ret_numpy=ret_numpy,
-                    ret_extra=ret_extra)
-            else:
-                outs[model_id] = cur_model.forward(cur_img,
-                    ret_numpy=ret_numpy,
-                    ret_extra=ret_extra)
-            outs[model_id] = cur_augment_pt(cur_img, outs[model_id])
+            outs[model_id], extras[model_id] = cur_model.forward(cur_img,
+                ret_numpy=ret_numpy,
+                ret_extra=True)
+            # if ret_extra:
+            #     outs[model_id], extras[model_id] = cur_model.forward(cur_img,
+            #         ret_numpy=ret_numpy,
+            #         ret_extra=ret_extra)
+            # else:
+            #     outs[model_id] = cur_model.forward(cur_img,
+            #         ret_numpy=ret_numpy,
+            #         ret_extra=ret_extra)
+            outs[model_id] = cur_augment_pt(extras[model_id], outs[model_id])
 
             # update augmented image
             augment_img[model_id] = cur_augment_fn(cur_img, outs[model_id])

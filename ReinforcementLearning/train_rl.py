@@ -113,6 +113,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # print("step outputs (val, de, ap, qv, v, ap, qv)", values, dist_entropy, action_probs, Q_vals, v, ap, qv)
                 trace_queue.append((current_state.clone().detach(), action.clone().detach()))
                 state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
+                # print(action_list)
                 s = time.time()
                 # print("step time", s-a)
                 # print("after step", state)
@@ -124,7 +125,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 option_actions[train_models.currentName()][int(pytorch_model.unwrap(action.squeeze()))] += 1
                 #### logging
                 if done:
-                    print("Episode Reward: ", ep_reward, " ", fcnt, j, args.done_swapping)
+                    print("Episode Reward: ", ep_reward, " ", fcnt, j)
                     ep_reward = 0
                     if not args.sample_duration > 0 or (args.done_swapping <= j):
                         # print("reached end")
@@ -155,7 +156,6 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             # rw = time.time()
             # print("rewards", rl - rw, start - rw)
             if completed or (done and not args.sample_duration > 0):
-                print(step)
                 break
 
 
