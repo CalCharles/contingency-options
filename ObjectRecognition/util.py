@@ -435,10 +435,10 @@ class JumpFiltering:
             if self.jump_pos is None:
                 self.jump_pos = JumpAugmentFocus(focus)
             else:
-                if self.jump_pos.dist(focus) <= self.jump_threshold:
-                    self.jump_pos.update(focus)
-                else:
-                    self.jump_pos = JumpAugmentFocus(focus)
+                # if self.jump_pos.dist(focus) <= self.jump_threshold:
+                self.jump_pos.update(focus)
+                # else:
+                #     self.jump_pos = JumpAugmentFocus(focus)
 
             # check if jumping is valid
             if self.jump_pos.t >= self.jump_count_t:

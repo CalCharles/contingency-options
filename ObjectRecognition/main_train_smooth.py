@@ -17,9 +17,9 @@ import ObjectRecognition.util as util
 
 if __name__ == '__main__':
     net_path = 'ObjectRecognition/net_params/attn_softmax.json'
-    model_path = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth.pth'
+    model_path = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth_2.pth'
     image_shape = (84, 84)
-    n_state_used = 100
+    n_state_used = 200
     is_train = True
     is_preview = True
 
@@ -65,8 +65,8 @@ if __name__ == '__main__':
         net_params=prev_net_params_1,
     )
     prev_model_1.set_parameters(load_param(prev_weight_path_1))
-    prev_net_params_path_2 = 'ObjectRecognition/net_params/two_layer_5_5_old.json'
-    prev_weight_path_2 = 'results/cmaes_soln/focus_atari_breakout/42531_2.npy'
+    prev_net_params_path_2 = 'ObjectRecognition/net_params/attn_softmax.json'
+    prev_weight_path_2 = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth.pth'
     prev_net_params_2 = json.loads(open(prev_net_params_path_2).read())
     prev_model_2 = ModelFocusCNN(
         image_shape=(84, 84),
@@ -75,16 +75,19 @@ if __name__ == '__main__':
     prev_model_2.set_parameters(load_param(prev_weight_path_2))
     prev_model = ModelCollectionDAG()
     prev_model.add_model('model_1', prev_model_1, [], 
-                         augment_fn=partial(util.remove_mean_batch, nb_size=(8, 8)))
-    prev_model.add_model('model_2', prev_model_2, ['model_1'])
+                         augment_fn=partial(util.remove_mean_batch, nb_size=(3, 8)),
+                         augment_pt=util.JumpFiltering(2, 0.05))
+    prev_model.add_model('model_2', prev_model_2, ['model_1'],
+                         augment_pt=util.JumpFiltering(3, 0.1))
     def prev_forward(xs):
         # return prev_model.forward(xs, ret_numpy=True)['model_1']
         return prev_model.forward(xs, ret_numpy=True)['model_2']
     print('smoothing:', prev_model)
 
     # get dataset
-    state_idxs = np.random.choice(np.arange(n_state//4), size=n_state_used, 
-                                  replace=False)
+    # state_idxs = np.random.choice(np.arange(n_state//4), size=n_state_used, 
+    #                               replace=False)
+    state_idxs = np.arange(n_state_used)
     print(state_idxs)
     frames = dataset.get_frame(state_idxs)
     frames = torch.from_numpy(frames).float()
