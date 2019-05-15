@@ -225,6 +225,31 @@ def binarize(frames, binarize):
     return frames
 
 
+# argmax in 2d batch
+def argmax2d(out, argmax_mode='first'):
+    batch_size = out.shape[0]
+    row_size = out.shape[1]
+    col_size = out.shape[2]
+        
+    if argmax_mode == 'first':
+        # first argmax
+        argmax = np.argmax(out.reshape((batch_size, -1)), axis=1)
+    elif argmax_mode == 'rand':
+        # random argmax for tie-breaking
+        out = out.reshape((batch_size, -1))
+        out_max = np.max(out, axis=1)
+        argmax = np.array([np.random.choice(np.flatnonzero(line == line_max)) 
+                           for line, line_max in zip(out, out_max)])
+    else:
+        raise ValueError('argmax_mode %s invalid'%(argmax_mode))
+    
+    argmax %= row_size * col_size  # in case of multiple filters
+    argmax_coor = np.array([np.unravel_index(argmax_i, (row_size, col_size)) 
+                            for argmax_i in argmax], dtype=float)
+    argmax_coor = argmax_coor / np.array([row_size, col_size])
+    return argmax_coor
+
+
 """
 Image-Focus Augmentation Function
 """
@@ -338,29 +363,43 @@ Jump protection
 class JumpAugmentFocus:
 
     def __init__(self, focus):
-        self.v = None
+        self.v = np.array([1000, 1000])  # inf for exp
         self.conf_focus = np.array(focus)
         self.pred_focus = np.array(focus)
         self.t = 1
+        self.delta_t = 1
 
 
     # update with new focus
     def update(self, next_focus):
-        self.v = np.array(next_focus) - self.conf_focus  # minus conf_focus or pred_focus?
+        self.v = np.array(next_focus) - self.pred_focus  # minus conf_focus or pred_focus?
         self.conf_focus = np.array(next_focus)
         self.pred_focus = np.array(next_focus)
         self.t += 1
+        self.delta_t = 1
 
 
     # step with predicted velocity
     def step(self):
         self.pred_focus += self.v
         self.t += 1
+        self.delta_t += 1
 
 
     # expected distance error
     def dist(self, next_focus):
-        return np.sum((next_focus - self.conf_focus)**2)**0.5
+        return np.sum((next_focus - self.conf_focus)**2)**0.5 / self.delta_t
+        # return np.sum((next_focus - self.pred_focus)**2)**0.5
+
+
+    # get weak distance filter
+    def dist_filter(self):
+        input_shape = (84, 84)
+        f = self.conf_focus
+        xs = np.linspace(0, 1, input_shape[0], endpoint=False) - f[0]
+        ys = np.linspace(0, 1, input_shape[1], endpoint=False) - f[1]
+        attn = gaussian_pdf(xs[:, None], ys[None, :], 2 + np.linalg.norm(self.v) * self.delta_t)
+        return attn
 
 
 # jump filtering based on current and expected positions
@@ -374,12 +413,17 @@ class JumpFiltering:
 
 
     # remove this batch with memorized mean and update it
-    def jump_filter(self, imgs, focus):
+    def jump_filter(self, img, focus):
+
         # if first time
         if self.cur_pos is None:
             self.cur_pos = JumpAugmentFocus(focus)
             self.jump_pos = None
             return focus
+
+        # img = img * self.cur_pos.dist_filter()
+        # focus = argmax2d(img.reshape((1, 1) + img.shape))[0]
+        # plt.imshow(img[0]); plt.colorbar(); plt.show()
 
         # if next time...
         if self.cur_pos.dist(focus) <= self.jump_threshold:
@@ -414,5 +458,5 @@ class JumpFiltering:
         if len(focus.shape) == 2:
             new_focus = np.zeros(focus.shape)
             for i in range(focus.shape[0]):
-                new_focus[i] = self.jump_filter(imgs, focus[i])
+                new_focus[i] = self.jump_filter(imgs[i], focus[i])
         return new_focus
