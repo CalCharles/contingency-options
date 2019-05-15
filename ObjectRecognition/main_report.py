@@ -88,10 +88,13 @@ def plot_focus(dataset, indices, all_focus):
     plt.show()
 
 
-def save_imgs(imgs, save_path):
+def save_imgs(imgs, save_path, title_extra=False):
     save_subpath = util.get_dir(os.path.join(save_path, 'intensity'))
     for i, img in enumerate(imgs):
-        file_name = 'intensity_%d.png'%(i)
+        if title_extra:
+            file_name = 'intensity_%d_%.2f.png'%(i, title_extra[i])
+        else:
+            file_name = 'intensity_%d.png'%(i)
         file_path = os.path.join(save_subpath, file_name)
         util.imsave(file_path, util.feature_normalize(img[0]))
     print('focus intensity saved under', save_subpath)
@@ -135,11 +138,36 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
         print('position count saved at', pos_cnt_file_path)
 
 
+def plot_inten_curve(save_path, all_focus, intensity, dataset):
+    inten_x = []
+    for i in range(len(intensity)):
+        marker_pos = np.around(all_focus[i] * dataset.get_shape()[2:]).astype(int)
+        # if intensity[i, 0, marker_pos[0], marker_pos[1]] < 8:
+        #     all_focus[i, ...] = 0.0
+        # inten_x.append(intensity[i, 0, marker_pos[0], marker_pos[1]])
+        inten_x.append(np.max(intensity[i, 0]))
+
+    # pretty plotting
+    PER_R = 200
+    SZ = 2.0
+    NR = min((len(inten_x)+1) // PER_R, 5)
+    fig, axes = plt.subplots(ncols=1, nrows=NR, figsize=(SZ*6, SZ*NR))
+    for i in range(NR):
+        xs = inten_x[i*PER_R:(i+1)*PER_R]
+        axes[i].plot(np.arange(len(xs)) + i*PER_R, xs)
+    inten_plot_path = os.path.join(save_path, 'inten_curve.png')
+    plt.savefig(inten_plot_path)
+    print('save intensity curve to', inten_plot_path)
+    return inten_x
+
+
 def report_model(save_path, dataset, model, prefix, plot_flags, cpd):
     focus = model.forward_all(dataset, batch_size=400, 
                               ret_extra=plot_flags['plot_intensity'])
 
     if plot_flags['plot_intensity']:
+        inten_title = plot_inten_curve(save_path, focus[0]['__train__'],
+                                       focus[1]['__train__'], dataset)
         save_imgs(focus[1]['__train__'], save_path)
         focus = focus[0]
     else:
@@ -292,8 +320,15 @@ if __name__ == '__main__':
                          augment_pt=util.JumpFiltering(2, 0.05))
 
         # model.add_model('train', r_model, ['premise'])
+        # model.add_model('train', r_model, ['premise'],
+        #                 augment_pt=util.JumpFiltering(3, 0.05))
         model.add_model('train', r_model, ['premise'],
-                        augment_pt=util.JumpFiltering(3, 0.05))
+                        augment_pt=util.LowIntensityFiltering(8.0))
+        # f1 = util.LowIntensityFiltering(5.0)
+        # f2 = util.JumpFiltering(3, 0.05)
+        # def f(x, y):
+        #     return f2(x, f1(x, y))
+        # model.add_model('train', r_model, ['premise'], augment_pt=f)
     else:
         model.add_model('train', r_model, [])
     model.set_trainable('train')

@@ -460,3 +460,34 @@ class JumpFiltering:
             for i in range(focus.shape[0]):
                 new_focus[i] = self.jump_filter(imgs[i], focus[i])
         return new_focus
+
+
+# jump filtering based on current and expected positions
+class LowIntensityFiltering:
+
+    def __init__(self, int_threshold):
+        self.int_threshold = int_threshold
+        self.cur_pos = None
+
+
+    # remove this batch with memorized mean and update it
+    def low_inten_filter(self, img, focus):
+        # if first time
+        if self.cur_pos is None:
+            self.cur_pos = focus
+        focus_pos = np.around(focus * np.array(img.shape[-2:])).astype(int)
+        if img[0, focus_pos[0], focus_pos[1]] >= self.int_threshold:
+            self.cur_pos = focus
+        return self.cur_pos
+
+
+    # call routine
+    def __call__(self, imgs, focus):
+        assert 0 <= len(focus.shape) <= 2
+        if len(focus.shape) == 1:
+            new_focus = self.low_inten_filter(imgs, focus)
+        if len(focus.shape) == 2:
+            new_focus = np.zeros(focus.shape)
+            for i in range(focus.shape[0]):
+                new_focus[i] = self.low_inten_filter(imgs[i], focus[i])
+        return new_focus
