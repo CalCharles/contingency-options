@@ -1,6 +1,8 @@
 import pickle, os
 import numpy as np
 import ChangepointDetection.DynamicsModels as DynamicsModels
+import imageio as imio
+import sys, cv2 
 
 def load_from_pickle(pth):
     fid = open(pth, 'rb')
@@ -32,14 +34,23 @@ def get_cp_models_from_dict(cp_dict):
     keys.pop(0)
     return keys, [cp_dict[k] for k in keys]
 
-def read_obj_dumps(pth, i= 0, rng=-1, filename='object_dumps.txt'):
-    '''
-    TODO: move this out of this file to support reading object dumps from other sources
-    i = -1 means count rng from the back
-    rng = -1 means take all after i
-    i is start position, rng is number of values
-    '''
-    obj_dumps = []
+def dump_from_line(line, time_dict):
+    for obj in line.split('\t'):
+        if obj == "\n":
+            continue
+        else:
+            # print(obj)
+            split = obj.split(":")
+            name = split[0]
+            vals = split[1].split(" ")
+            BB = float(vals[0]), float(vals[1])
+            # BB = (int(vals[0]), int(vals[1]), int(vals[2]), int(vals[3]))
+            # pos = (int(vals[1]),)
+            value = (float(vals[2]), )
+            time_dict[name] = (BB, value)
+    return time_dict
+
+def get_start(pth, filename, i, rng):
     total_len = 0
     if i < 0:
         for line in open(os.path.join(pth, filename), 'r'):
@@ -49,6 +60,19 @@ def read_obj_dumps(pth, i= 0, rng=-1, filename='object_dumps.txt'):
             i = 0
         else:
             i = max(total_len - rng, 0)
+    return i, total_len
+
+
+
+def read_obj_dumps(pth, i= 0, rng=-1, filename='object_dumps.txt'):
+    '''
+    TODO: move this out of this file to support reading object dumps from other sources
+    i = -1 means count rng from the back
+    rng = -1 means take all after i
+    i is start position, rng is number of values
+    '''
+    obj_dumps = []
+    i, total_len = get_start(pth, filename, i, rng)
     current_len = 0
     for line in open(os.path.join(pth, filename), 'r'):
         current_len += 1
@@ -56,22 +80,48 @@ def read_obj_dumps(pth, i= 0, rng=-1, filename='object_dumps.txt'):
             continue
         if rng != -1 and current_len > i + rng:
             break
-        time_dict = dict()
-        for obj in line.split('\t'):
-            if obj == "\n":
-                continue
-            else:
-                # print(obj)
-                split = obj.split(":")
-                name = split[0]
-                vals = split[1].split(" ")
-                BB = float(vals[0]), float(vals[1])
-                # BB = (int(vals[0]), int(vals[1]), int(vals[2]), int(vals[3]))
-                # pos = (int(vals[1]),)
-                value = (float(vals[2]), )
-                time_dict[name] = (BB, value)
+        time_dict = dump_from_line(line, dict())
         obj_dumps.append(time_dict)
     return obj_dumps
+
+def visualize_frame_dumps(pth, i= 0, rng=-1, filename='focus_dumps.txt'):
+    '''
+    TODO: move this out of this file to support reading object dumps from other sources
+    i = -1 means count rng from the back
+    rng = -1 means take all after i
+    i is start position, rng is number of values
+    '''
+    obj_dumps = []
+    i, total_len = get_start(pth, filename, i, rng)
+    current_len = 0
+    for line in open(os.path.join(pth, filename), 'r'):
+        current_len += 1
+        if current_len < i:
+            continue
+        if rng != -1 and current_len > i + rng:
+            break
+        time_dict = dump_from_line(line, dict())
+        print(current_len)
+        d = str(current_len // 2000)
+        j = current_len % 2000
+        p = os.path.join(pth, d, "state" + str(j) + ".png")
+        raw_state = imio.imread(p)
+        pval = ""
+        for k in time_dict.keys():
+            if k != 'Action' and k != 'Reward':
+                raw_state[int(time_dict[k][0][0]), :] = 255
+                raw_state[:, int(time_dict[k][0][1])] = 255
+            if k == 'Action' or k == 'Reward':
+                pval += k + ": " + str(time_dict[k][1]) + ", "
+            else:
+                pval += k + ": " + str(time_dict[k][0]) + ", "
+        print(pval[:-2])
+        raw_state = cv2.resize(raw_state, (336, 336))
+        cv2.imshow('frame',raw_state)
+        if cv2.waitKey(10000) & 0xFF == ord(' ') & 0xFF == ord('c'):
+            continue
+    return obj_dumps
+
 
 
 def get_individual_data(name, obj_dumps, pos_val_hash=3):
@@ -150,3 +200,6 @@ def render_dump(obj_dumps):
     height = 2
     frame[pos[0]-1:pos[0]+1, pos[1]-1:pos[1]+1] = 1.0 * 255
     return frame
+
+if __name__ == '__main__':
+    visualize_frame_dumps(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]))

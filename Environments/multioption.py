@@ -31,11 +31,11 @@ class MultiOption():
                 minmax = (np.hstack((minmax[0], parameter_minmax[0])) , np.hstack((minmax[1], parameter_minmax[1])))
         if model_class is None:
             print(self.option_class)
-            model = self.option_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, 
-                num_outputs=num_actions, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
+            model = self.option_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, num_outputs=num_actions, 
+                class_sizes = state_class.sizes, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
         else:
-            model = model_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, 
-                num_outputs=num_actions, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
+            model = model_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, num_outputs=num_actions, 
+                class_sizes = state_class.sizes, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
         return model
 
     def train(self):
@@ -149,7 +149,7 @@ class MultiOption():
         print("loading", model_paths)
         model_paths.sort(key=lambda x: int(x.split("__")[1]))
         for mpth in model_paths:
-            loaded_model = torch.load(mpth)
+            loaded_model = torch.load(mpth, map_location='cpu').cuda()
             try: # use the mean of a population model if we are not training a population model
                 pop = loaded_model.num_population > 0
             except AttributeError as e:
@@ -171,15 +171,26 @@ class MultiOption():
         # TODO: only handles 1->many of models, build in many->many handling
         old_model = self.models[0]
         self.models = []
-        param = -1
+        param = 1
         if args.parameterized_option == 1:
             param = num_models
         elif args.parameterized_option == 2:
             param = parameter_minmax[0].shape[0]
         for i in range(num_models):
-            new_model = copy.deepcopy(old_model)
+            print(args.model_form, type(old_model) != models['population'])
+            if args.model_form == 'population' and type(old_model) != models['population']:
+                # if we are switching to a population model, copy the new model into the mean and the values
+                new_model = self.create_model(args, state_class, parameter_minmax, i, num_actions, model_class=models[args.model_form], parameter=param)
+                for j in range(args.num_population):
+                    new_model.networks[j] = copy.deepcopy(old_model)
+                new_model.mean = copy.deepcopy(old_model)
+                new_model.best = copy.deepcopy(old_model)
+            else:
+                new_model = copy.deepcopy(old_model)
+            new_model.test = not args.train
             new_model.name = args.unique_id + "__" + str(i) +"__"
             if args.model_form == 'population' and args.base_form == 'adjust': # right now, basically the same logic but for each model in the population
+                print("param", param)
                 networks = []
                 for j in range(new_model.num_population):
                     m = self.create_model(args, state_class, parameter_minmax, i, num_actions, models[args.base_form], parameter = param)
@@ -197,7 +208,7 @@ class MultiOption():
                 self.models.append(new_model)
             elif args.model_form == 'adjust': # for now, while there is only one adjustment model
                 print("loading adjustment model")
-                model = self.create_model(args, state_class, parameter_minmax, i, num_actions, )
+                model = self.create_model(args, state_class, parameter_minmax, i, num_actions, models[args.model_form], parameter = param)
                 model.load_base(new_model)
                 if args.cuda:
                     model = model.cuda()

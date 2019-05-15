@@ -6,7 +6,7 @@ import warnings
 import matplotlib.pyplot as plt
 import cv2
 from PIL import Image
-
+from Models.models import pytorch_model
 
 # find masks of adjacently different entries
 def next_noteq(arr):
@@ -268,7 +268,7 @@ def noop_y(imgs, focus):
 def remove_mean(imgs, focus, nb_size=(4, 9)):
     in_np = isinstance(imgs, np.ndarray)
     if not in_np:
-        imgs = imgs.detach().numpy()
+        imgs = pytorch_model.unwrap(imgs)
     imgs = np.array(imgs)
     focus = (focus * imgs.shape[2:]).astype(int)
 
@@ -320,7 +320,7 @@ def image_focus_subtract(imgs, focus, focus_mean, nb_size):
 def remove_mean_batch(imgs, focus, nb_size=(5, 5)):
     in_np = isinstance(imgs, np.ndarray)
     if not in_np:
-        imgs = imgs.detach().numpy()
+        imgs = pytorch_model.unwrap(imgs)
     focus = (focus * imgs.shape[2:]).astype(int)
     focus_mean = image_focus_mean(imgs, focus, nb_size)
     imgs = image_focus_subtract(imgs, focus, focus_mean, nb_size)
@@ -340,7 +340,7 @@ class RemoveMeanMemory:
     def remove_mean_memory(self, imgs, focus):
         in_np = isinstance(imgs, np.ndarray)
         if not in_np:
-            imgs = imgs.detach().numpy()
+            imgs = pytorch_model.unwrap(imgs)
         focus = (focus * imgs.shape[2:]).astype(int)
         focus_mean = image_focus_mean(imgs, focus, self.nb_size)
         self.mean = (self.n_mean * self.mean + focus.shape[0] * focus_mean) \

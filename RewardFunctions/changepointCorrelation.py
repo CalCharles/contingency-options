@@ -35,9 +35,10 @@ class ChangepointModels():
         #     ndatas[i] = np.array(ndatas[i])
         self.mode_model.fit(datas)
         # print(datas)
+        print(self.mode_model.mean())
         assignments = self.mode_model.predict(datas)
-        for a, value in zip(assignments, datas[0]):
-            print(a, value)
+        # for a, value in zip(assignments, datas[0]):
+        #     print(a, value)
         self.determiner.fit_narrow_modes(models, self.mode_model, assignments)
 
     def get_mode(self, trajectory, saliency_trajectory, models=None, changepoints=None):
@@ -55,6 +56,8 @@ class ChangepointModels():
         for transform in self.transforms:
             data = transform.mode_statistics(models, changepoints, trajectory, saliency_trajectory, window=self.window)
             datas.append(data)
+        # for x,y in zip(*datas):
+        #     print(x,y)
         mode_assignments = self.mode_model.predict(datas)
         # print(self.mode_model.mean())
         # print("datas", mode_assignments, changepoints)

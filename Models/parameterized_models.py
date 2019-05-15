@@ -16,9 +16,13 @@ class ParametrizedModel(Model):
         # Input size should be augmented with parameter size
         add_size = self.get_option_dim(kwargs['param_dim'])
         if 'class_sizes' in kwargs:
-            kwargs['class_sizes'].append(add_size) # param_dim must be included
+            kwargs['class_sizes'] = kwargs['class_sizes'] + [add_size] # param_dim must be included
+        print(args.parameterized_form, kwargs['class_sizes'])
         kwargs['num_inputs'] += add_size
+        kwargs['needs_final'] = False
         self.model = models[args.parameterized_form](**kwargs)
+        self.insize = self.model.insize
+        self.init_last(num_outputs)
         self.layers = []
         self.option_values = None
         # self.l1 = nn.Linear(self.num_inputs, self.num_inputs*factor*factor)
@@ -67,7 +71,7 @@ class ParameterizedOneHotModel(ParametrizedModel):
 
     def create_option_vec(self, batch_size):
         vec = torch.zeros(batch_size, self.num_options)
-        vec[:, self.option_values] = 1.0
+        vec[:, self.option_values] = 30.0
         if self.iscuda:
             vec = vec.cuda()
         return vec
@@ -76,6 +80,7 @@ class ParameterizedOneHotModel(ParametrizedModel):
 class ParameterizedContinuousModel(ParametrizedModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         self.hot_encodings = []
         self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
         print(self.param_dim)
@@ -110,6 +115,7 @@ class ParameterizedBoostDim(ParametrizedModel):
 
     def get_option_dim(self, param_dim):
         return self.num_inputs
+
     def create_option_vec(self, batch_size):
         # boosts the dimension of the option values to the same as the inputs (relu might not be the right activation...)
         return F.relu(self.l1(self.option_values.clone()))
