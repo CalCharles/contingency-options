@@ -116,6 +116,14 @@ if __name__ == '__main__':
             save_path='results',  # save path for gym
             binarize=args.binarize,  # binarize image to 0 and 1
         )
+    elif args.game == 'atari-b':
+        dataset = DatasetSelfBreakout(
+            './data/atariball',  # object dump path
+            './data/atariball/31',  # run states
+            n_state=args.n_state,  # set max number of states
+            binarize=args.binarize,  # binarize image to 0 and 1
+            offset_fix=args.offset_fix,  # offset of episode number
+        )  # 10.0, 0.1, 1.0, 0.0005
 
 
     """

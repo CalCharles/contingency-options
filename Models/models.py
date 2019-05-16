@@ -112,7 +112,7 @@ class Model(nn.Module):
                         nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])
                     if self.init_form == "smalluni":
                         # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
-                        nn.init.uniform_(layer.weight.data, 0.0, .001 / layer.weight.data.shape[0])
+                        nn.init.uniform_(layer.weight.data, -.0001 / layer.weight.data.shape[0], .0001 / layer.weight.data.shape[0])
                     elif self.init_form == "xnorm":
                         torch.nn.init.xavier_normal_(layer.weight.data)
                     elif self.init_form == "xuni":

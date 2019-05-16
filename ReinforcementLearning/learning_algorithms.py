@@ -1089,7 +1089,7 @@ class CMAES_optimizer(Evolutionary_optimizer):
                 sigma = args.init_var#pytorch_model.unwrap(torch.stack([train_models.models[i].networks[j].get_parameters() for j in range(train_models.models[i].num_population)]).var(dim=1).mean())
                 print(xinit, sigma)
             else:
-                xinit = (np.random.rand(train_models.currentModel().networks[0].count_parameters())-0.5)*2 # initializes [-1,1]
+                xinit = (np.random.rand(train_models.currentModel().networks[0].count_parameters())-0.5)*args.init_var # initializes [-1,1]
                 sigma = args.init_var
             cmaes_params = {"popsize": args.num_population} # might be different than the population in the model...
             cmaes = cma.CMAEvolutionStrategy(xinit, sigma, cmaes_params)

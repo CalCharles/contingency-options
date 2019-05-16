@@ -22,6 +22,7 @@ from ObjectRecognition.model import (
     ModelFocusCNN, ModelCollectionDAG,
     load_param, util)
 from SelfBreakout.focus_screen import FocusEnvironment
+from AtariEnvironments.focus_atari import FocusAtariEnvironment
 
 
 
@@ -32,31 +33,40 @@ if __name__ == "__main__":
     # python test_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 1 --state-forms prox svel bounds --state-names Paddle Ball Ball --base-node Paddle --changepoint-dir ./data/paddlegraph2 --behavior-policy esp --reward-form dir --gamma .9 --init-form xnorm --num-layers 1 --select-ratio .2 --num-population 10 --sample-duration 100 --warm-up 0 --log-interval 1 --scale 1 --gpu 1 --load-weights --num-iters 1000
     args = get_args()
     torch.cuda.set_device(args.gpu)
-    # true_environment = Paddle()
     # # loading vision model
-    # paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
-    # net_params = json.loads(open(paddle_model_net_params_path).read())
-    # params = load_param('ObjectRecognition/models/paddle_bin_long_smooth_2.pth')
-    # paddle_model = ModelFocusCNN(
-    #     image_shape=(84, 84),
-    #     net_params=net_params,
-    # )
-    # paddle_model.set_parameters(params)
-    # ball_model_net_params_path = 'ObjectRecognition/net_params/two_layer.json'
-    # net_params = json.loads(open(ball_model_net_params_path).read())
-    # params = load_param('ObjectRecognition/models/ball.npy')
-    # ball_model = ModelFocusCNN(
-    #     image_shape=(84, 84),
-    #     net_params=net_params,
-    # )
-    # ball_model.set_parameters(params)
-    # model = ModelCollectionDAG()
-    # model.add_model('Paddle', paddle_model, [], augment_fn=util.RemoveMeanMemory(nb_size=(3, 9)))
-    # model.add_model('Ball', ball_model, ['Paddle'])
+    paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
+    net_params = json.loads(open(paddle_model_net_params_path).read())
+    params = load_param('ObjectRecognition/models/atari/paddle_bin_smooth.pth')
+    paddle_model = ModelFocusCNN(
+        image_shape=(84, 84),
+        net_params=net_params,
+        binarize = 0.001
+    )
+    paddle_model.set_parameters(params)
+    ball_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
+    net_params = json.loads(open(ball_model_net_params_path).read())
+    params = load_param('ObjectRecognition/models/atari/42531_2_smooth_2.pth')
+    ball_model = ModelFocusCNN(
+        image_shape=(84, 84),
+        net_params=net_params,
+        binarize = 0.1
+    )
+    ball_model.set_parameters(params)
+    model = ModelCollectionDAG()
+    model.add_model('Paddle', paddle_model, [], augment_fn=util.RemoveMeanMemory(nb_size=(3, 8)))
+    f1 = util.LowIntensityFiltering(8.0)
+    f2 = util.JumpFiltering(3, 0.05)
+    def f(x, y):
+        return f2(x, f1(x, y))
+        # model.add_model('train', r_model, ['premise'], augment_pt=f)
+
+    model.add_model('Ball', ball_model, ['Paddle'], augment_pt=f)#,augment_pt=util.JumpFiltering(2, 0.05))
     # ####
 
     if args.reward_form in ['bounce', 'dir', 'dirneg']:
         true_environment = Paddle()
+    elif args.env.find("Atari") != -1:
+        true_environment = FocusAtariEnvironment(model, args.env[len("Atari"):], 9999, 0, args.save_dir)
     else:
         true_environment = FocusEnvironment(model)
     dataset_path = args.record_rollouts

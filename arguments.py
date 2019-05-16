@@ -339,7 +339,7 @@ def get_args():
     elif args.champ_parameters[0] == "Ball": 
         args.champ_parameters = [15, 10, 2, 100, 100, 2, 1, 0] 
     elif args.champ_parameters[0] == "BallAtari":
-        args.champ_parameters = [3, 5, 1, 100, 100, 2, 1, 3]
+        args.champ_parameters = [15, 10, 1, 100, 100, 2, .5, 3]
     else:
         args.champ_parameters = [float(p) for p in args.champ_parameters]
     if len(args.behavior_policy) == 0:
