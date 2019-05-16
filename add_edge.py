@@ -32,7 +32,8 @@ if __name__ == "__main__":
         # Action->Paddle: python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/random/" --train-edge "Action->Paddle" --changepoint-dir data/integrationgraph --num-stack 2 --factor 6 --train --num-iters 1000 --save-dir data/action --state-forms bounds --state-names Paddle --num-steps 1 --reward-check 5 --num-update-model 1 --greedy-epsilon .1 --lr 1e-2 --init-form smalluni --behavior-policy egq --grad-epoch 5 --entropy-coef .01 --value-loss-coef 0.5 --gamma .9 --save-models --save-dir data/integrationpaddle --save-graph data/intnetpaddle > integration/paddle.txt
         # python add_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/integrationpaddle/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 30 --state-forms prox vel --state-names Paddle Ball --changepoint-dir ./data/integrationgraph/ --lr 5e-3 --behavior-policy esp --reward-form bounce --gamma .87 --init-form xuni --factor 8 --num-layers 1 --base-form basic --select-ratio .2 --num-population 10 --sample-duration 100 --sample-schedule 12 --warm-up 0 --log-interval 1 --scale 2 --reward-check 10 --save-models --save-dir data/integrationbounce > integration/ball.txt
         # atari python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/atarirandom/" --train-edge "Action->Paddle" --changepoint-dir data/atarigraph/ --num-stack 2 --factor 6 --train --num-iters 1000 --save-dir data/action --state-forms bounds --state-names Paddle --num-steps 1 --reward-check 3 --changepoint-queue-len 10 --num-update-model 1 --greedy-epsilon .1 --lr 1e-2 --init-form smalluni --behavior-policy egq --grad-epoch 5 --entropy-coef .01 --value-loss-coef 0.5 --gamma 0.1 --focus-dumps-name focus_dumps.txt --env AtariBreakoutNoFrameskip-v0 --save-models --save-dir data/ataripaddle --save-graph data/atarinetpaddle > atari/paddle.txt
-        # python add_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/integrationpaddle/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 30 --state-forms prox vel --state-names Paddle Ball --changepoint-dir ./data/integrationgraph/ --lr 5e-3 --behavior-policy esp --reward-form bounce --gamma .87 --init-form xuni --factor 8 --num-layers 1 --base-form basic --select-ratio .2 --num-population 10 --sample-duration 100 --sample-schedule 15 --warm-up 0 --log-interval 1 --scale 2 --reward-check 10 --focus-dumps-name focus_dumps.txt --env AtariBreakoutNoFrameskip-v0 --save-models --save-dir data/ataribounce  --save-dir ../datasets/caleb_data/integrationbounce > atari/ball.txt
+        # python add_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/integrationpaddle/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 30 --state-forms prox vel --state-names Paddle Ball --changepoint-dir ./data/integrationgraph/ --lr 5e-3 --behavior-policy esp --reward-form bounce --gamma .87 --init-form xuni --factor 8 --num-layers 1 --base-form basic --select-ratio .2 --num-population 10 --sample-duration 100 --sample-schedule 15 --warm-up 0 --log-interval 1 --scale 2 --reward-check 10 --focus-dumps-name focus_dumps.txt --env AtariBreakoutNoFrameskip-v0 --save-models --save-dir data/ataribounce  > atari/ball.txt
+        # first train: python add_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/integrationpaddle/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 100 --state-forms prox vel vel --state-names Paddle Ball Paddle --changepoint-dir ./data/atarigraph/ --lr 5e-3 --greedy-epsilon .01 --behavior-policy esp --gamma 0 --init-form smalluni --factor 12 --num-layers 1 --base-form basic --num-population 10 --retest 2 --OoO-eval --sample-duration 100 --sample-schedule 15 --done-swapping 0 --warm-up 0 --log-interval 1 --init-var 5e-2 --scale 1 --reward-check 20 --focus-dumps-name focus_dumps.txt --env AtariBreakoutNoFrameskip-v0 --save-dir data/atariball --save-models --save-graph data/atariballgraph --save-interval 1  > atariball.txt
     args = get_args()
     torch.cuda.set_device(args.gpu)
 
@@ -49,7 +50,7 @@ if __name__ == "__main__":
     paddle_model.set_parameters(params)
     ball_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
     net_params = json.loads(open(ball_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/atari/42531_2_smooth.pth')
+    params = load_param('ObjectRecognition/models/atari/42531_2_smooth_2.pth')
     ball_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
@@ -57,8 +58,14 @@ if __name__ == "__main__":
     )
     ball_model.set_parameters(params)
     model = ModelCollectionDAG()
-    model.add_model('Paddle', paddle_model, [], augment_fn=util.RemoveMeanMemory(nb_size=(15, 15)), augment_pt=util.JumpFiltering(2, 0.1))
-    model.add_model('Ball', ball_model, ['Paddle'], augment_pt=util.JumpFiltering(5, 0.1))
+    model.add_model('Paddle', paddle_model, [], augment_fn=util.RemoveMeanMemory(nb_size=(3, 8)))
+    f1 = util.LowIntensityFiltering(8.0)
+    f2 = util.JumpFiltering(3, 0.05)
+    def f(x, y):
+        return f2(x, f1(x, y))
+        # model.add_model('train', r_model, ['premise'], augment_pt=f)
+
+    model.add_model('Ball', ball_model, ['Paddle'], augment_pt=f)#,augment_pt=util.JumpFiltering(2, 0.05))
     ####
 
     if args.env == 'SelfBreakout':

@@ -380,12 +380,17 @@ class ProxyEnvironment():
         # start=time.time()
         for reward_fn in self.reward_fns:
             rwd = reward_fn.compute_reward(states,actions,resps)
-            if len(rwd) < length: #queue not yet filled enough
+            # xloss = -(states[:,1] - states[:,-1]).abs() * 1e-4
+            if len(rwd) < length: # queue not yet filled enough
                 ext = torch.zeros((length - len(rwd), )).cuda().detach()
                 # print(ext.shape)
                 rwd = torch.cat([ext, rwd], dim = 0)
+                # xloss = torch.cat([ext, xloss], dim = 0)
             # print(rwd.shape, length)
+
+            # rwd += xloss
             rewards.append(rwd)
+        # print(rewards, states)
         # print(time.time() - start)
         # print(torch.stack(rewards, dim=0)[:,-length:].shape)
         # print(states, rollout.extracted_state)

@@ -92,8 +92,7 @@ if __name__ == '__main__':
         binarize=args.binarize,
         offset_fix=args.offset_fix
     )
-
-
+    
     """
     Changepoint Detector
         - specify changepoint detector which fits the dynamic of the object

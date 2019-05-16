@@ -102,8 +102,8 @@ def visualize_frame_dumps(pth, i= 0, rng=-1, filename='focus_dumps.txt'):
             break
         time_dict = dump_from_line(line, dict())
         print(current_len)
-        d = str(current_len // 2000)
-        j = current_len % 2000
+        d = str((current_len-1) // 2000)
+        j = (current_len-1) % 2000
         p = os.path.join(pth, d, "state" + str(j) + ".png")
         raw_state = imio.imread(p)
         pval = ""
