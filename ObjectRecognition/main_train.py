@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 from SelfBreakout.breakout_screen import RandomConsistentPolicy, RotatePolicy
 from ChangepointDetection.LinearCPD import LinearCPD
 from ChangepointDetection.CHAMP import CHAMPDetector
-from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
+from ObjectRecognition.dataset import parse_dataset
 from ObjectRecognition.model import (
     ModelFocusCNN, ModelFocusBoost,
     ModelAttentionCNN,
@@ -57,10 +57,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train object recognition')
     parser.add_argument('savedir',
                         help='base directory to save results')
-    parser.add_argument('game', choices=['self', 'self-b', 'atari'],
-                        help='game name to train with')
-    parser.add_argument('net',
-                        help='network params JSON file')
     parser.add_argument('--verbose', action='store_true', default=False,
                         help='number of training iterations')
     add_args.add_changepoint_argument(parser)
@@ -90,32 +86,12 @@ if __name__ == '__main__':
         - SelfBreakout
         - Atari OpenAI Gym
     """
-    if args.game == 'self':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs',  # object dump path
-            'SelfBreakout/runs/0',  # run states
-            n_state=args.n_state,  # set max number of states
-            binarize=args.binarize,  # binarize image to 0 and 1
-            offset_fix=args.offset_fix,  # offset of episode number
-        )  # 10.0, 0.1, 1.0, 0.0005
-    elif args.game == 'self-b':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs_bounce',  # object dump path
-            'SelfBreakout/runs_bounce/0',  # run states
-            n_state=args.n_state,  # set max number of states
-            binarize=args.binarize,  # binarize image to 0 and 1
-            offset_fix=args.offset_fix,  # offset of episode number
-        )  # 10.0, 0.1, 1.0, 0.0005
-    elif args.game == 'atari':
-        # actor = partial(RandomConsistentPolicy, change_prob=0.35)
-        actor = partial(RotatePolicy, hold_count=4)
-        dataset = DatasetAtari(
-            'BreakoutNoFrameskip-v4',  # atari game name
-            actor,  # mock actor
-            n_state=args.n_state,  # set max number of states
-            save_path='results',  # save path for gym
-            binarize=args.binarize,  # binarize image to 0 and 1
-        )
+    dataset = parse_dataset(
+        dataset_name=args.dataset_name,
+        n_state=args.n_state,
+        binarize=args.binarize,
+        offset_fix=args.offset_fix
+    )
 
 
     """
@@ -181,7 +157,8 @@ if __name__ == '__main__':
         pmodel.set_parameters(pmodel_params)
         # model.add_model('premise', pmodel, [])
         model.add_model('premise', pmodel, [], 
-                        augment_fn=partial(util.remove_mean_batch, nb_size=(8, 8)))
+                        augment_fn=partial(util.remove_mean_batch, 
+                                           nb_size=(8, 8)))
         # model.add_model('premise', pmodel, [],
         #                 augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
         model.add_model('train', train_model, ['premise'])

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from functools import partial
 
 from SelfBreakout.breakout_screen import RandomConsistentPolicy, RotatePolicy
-from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
+from ObjectRecognition.dataset import parse_dataset
 from ObjectRecognition.model import (
     ModelFocusCNN, ModelFocusMeanVar,
     ModelCollectionDAG, load_param)
@@ -21,37 +21,16 @@ if __name__ == '__main__':
     n_state_used = 20
 
     # get dataset
-    n_state = 1000
+    n_state = 500
     offset_fix = 0
-    GAME_NAME = 'atari'  # 'self', 'self-b', 'atari'
-    if GAME_NAME == 'self':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs',
-            'SelfBreakout/runs/0',
-            binarize=0.1,
-            n_state=n_state,
-            offset_fix=offset_fix,
-        )
-    elif GAME_NAME == 'self-b':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs_bounce',
-            'SelfBreakout/runs_bounce/0',
-            binarize=0.1,
-            n_state=n_state,
-            offset_fix=offset_fix,
-        )
-    elif GAME_NAME == 'atari':
-        # actor = partial(RandomConsistentPolicy, change_prob=0.35)
-        actor = partial(RotatePolicy, hold_count=4)
-        dataset = DatasetAtari(
-            'BreakoutNoFrameskip-v4',
-            actor,
-            save_path='results',
-            normalized_coor=True,
-            binarize=0.1,
-            n_state=n_state,
-            offset_fix=offset_fix,
-        )
+    binarize = 0.01
+    GAME_NAME = 'atari'
+    dataset = parse_dataset(
+        dataset_name=GAME_NAME,
+        n_state=n_state,
+        binarize=binarize,
+        offset_fix=offset_fix
+    )
 
     # get ball model
     prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_softmax.json'
@@ -63,7 +42,7 @@ if __name__ == '__main__':
     )
     prev_model_1.set_parameters(load_param(prev_weight_path_1))
     prev_net_params_path_2 = 'ObjectRecognition/net_params/attn_softmax.json'
-    prev_weight_path_2 = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth.pth'
+    prev_weight_path_2 = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth_2.pth'
     prev_net_params_2 = json.loads(open(prev_net_params_path_2).read())
     prev_model_2 = ModelFocusCNN(
         image_shape=(84, 84),
@@ -72,11 +51,16 @@ if __name__ == '__main__':
     prev_model_2.set_parameters(load_param(prev_weight_path_2))
     prev_model = ModelCollectionDAG()
     prev_model.add_model('model_1', prev_model_1, [], 
-                         augment_fn=partial(util.remove_mean_batch, nb_size=(8, 8)))
-    prev_model.add_model('model_2', prev_model_2, ['model_1'])
+                         augment_fn=partial(util.remove_mean_batch, nb_size=(3, 8)))
+    # prev_model.add_model('model_2', prev_model_2, ['model_1'])
+    f1 = util.LowIntensityFiltering(5.0)
+    f2 = util.JumpFiltering(3, 0.05)
+    def f(x, y):
+        return f2(x, f1(x, y))
+    prev_model.add_model('model_2', prev_model_2, ['model_1'], augment_pt=f)
     def prev_forward(xs):
-        # return prev_model.forward(xs, ret_numpy=True)['model_1']
-        return prev_model.forward(xs, ret_numpy=True)['model_2']
+        outs = prev_model.forward(xs, ret_numpy=True, ret_extra=True)
+        return outs[0]['model_2'], outs[1]['model_2']
     print('mean-var:', prev_model)
 
     # get dataset
@@ -95,6 +79,7 @@ if __name__ == '__main__':
     # plot stuffs
     fig, axes = plt.subplots(ncols=2, figsize=(3, 1.5))
     for ax, im in zip(axes, (model.img_mean[0], model.img_var[0])):
+        im = (im - np.max(im)) / (np.max(im) - np.min(im))
         ax.imshow(im)
         ax.axis('off')
     plt.show()

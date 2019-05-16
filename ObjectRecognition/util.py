@@ -181,7 +181,7 @@ def focus2attn(focus, input_shape, d=0.02, fn=gaussian_pdf):
 # torch softmax
 def nn_logsoftmax(img):
     img_size = img.size()
-    return nn.LogSoftmax()(img.view(img_size[0], -1)).view(*img_size)
+    return nn.LogSoftmax(dim=1)(img.view(img_size[0], -1)).view(*img_size)
 
 
 # pick first element in list
@@ -248,6 +248,16 @@ def argmax2d(out, argmax_mode='first'):
                             for argmax_i in argmax], dtype=float)
     argmax_coor = argmax_coor / np.array([row_size, col_size])
     return argmax_coor
+
+
+# get intensity for focus position
+def focus_intensity(focus, intensity):
+    N = intensity.shape[0]
+    weight_stack = np.zeros(N)
+    for i in range(N):
+        x = np.around(focus[i] * np.array(intensity.shape[-2:])).astype(int)
+        weight_stack[i] = intensity[i, 0, x[0], x[1]]
+    return weight_stack
 
 
 """
@@ -388,8 +398,8 @@ class JumpAugmentFocus:
 
     # expected distance error
     def dist(self, next_focus):
-        return np.sum((next_focus - self.conf_focus)**2)**0.5 / self.delta_t
-        # return np.sum((next_focus - self.pred_focus)**2)**0.5
+        # return np.sum((next_focus - self.conf_focus)**2)**0.5 / self.delta_t
+        return np.sum((next_focus - self.pred_focus)**2)**0.5
 
 
     # get weak distance filter
@@ -435,10 +445,10 @@ class JumpFiltering:
             if self.jump_pos is None:
                 self.jump_pos = JumpAugmentFocus(focus)
             else:
-                # if self.jump_pos.dist(focus) <= self.jump_threshold:
-                self.jump_pos.update(focus)
-                # else:
-                #     self.jump_pos = JumpAugmentFocus(focus)
+                if self.jump_pos.dist(focus) <= self.jump_threshold:
+                    self.jump_pos.update(focus)
+                else:
+                    self.jump_pos = JumpAugmentFocus(focus)
 
             # check if jumping is valid
             if self.jump_pos.t >= self.jump_count_t:
@@ -477,6 +487,7 @@ class LowIntensityFiltering:
             self.cur_pos = focus
         focus_pos = np.around(focus * np.array(img.shape[-2:])).astype(int)
         if img[0, focus_pos[0], focus_pos[1]] >= self.int_threshold:
+        # if focus_pos[0] > 10:
             self.cur_pos = focus
         return self.cur_pos
 

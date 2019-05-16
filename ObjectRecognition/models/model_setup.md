@@ -27,6 +27,12 @@ paddle_bin_smooth.pth
 - binarize=0.1
 - with paddle_bin_smooth.npy + remove mean
 
+42531_2_smooth_3_2.pth
+- attn_softmax.json
+- binarize=0.01
+- with paddle_bin_smooth.npy + remove mean
+- (recommend) LowIntensityFiltering(7.0) then JumpFiltering(2, 0.1)
+
 ## self breakout
 
 The followings have similar setup

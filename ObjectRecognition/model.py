@@ -6,6 +6,10 @@ import torch.optim as optim
 from functools import partial
 from Models.models import pytorch_model
 
+import logging
+logging.basicConfig(format='%(levelname)s [%(asctime)s]: %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from ObjectRecognition.dataset import Dataset
 import ObjectRecognition.util as util
 
@@ -362,9 +366,11 @@ class ModelFocusMeanVar(ModelObject, ModelFocusInterface):
                 for x in range(imgs.shape[2]):
                     for y in range(imgs.shape[3]):
                         match_field[i, x, y] += self.match(
-                            pad_frame[x:x+self.match_shape[-2],
+                            pad_frame[None, x:x+self.match_shape[-2],
                                       y:y+self.match_shape[-1]]
                         )
+                # match_field[i] = np.exp(match_field[i] - np.max(match_field[i]))
+                # match_field[i] = match_field[i] / np.sum(match_field[i])
 
         focus_out = self.argmax_xy(match_field)
         focus_out = focus_out if ret_numpy \
@@ -376,7 +382,14 @@ class ModelFocusMeanVar(ModelObject, ModelFocusInterface):
 
     # matching function
     def match(self, img):
-        return -((img - self.img_mean)**2 / self.img_var).sum(-1).sum(-1).sum(-1)
+        # self.img_mean[:, :10, :] = None
+        # self.img_mean[:, :, :10] = None
+        sel_bool = ~np.isnan(self.img_mean)
+        img_sel = img[sel_bool]
+        mean_sel = self.img_mean[sel_bool]
+        var_sel = self.img_var[sel_bool]
+        return -np.sum((img_sel - mean_sel)**2 / var_sel)
+        # return -np.sum((img_sel - mean_sel)**2)
 
 
     # pick max coordinate
@@ -411,26 +424,23 @@ class ModelFocusMeanVar(ModelObject, ModelFocusInterface):
         n_channel = 1  # dataset.get_shape()[-3]  # TODO: properly do this
         match_size = (n_channel, nb_size[0]*2+1, nb_size[1]*2+1)
         img_stack = np.zeros((dataset.n_state,) + match_size)
+        weight_stack = np.zeros(dataset.n_state)
         cur_n = 0
 
         for l in range(0, dataset.n_state, batch_size):
             print(l)  # TODO: remove
             r = min(l + batch_size, dataset.n_state)
             frames = dataset.get_frame(l, r)
-            focus = focus_model_forward(frames)
+            focus, extra = focus_model_forward(frames)
             neighbor = util.extract_neighbor(dataset, focus, np.arange(l, r),
                                              nb_size=nb_size)
-            N = 10
-            import matplotlib.pyplot as plt
-            fig, axes = plt.subplots(ncols=N, figsize=(N*1.5, 1.5))
-            for ax, i in zip(axes, range(N)):
-                ax.imshow(neighbor[i])
-                ax.axis('off')
-            plt.show()
-            img_stack[l:r, 0] = neighbor  # properly channels
+            img_stack[l:r, 0] = neighbor  # properly channels?
+            weight_stack[l:r] = util.focus_intensity(focus[l:r], extra[l:r])
 
-        return ModelFocusMeanVar(np.mean(img_stack, axis=0),
-                                 np.var(img_stack, axis=0))
+        img_mean = np.average(img_stack, weights=weight_stack, axis=0)
+        img_var = np.average((img_stack - img_mean)**2, weights=weight_stack, 
+                             axis=0)**0.5  # TODO: this is biased
+        return ModelFocusMeanVar(img_mean, img_var)
 
 
     # pretty print
@@ -599,6 +609,9 @@ class ModelAttentionCNN(ModelObject):
     def from_focus_model(self, focus_model_forward, dataset, *args, **kwargs):
         lr = kwargs.get('lr', 1e-3)
         n_iter = kwargs.get('n_iter', 100)
+        epoch = kwargs.get('epoch', None)
+        if epoch is not None:
+            logger.info('EPOCH %3d: lr= %f, n_iter= %d'%(epoch, lr, n_iter))
 
         # get target attention
         if isinstance(dataset, Dataset):
@@ -608,13 +621,16 @@ class ModelAttentionCNN(ModelObject):
             frames = dataset
         if isinstance(frames, np.ndarray):
             frames = torch.from_numpy(frames).float()
-        focus = focus_model_forward(frames)
+        focus, intensity = focus_model_forward(frames, ret_extra=True)
         focus_attn = util.focus2attn(
             focus,
             self.input_shape,
             fn=partial(util.gaussian_pdf, normalized=False))
         # focus_attn = 10 * focus_attn - 1  # rescale
         focus_attn = torch.from_numpy(focus_attn).float()
+        focus_weight = util.focus_intensity(focus, intensity)
+        focus_weight = torch.from_numpy(focus_weight).float()
+        focus_weight_sum = focus_weight.sum()
 
         # train
         lda_1 = 2 # attention regularization
@@ -623,11 +639,13 @@ class ModelAttentionCNN(ModelObject):
             output = self(frames)
             # loss = (output - focus_attn).pow(2).mean() \
             #        + (lda_1 + 1) * output.abs().mean()
-            loss = -(util.nn_logsoftmax(output) * focus_attn).mean()
+            loss = -(focus_weight 
+                     * (util.nn_logsoftmax(output) * focus_attn).mean(dim=(-1, -2, -3))
+                   ).sum() / focus_weight_sum
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print('iteration %4d: loss= %f'%(t, loss.item()))
+            logger.info('iteration %2d: loss= %f'%(t, loss.item()))
 
 
     # pretty print

@@ -264,7 +264,7 @@ class PremiseMICPLoss(FocusChangePointLoss):
                 np.sum(prox_mask), np.sum(match_mask), np.sum(diffs_mask)))
 
         # probability of proximal conditioned on changepoint
-        K = 4
+        K = 8
         frame_shape_old = self.frame_source.get_shape()[-2:]
         frame_shape = (frame_shape_old[0] // K, frame_shape_old[1] // K)
         is_object_cp = set(object_cp)
@@ -302,7 +302,7 @@ class PremiseMICPLoss(FocusChangePointLoss):
         cnt_valid = cp_cnt + prox_cnt > 0.0
         cndcp_score = np.mean(2 * cp_prox_cnt[cnt_valid]
                               / (cp_cnt[cnt_valid] + prox_cnt[cnt_valid])) \
-                              if np.sum(cnt_valid) > 0.0 else 0.0
+                              if np.sum(cnt_valid) > 7.0 else 0.0
         logger.info('cnt_valid= %g'%(np.sum(cnt_valid)))
         # cnt_valid = prox_cnt > 0.0
         # cndcp_score = np.mean(cp_prox_cnt[cnt_valid]
@@ -467,7 +467,7 @@ class AttentionPremiseMICPLoss:
 
     # pretty print
     def __str__(self, prefix=''):
-        return (prefix + 'AttentionPremiseMICPLoss:' + \
+        return (prefix + 'AttentionPremiseMICPLoss: ' + \
             'prox_dist= %g, attn_t= %g, ' + \
             'mi_match= %g, mi_diffs= %g, ' + \
             'active_attn= %g')%(
