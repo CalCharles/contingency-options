@@ -102,27 +102,33 @@ color_defaults = [
 ]
 
 def load_from_txt(txt_pth):
-    for filename in glob.glob(os.path.join(txt_pth, "/")):
-        f = filename.open(os.path.join(txt_pth, filename), 'r')
-        last_5_ep_rewards = []
-        rewards = []
-        last_timestep = [0]
-        last_timestep_reward = [0]
-        for l in f.readlines():
-            if l.find('Episode Reward') != -1:
-                v = int(l.split("  ")[0])
-                if len(last_5_ep_rewards) == 5:
-                    last_5_ep_rewards.pop(0)
-                last_5_ep_rewards.append(v)
-                rewards.append(np.sum(last_5_ep_rewards) / len(rewards))
-            if l.find('num timesteps') != -1:
-                last_timstep.append(int(l.split(',')[1].split(' ')[-1]))
-                last_timestep_reward.append(len(rewards) - 1)
-        timesteps = []
-        for ri, rin, t, tn in zip(last_timestep_reward[:-1], last_timestep_reward[1:], last_timestep[:-1], last_timestep[1:]):
-            for i in range(ri, rin):
-                timesteps.append(i * (tn-t)/(rin - ri) + t)
-        return timesteps, rewards
+    f = open(txt_pth, 'r')
+    last_5_ep_rewards = []
+    rewards = []
+    last_timestep = [0]
+    last_timestep_reward = [0]
+    for l in f.readlines():
+        # if l.find('Episode Reward') != -1:
+        #     v = int(l.split("  ")[1])
+        #     if len(last_5_ep_rewards) == 10:
+        #         last_5_ep_rewards.pop(0)
+        #     last_5_ep_rewards.append(v)
+        #     rewards.append(np.sum(last_5_ep_rewards) / len(last_5_ep_rewards))
+        if l.find('num timesteps') != -1:
+            last_timestep.append(int(l.split(',')[1].split(' ')[-1]))
+            # last_timestep_reward.append(len(rewards) - 1)
+            if l.find('true_reward') != -1:
+                tm = l[.find('true_reward'):]
+                if tm.find('mean') != -1:
+                    rewards.append(float(tm[l.find('mean') + 5:l.find('max') - 2]))
+                else:
+                    rewards.append(float(tm[len('true_reward')+1:tm.find(',')]))
+    # timesteps = []
+    # for ri, rin, t, tn in zip(last_timestep_reward[:-1], last_timestep_reward[1:], last_timestep[:-1], last_timestep[1:]):
+    #     for i in range(rin - ri):
+    #         timesteps.append(i/(rin - ri) * (tn-t) + t)
+    # timesteps.append(last_timestep[-1])
+    return timesteps, rewards
 
 '''
 USAGE:
@@ -132,8 +138,8 @@ python visualize.py trained_models/pong_vanilla/ trained_models/pongH2pong
 '''
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='RL')
-    parser.add_argument('--log_dir', metavar='log_dir', nargs='+')
-    parser.add_argument('--txt_dir', metavar='text_dir', nargs='+')
+    parser.add_argument('--log-dir', metavar='log_dir', nargs='+')
+    parser.add_argument('--txt-dir', metavar='txt_dir', nargs='+')
     parser.add_argument('--model', default='a2c')
     parser.add_argument('--title', default='Graph')
     parser.add_argument('--plotall', action = 'store_true', default=False)
@@ -143,7 +149,7 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     xlim = 0
-    for m_idx, root_dir in enumerate(args.log_dir[1:]):
+    for m_idx, root_dir in enumerate(args.log_dir):
 
         # look for all the possible sub log dirs
         dirs = [root_dir] + glob.glob(root_dir+'/*/')
@@ -183,21 +189,28 @@ if __name__=='__main__':
             if args.labels is not None:
                 root_name = args.labels[m_idx]
 
-            plt.plot(tx, y_mean, label=root_name, color=color_defaults[m_idx])
-            plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx])
+            plt.semilogx(tx, y_mean, label=root_name, color=color_defaults[m_idx+6])
+            plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx+6])
 
-    for m_idx, root_dir in enumerate(args.txt_dir[1:]):
+    print(args.txt_dir, args.log_dir)
+    for m_idx, root_dir in enumerate(args.txt_dir):
 
         # look for all the possible sub log dirs
-        pths = glob.glob(root_dir+'/*.txt')
+        pths = glob.glob(root_dir+'*.txt')
+        print(pths)
         curves = []
         names = []
         for pth in pths:
             tx, ty = load_from_txt(pth)
             if tx is not None:
+                tx, ty  = tx[:6000], ty[:6000]
                 curves.append((tx, ty))
                 names.append(root.strip('/').split('/')[-1])
                 xlim = max(xlim, max(tx))
+                # print(tx, ty)
+                print(len(tx[:6000]), len(ty[:6000]))
+                # plt.plot(tx, ty)
+                # plt.show()
 
         else:
             # show average curve + std
@@ -217,17 +230,17 @@ if __name__=='__main__':
             root_name = root_dir.strip('/').split('/')[-1]
             if args.labels is not None:
                 root_name = args.labels[m_idx]
-
-            plt.plot(tx, y_mean, label=root_name, color=color_defaults[m_idx])
+            
+            plt.semilogx(tx, y_mean, label=root_name, color=color_defaults[m_idx])
             plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx])
-
-    plt.xticks([1e6, 2e6, 4e6, 6e6, 8e6, 10e6], ["1M", "2M", "4M", "6M", "8M", "10M"])
+    plt.plot([0, xlim], [28, 28], linewidth =.5, color = color_defaults[7])
+    plt.xticks([1000, 10000, 50000, 1e5, 6.8e5], ["1k", "10k", "50k", "500k", "680k"])
     xlim = min(xlim, args.xlim)
     # plt.xlim(0, math.ceil(xlim/1e6)*1e6)
     plt.xlim(0, xlim)
-    plt.ylim(0, 100)
+    plt.ylim(0, 30)
     plt.xlabel('Number of Timesteps')
-    plt.ylabel('Rewards')
+    plt.ylabel('Average Rewards per Episode')
     plt.title(args.title)
     plt.legend(loc=2)
 
