@@ -81,7 +81,6 @@ class ModelObject(nn.Module):
         # preprocessing
         self.binarize = kwargs.get('binarize', None)
 
-
     # set parameter corresponding to given param type
     def set_parameters(self, param):
         if isinstance(param, np.ndarray):
@@ -100,8 +99,13 @@ class ModelObject(nn.Module):
         for param in self.parameters():
             param_size = np.prod(param.size())
             cur_param_np = param_np[pval_idx : pval_idx+param_size]
+            cuda = False
+            if param.is_cuda:
+                cuda = True
             param.data = torch.from_numpy(cur_param_np) \
                               .reshape(param.size()).float()
+            if cuda:
+                param.data = param.data.cuda()
             pval_idx += param_size
 
 
@@ -164,6 +168,8 @@ class ModelObject(nn.Module):
             frames = util.binarize(frames, self.binarize)
         if isinstance(frames, np.ndarray):
             frames = torch.from_numpy(frames).float()
+        if next(self.parameters()).is_cuda:
+            frames = frames.cuda()
         return frames
 
 
@@ -566,7 +572,6 @@ class ModelAttentionCNN(ModelObject):
         self.net_params = net_params
         self.init_net()
 
-
     # initialize network propeties
     def init_net(self):
         # convolutional layers
@@ -589,7 +594,8 @@ class ModelAttentionCNN(ModelObject):
 
     # push input forward
     def forward(self, img, ret_numpy=False, ret_extra=False):
-        out = img
+        # out = img
+        out = self.preprocess(img)
         for layer in self.layers:
             out = layer(out)
         return out if not ret_numpy else pytorch_model.unwrap(out)
@@ -631,7 +637,11 @@ class ModelAttentionCNN(ModelObject):
         focus_weight = util.focus_intensity(focus, intensity)
         focus_weight = torch.from_numpy(focus_weight).float()
         focus_weight_sum = focus_weight.sum()
-
+        if next(self.parameters()).is_cuda:
+            focus_attn = focus_attn.cuda()
+            focus_weight = focus_weight.cuda()
+            focus_weight = focus_weight.cuda()
+            focus_weight_sum = focus_weight_sum.cuda()
         # train
         lda_1 = 2 # attention regularization
         optimizer = optim.Adam(self.parameters(), lr=lr)
@@ -720,11 +730,18 @@ class ModelCollectionDAG():
             self.model_dir[d_model_id].append(model_id)
 
     def cuda(self):
+        print(list(self.model_list.keys()))
         for key in self.model_list.keys():
-            self.model_list[key] = self.model_list[key].cuda() # TODO: write a cpu function
+            self.model_list[key] = self.model_list[key].cuda()
+            print(key, self.model_list[key], next(self.model_list[key].parameters()).is_cuda)
         self.iscuda = True
         return self
 
+    def cpu(self):
+        for key in self.model_list.keys():
+            self.model_list[key] = self.model_list[key].cpu()
+        self.iscuda = False
+        return self
 
     # set trainable model, only supported one trainable model
     def set_trainable(self, model_id):
@@ -769,9 +786,9 @@ class ModelCollectionDAG():
             # forward the model
             # print(cur_img)
             cur_img = cur_model.preprocess(cur_img)
-            # print(cur_img)
-            if self.iscuda and not cur_img.is_cuda:
-                cur_img = cur_img.cuda()
+            # print(model_id, cur_img.is_cuda)
+            # if self.iscuda and not cur_img.is_cuda:
+            #     cur_img = cur_img.cuda()
             outs[model_id], extras[model_id] = cur_model.forward(cur_img,
                 ret_numpy=ret_numpy,
                 ret_extra=True)

@@ -249,8 +249,12 @@ if __name__ == '__main__':
         cmaes_params={
             'popsize': args.popsize,
         },
+        id = args.save_name
     )
 
+    if args.cuda:
+        torch.cuda.set_device(1)
+        model = model.cuda()
 
     """
     Execution

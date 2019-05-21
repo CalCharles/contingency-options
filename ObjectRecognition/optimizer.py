@@ -34,7 +34,9 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
 
     def __init__(self, dim, *args, **kwargs):
         self.dim = dim
-        self.id =  kwargs.get('id', str(np.random.randint(42000, 42999)))
+        self.id =  kwargs.get('id', None)
+        if self.id is None:
+            self.id = str(np.random.randint(42000, 42999))
         self.cmaes_params = kwargs.get('cmaes_params', {})
         self.save_path = util.get_dir(kwargs.get('save_path', 
                                       os.path.join('cmaes_soln', self.id)))
@@ -79,7 +81,7 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
         # initialize pycma class
         xinit = np.random.normal(loc=0.0, scale=np.sqrt(2.0/self.dim), 
                                  size=self.dim)
-        from ObjectRecognition.model import load_param; xinit = load_param('results/cmaes_soln/focus_self/ball_bin_long.npy')  # TODO: remov
+        # from ObjectRecognition.model import load_param; xinit = load_param('results/cmaes_soln/focus_self/ball_bin_long.npy')  # TODO: remov
         if self.cheating:  # for testing filter generality
             xinit = util.cheat_init_center((10, 10), 3, self.cheating) 
             self.cmaes_params['popsize'] = 2

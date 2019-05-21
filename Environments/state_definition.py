@@ -120,7 +120,10 @@ class Raw(): # raw
 	def compute_comparison(self, state, target, correlate):
 		# print(state[0])
 		# print(np.expand_dims(state[0], axis=2).shape)
-		return [state[0].tolist()]
+		try:
+			return state[0].flatten().tolist()
+		except AttributeError as e:
+			return state[0].tolist()
 
 class Sub(): # sub # TODO: implement
 	def compute_comparison(self, state, target, correlate):
@@ -271,6 +274,7 @@ def load_states(state_function, pth, length_constraint=50000, use_raw = False, r
 	if raws is None:
 		raw_files = []
 		if use_raw:
+			print("raw path", pth)
 			for root, dirs, files in os.walk(pth, topdown=False):
 				dirs.sort(key=lambda x: int(x))
 				print(pth, dirs)
@@ -296,6 +300,7 @@ def load_states(state_function, pth, length_constraint=50000, use_raw = False, r
 	states = []
 	resps = []
 	for state in zip(raw_files, dumps):
+		# print(state)
 		sv, resp = state_function(state)
 		states.append(sv)
 		resps.append(np.array(resp))
@@ -316,7 +321,8 @@ def compute_minmax(state_function, pth, filename = "object_dumps.txt"):
 		minmax = np.load(saved_minmax_pth)
 	except FileNotFoundError as e:
 		print("not loaded", saved_minmax_pth)
-		use_raw = 'raw' in state_function.names
+		use_raw = 'raw' in state_function.fnames
+		print(state_function.names)
 		states, resps, raws, dumps = load_states(state_function.get_state, pth, use_raw = use_raw, filename=filename) # TODO: no normalization for raw states (not implemented)
 		minmax = (np.min(states, axis=0), np.max(states, axis=0))
 		np.save(saved_minmax_pth, minmax)
@@ -330,7 +336,7 @@ state_functions = {"prox": Proximity(), "full": Full(), "bounds": Bounds(), 'vis
 					"vel": Velocity(), "svel": ScaledVelocity(), "acc": Acceleration(), "xprox": XProximity(), 'bin': BinaryExistence(),
 					"feature": Feature(), "raw": Raw(), "sub": Sub(), "multifull": MultiFull()}
 # TODO: full and feature is currently set at 1, and prox and bounds at 2, but this can differ, bin has hardcoded size, as does multifull
-state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "svel": [2], "acc": [2], 'bin': [100], "multifull": [300], "feature": [1], "raw": [84, 84, 1], "sub": [4,4]}
+state_shapes = {"prox": [2], "xprox": [1], "full": [3], "bounds": [2], "vel": [2], "svel": [2], "acc": [2], 'bin': [100], "multifull": [300], "feature": [1], "raw": [84 * 84], "sub": [4,4]}
 # class GetRaw(StateGet):
 # 	'''
 # 	Returns the raw_state

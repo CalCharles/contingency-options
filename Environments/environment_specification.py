@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import imageio as imio
 from Models.models import pytorch_model, models
+from collections import deque
 
 
 
@@ -14,6 +15,7 @@ class RawEnvironment():
         self.num_actions = None # this must be defined
         self.itr = 0 # this is used for saving, and is set externally
         self.save_path = "" # save dir also is set externally
+        self.episode_rewards = deque(maxlen=10)
 
     def step(self, action):
         '''
@@ -36,10 +38,11 @@ class RawEnvironment():
         '''
         pass
 
-    def set_save(self, itr, save_dir, recycle):
+    def set_save(self, itr, save_dir, recycle, all_dir=""):
         self.save_path=save_dir
         self.itr = itr
         self.recycle = recycle
+        self.all_dir = all_dir
         try:
             os.makedirs(save_dir)
         except OSError:
@@ -155,11 +158,12 @@ class ProxyEnvironment():
         print(self.stateExtractor.get_state(proxy_chain[0].getState())[0].shape)
         self.state_shape = self.stateExtractor.get_state(proxy_chain[0].getState())[0].shape
         fs, fr = self.stateExtractor.get_state(proxy_chain[0].getState())
-        self.extracted_state = pytorch_model.wrap(fs, cuda=args.cuda)
+        self.extracted_state = pytorch_model.wrap(fs, cuda=args.cuda).detach()
         self.resp = pytorch_model.wrap(fr, cuda=args.cuda)
         self.resp_len = len(self.stateExtractor.fnames)
         self.insert_extracted()
         self.parameterized_option = args.parameterized_option
+        print(self.current_state.shape, self.state_size)
 
         self.changepoint_queue_len = args.changepoint_queue_len
         print(self.reward_fns, proxy_chain)
@@ -261,22 +265,22 @@ class ProxyEnvironment():
         state_size = int(np.prod(self.state_size))
         # print(self.extracted_state.shape, self.current_state.shape, self.current_resp, self.resp)
         if self.num_hist > 1:
-            self.current_state[:(shape_dim0-1)*state_size] = self.current_state[-(shape_dim0-1)*state_size:]
-            self.current_resp[:-self.resp_len] = self.current_resp[self.resp_len:]
+            self.current_state[:(shape_dim0-1)*state_size] = self.current_state[-(shape_dim0-1)*state_size:].detach()
+            self.current_resp[:-self.resp_len] = self.current_resp[self.resp_len:].detach()
         try:
             len(self.state_shape) < 2
         except AttributeError as e:
             self.state_shape = (2,)
         if len(self.state_shape) < 2: # TODO: a hacked result, try to fix?
-            self.current_state[-state_size:] = self.extracted_state # unsqueeze 0 is for dummy multi-process code
+            self.current_state[-state_size:] = self.extracted_state.detach() # unsqueeze 0 is for dummy multi-process code
             # print(self.current_resp, self.resp)
             self.current_resp[-self.resp_len:] = self.resp
         else:
-            self.current_state = self.extracted_state # unsqueeze 0 is for dummy multi-process code
+            self.current_state = self.extracted_state.detach() # unsqueeze 0 is for dummy multi-process code
             # print(self.current_resp, self.resp)
             self.current_resp = self.resp
 
-        return self.current_state
+        return self.current_state.detach()
 
     def getState(self):
         return self.extracted_state
@@ -302,8 +306,8 @@ class ProxyEnvironment():
             action = self.current_action
         if model:
             if self.swap:
-                values, dist_entropy, probs, Q_vals = self.models.determine_action(self.current_state.unsqueeze(0), self.current_resp.unsqueeze(0))
-                vals, action_probs, Q_vs = self.models.get_action(values, probs, Q_vals, index = int(action))
+                values, log_probs, probs, Q_vals = self.models.determine_action(self.current_state.unsqueeze(0), self.current_resp.unsqueeze(0))
+                vals, action_probs, log_probs, Q_vs = self.models.get_action(values, probs, log_probs, Q_vals, index = int(action))
                 action = self.behavior_policy.take_action(action_probs, Q_vs)
                 self.current_action = action
             else:
@@ -339,10 +343,26 @@ class ProxyEnvironment():
         if not model: # at the top level
             self.save_actions(action_list)
         self.cp_state = self.changepoint_state([self.raw_state])
-        self.insert_changepoint_queue(self.cp_state, pytorch_model.wrap(action, cuda=self.iscuda), pytorch_model.wrap(resp, cuda=self.iscuda))
+        self.insert_changepoint_queue(self.cp_state, pytorch_model.wrap(action, cuda=self.iscuda).detach(), pytorch_model.wrap(resp, cuda=self.iscuda).detach())
         if self.delayed_swap and self.swap: # we just swapped and we are using delayed swapping
             self.swap = False
-        return self.extracted_state, self.raw_state, self.resp, done, action_list, 
+        return self.extracted_state, self.raw_state, self.resp, done, action_list
+
+    def cpu(self):
+        self.extracted_state = self.extracted_state.cpu()
+        self.resp = self.resp.cpu()
+        self.changepoint_queue = self.changepoint_queue.cpu()
+        self.changepoint_action_queue = self.changepoint_action_queue.cpu()
+        self.changepoint_resp_queue = self.changepoint_resp_queue.cpu()
+        self.models = self.models.cpu()
+
+    def cuda(self):
+        self.extracted_state = self.extracted_state.cuda()
+        self.resp = self.resp.cuda()
+        self.changepoint_queue = self.changepoint_queue.cuda()
+        self.changepoint_action_queue = self.changepoint_action_queue.cuda()
+        self.changepoint_resp_queue = self.changepoint_resp_queue.cuda()
+        self.models = self.models.cuda()
 
     def step_dope(self, action, rollout, model=False, action_list=[]):
         '''
@@ -396,9 +416,10 @@ class ProxyEnvironment():
         # print(states, rollout.extracted_state)
         # print(length, self.lag_num, self.changepoint_filled)
         # print(states, rewards)
-        self.current_rewards = torch.stack(rewards, dim=0)[:,self.changepoint_filled-length-self.lag_num:self.changepoint_filled-self.lag_num]
+        self.current_rewards = torch.stack(rewards, dim=0)[:,max(self.changepoint_filled-length-self.lag_num, 0):self.changepoint_filled-self.lag_num]
         # print(torch.stack(rewards, dim=0).shape)
-        # print(self.current_rewards)
+        # print(self.current_rewards.shape, self.changepoint_filled-length-self.lag_num,self.changepoint_filled-self.lag_num, torch.stack(rewards, dim=0).shape)
+        # error
         # print("cp_queue", self.changepoint_queue[self.changepoint_filled-length-self.lag_num:self.changepoint_filled-self.lag_num])
         return self.current_rewards
 
@@ -424,15 +445,15 @@ class ProxyEnvironment():
     def changepoint_state(self, raw_state):
         self.cp_state = self.reward_fns[0].get_trajectories(raw_state)
         if self.iscuda:
-            self.cp_state = self.cp_state.cuda()
+            self.cp_state = self.cp_state.cuda().detach()
         return self.cp_state
 
     def insert_changepoint_queue(self, state, action, resp):
         if self.changepoint_queue_len > 0:
             if self.changepoint_filled == self.changepoint_queue_len:
-                self.changepoint_action_queue = self.changepoint_action_queue.roll(-1, 0)
-                self.changepoint_resp_queue = self.changepoint_resp_queue.roll(-1, 0)
-                self.changepoint_queue = self.changepoint_queue.roll(-1, 0)
+                self.changepoint_action_queue = self.changepoint_action_queue.roll(-1, 0).detach()
+                self.changepoint_resp_queue = self.changepoint_resp_queue.roll(-1, 0).detach()
+                self.changepoint_queue = self.changepoint_queue.roll(-1, 0).detach()
             self.changepoint_filled += self.changepoint_filled < self.changepoint_queue_len
             self.changepoint_action_queue[self.changepoint_filled-1].copy_(action.squeeze().detach())
             self.changepoint_resp_queue[self.changepoint_filled-1].copy_(resp.squeeze().detach())

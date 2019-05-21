@@ -27,20 +27,38 @@ def get_frames(dataset, n_state, n_state_used, mode='rand'):
 
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Train object recognition')
+    parser.add_argument('savedir',
+                        help='base directory to save results')
+    parser.add_argument('--save-name',
+                        help='name of file')
+    parser.add_argument('--niter', type=int, default=10,
+                        help='number of training iterations')
+    parser.add_argument('--nepoch', type=int, default=50,
+                        help='number of training iterations')
+
+    add_args.add_dataset_argument(parser)
+    add_args.add_model_argument(parser)
+    args = parser.parse_args()
+    # logger.info('arguments: %s', str(args))
+    if args.cuda:
+        torch.cuda.set_device(1)
     net_path = 'ObjectRecognition/net_params/attn_softmax.json'
-    model_path = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth_4.pth'
+    model_path = os.path.join(args.savedir, '%s.pth'%args.save_name)
+    # model_path = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth_4.pth'
     image_shape = (84, 84)
     n_state_used = 200
     is_train = True
     is_preview = False
-    n_epoch = 50  # int or None
-    n_iter = 10
+    n_epoch = args.nepoch  # int or None
+    n_iter = args.niter
 
     # get dataset
-    binarize = 0.01
-    n_state = 2000
-    offset_fix = 0
-    GAME_NAME = 'atari-ball'
+    binarize = args.binarize
+    n_state = args.n_state
+    offset_fix = args.offset_fix
+    GAME_NAME = args.dataset_name
     dataset = parse_dataset(
         dataset_name=GAME_NAME,
         n_state=n_state,
@@ -49,30 +67,39 @@ if __name__ == '__main__':
     )
 
     # get ball model
-    prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_softmax.json'
-    prev_weight_path_1 = 'results/cmaes_soln/focus_atari_breakout/paddle_bin_smooth.pth'
+    # prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_softmax.json'
+    # prev_weight_path_1 = 'results/cmaes_soln/focus_atari_breakout/paddle_bin_smooth.pth'
+
+    prev_net_params_path_1 = args.premise_net#'ObjectRecognition/net_params/attn_softmax.json'
+    prev_weight_path_1 = args.premise_path#'results/cmaes_soln/focus_self/paddle_bin_smooth.pth'
     prev_net_params_1 = json.loads(open(prev_net_params_path_1).read())
     prev_model_1 = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=prev_net_params_1,
     )
     prev_model_1.set_parameters(load_param(prev_weight_path_1))
-    prev_net_params_path_2 = 'ObjectRecognition/net_params/attn_softmax.json'
-    prev_weight_path_2 = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth_3_2.pth'
-    prev_net_params_2 = json.loads(open(prev_net_params_path_2).read())
-    prev_model_2 = ModelFocusCNN(
-        image_shape=(84, 84),
-        net_params=prev_net_params_2,
-    )
-    prev_model_2.set_parameters(load_param(prev_weight_path_2))
+    # prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_softmax.json'
+    # prev_weight_path_1 = 'results/cmaes_soln/focus_atari_breakout/paddle_bin_smooth.pth'
+    if args.train_ball:
+        prev_net_params_path_2 = args.premise_net_2 #'ObjectRecognition/net_params/attn_softmax.json'
+        prev_weight_path_2 = args.premise_path_2 #'results/cmaes_soln/focus_atari_breakout/42531_2_smooth_3_2.pth'
+        prev_net_params_2 = json.loads(open(prev_net_params_path_2).read())
+        prev_model_2 = ModelFocusCNN(
+            image_shape=(84, 84),
+            net_params=prev_net_params_2,
+        )
+        prev_model_2.set_parameters(load_param(prev_weight_path_2))
     prev_model = ModelCollectionDAG()
     prev_model.add_model('model_1', prev_model_1, [], 
                          augment_fn=partial(util.remove_mean_batch, nb_size=(3, 8)),
                          augment_pt=util.JumpFiltering(2, 0.05))
-    prev_model.add_model('model_2', prev_model_2, ['model_1'],
-                         augment_pt=util.JumpFiltering(3, 0.1))
+    last_model = 'model_1'
+    if args.train_ball:
+        prev_model.add_model('model_2', prev_model_2, ['model_1'],
+                             augment_pt=util.JumpFiltering(3, 0.1))
+        last_model = 'model_2'
     def prev_forward(xs, ret_extra=False):
-        model_name = 'model_2'
+        model_name = last_model
         out = prev_model.forward(xs, ret_numpy=True, ret_extra=ret_extra)
         if ret_extra:
             return out[0][model_name], out[1][model_name]
@@ -98,6 +125,8 @@ if __name__ == '__main__':
     # create the model
     net_params = json.loads(open(net_path).read())
     model = ModelAttentionCNN(image_shape, net_params)
+    if args.cuda:
+        model = model.cuda()
     print(model)
 
 

@@ -9,6 +9,7 @@ from Environments.state_definition import GetState, compute_minmax
 from BehaviorPolicies.behavior_policies import behavior_policies
 from arguments import get_args
 from ReinforcementLearning.train_rl import trainRL
+from RewardFunctions.changepointReward import ChangepointMarkovReward
 from ObjectRecognition.model import (
     ModelFocusCNN, ModelCollectionDAG,
     load_param, util)
@@ -16,6 +17,7 @@ from SelfBreakout.focus_screen import FocusEnvironment
 import json
 import torch
 from AtariEnvironments.focus_atari import FocusAtariEnvironment
+from RewardFunctions.dummy_rewards import RawReward
 
 if __name__ == "__main__":
     # used arguments
@@ -34,23 +36,29 @@ if __name__ == "__main__":
         # atari python add_edge.py --model-form basic --optimizer-form DQN --record-rollouts "data/atarirandom/" --train-edge "Action->Paddle" --changepoint-dir data/atarigraph/ --num-stack 2 --factor 6 --train --num-iters 1000 --save-dir data/action --state-forms bounds --state-names Paddle --num-steps 1 --reward-check 3 --changepoint-queue-len 10 --num-update-model 1 --greedy-epsilon .1 --lr 1e-2 --init-form smalluni --behavior-policy egq --grad-epoch 5 --entropy-coef .01 --value-loss-coef 0.5 --gamma 0.1 --focus-dumps-name focus_dumps.txt --env AtariBreakoutNoFrameskip-v0 --save-models --save-dir data/ataripaddle --save-graph data/atarinetpaddle > atari/paddle.txt
         # python add_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/integrationpaddle/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 30 --state-forms prox vel --state-names Paddle Ball --changepoint-dir ./data/integrationgraph/ --lr 5e-3 --behavior-policy esp --reward-form bounce --gamma .87 --init-form xuni --factor 8 --num-layers 1 --base-form basic --select-ratio .2 --num-population 10 --sample-duration 100 --sample-schedule 15 --warm-up 0 --log-interval 1 --scale 2 --reward-check 10 --focus-dumps-name focus_dumps.txt --env AtariBreakoutNoFrameskip-v0 --save-models --save-dir data/ataribounce  > atari/ball.txt
         # first train: python add_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/integrationpaddle/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 100 --state-forms prox vel vel --state-names Paddle Ball Paddle --changepoint-dir ./data/atarigraph/ --lr 5e-3 --greedy-epsilon .01 --behavior-policy esp --gamma 0 --init-form smalluni --factor 12 --num-layers 1 --base-form basic --num-population 10 --retest 2 --OoO-eval --sample-duration 100 --sample-schedule 15 --done-swapping 0 --warm-up 0 --log-interval 1 --init-var 5e-2 --scale 1 --reward-check 20 --focus-dumps-name focus_dumps.txt --env AtariBreakoutNoFrameskip-v0 --save-dir data/atariball --save-models --save-graph data/atariballgraph --save-interval 1  > atariball.txt
+        # train baseline: python add_edge.py --model-form raw --optimizer-form A2C --record-rollouts "data/random/" --train-edge "Action->Reward" --num-stack 4 --train --num-iters 1000000 --state-forms raw --state-names Paddle --changepoint-dir ./data/rawgraph/ --reward-form raw --lr 7e-4 --greedy-epsilon 0 --value-loss-coef 0.5 --optim RMSprop --behavior-policy esp --gamma 0.99 --init-form orth --factor 16 --num-layers 1 --warm-up 0 --log-interval 100 --entropy-coef .01 --normalize --reward-check 5 --changepoint-queue 5 --env AtariBreakoutNoFrameskip-v0 --gpu 3 --true-environment --lag-num 0 --post-transform-form linear --return-form value > a2c.txt
+        # python add_edge.py --model-form raw --optimizer-form PPO --record-rollouts "data/random/" --train-edge "Action->Reward" --num-stack 4 --train --num-iters 1000000 --state-forms raw --state-names Paddle --changepoint-dir ./data/rawgraph/ --reward-form raw --lr 2.5e-4 --greedy-epsilon 0 --gamma 0.99 --value-loss-coef 0.5 --optim RMSprop --init-form orth --factor 16 --num-layers 1 --warm-up 0 --log-interval 10 --entropy-coef .01 --normalize --reward-check 128 --changepoint-queue 128 --buffer-clip 128 --num-grad-states 32 --grad-epoch 4 --clip-param 0.1 --env AtariBreakoutNoFrameskip-v0 --gpu 2 --true-environment --lag-num 0 --post-transform-form linear --return-form normal > ataribaseline.txt
+        # 
     args = get_args()
     torch.cuda.set_device(args.gpu)
 
     # loading vision model
-    # paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
-    paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
+    paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
+    # paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
     net_params = json.loads(open(paddle_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/atari/paddle_bin_smooth.pth')
+    params = load_param('results/cmaes_soln/focus_self/paddle.pth')
+    # params = load_param('ObjectRecognition/models/atari/paddle_bin_smooth.pth')
     paddle_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
         binarize = 0.001
     )
     paddle_model.set_parameters(params)
+    # ball_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
     ball_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
     net_params = json.loads(open(ball_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/atari/42531_2_smooth_2.pth')
+    # params = load_param('ObjectRecognition/models/self/ball_bin_long_smooth.pth')
+    params = load_param('ObjectRecognition/models/atari/42531_2_smooth_3_2.pth')
     ball_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
@@ -65,11 +73,16 @@ if __name__ == "__main__":
         return f2(x, f1(x, y))
         # model.add_model('train', r_model, ['premise'], augment_pt=f)
 
-    model.add_model('Ball', ball_model, ['Paddle'], augment_pt=f)#,augment_pt=util.JumpFiltering(2, 0.05))
+    model.add_model('Ball', ball_model, ['Paddle'])#, augment_pt=f)#,augment_pt=util.JumpFiltering(2, 0.05))
     ####
-
+    if args.true_environment:
+        model = None
+    print(args.true_environment, args.env)
     if args.env == 'SelfBreakout':
-        true_environment = FocusEnvironment(model)
+        if args.true_environment:
+            true_environment = Screen(frameskip=args.frameskip)
+        else:
+            true_environment = FocusEnvironment(model)
     elif args.env.find('Atari') != -1:
         true_environment = FocusAtariEnvironment(model, args.env[len("Atari"):], args.seed, 0, args.save_dir)
     dataset_path = args.record_rollouts
@@ -81,9 +94,13 @@ if __name__ == "__main__":
 
     head, tail = get_edge(args.train_edge)
 
-    reward_classes = [load_from_pickle(pth) for pth in reward_paths]
-    for rc in reward_classes:
-        rc.max_dev = 1.0
+    if args.reward_form != 'raw':
+        reward_classes = [load_from_pickle(pth) for pth in reward_paths]
+        for rc in reward_classes:
+            if type(rc) == ChangepointMarkovReward:
+                rc.markovModel.cuda()
+    else:
+        reward_classes = [RawReward(args)]
     # train_models = MultiOption(1, BasicModel)
     train_models = MultiOption(len(reward_paths), models[args.model_form])
     # learning_algorithm = DQN_optimizer()

@@ -49,6 +49,22 @@ def parse_dataset(dataset_name, n_state, binarize=None, offset_fix=None):
             save_path='results',  # save path for gym
             binarize=binarize,  # binarize image to 0 and 1
         )
+    elif dataset_name == 'self-test':
+        dataset = DatasetSelfBreakout(
+            'data/fullrandom',  # object dump path
+            'data/fullrandom/0',  # run states
+            n_state=n_state,  # set max number of states
+            binarize=binarize,  # binarize image to 0 and 1
+            offset_fix=0,  # offset of episode number, fixed for this one
+        )  # 10.0, 0.1, 1.0, 0.0005
+    elif dataset_name == 'self-test2':
+        dataset = DatasetSelfBreakout(
+            'data/fullpaddle',  # object dump path
+            'data/fullpaddle/all',  # run states
+            n_state=n_state,  # set max number of states
+            binarize=binarize,  # binarize image to 0 and 1
+            offset_fix=0,  # offset of episode number, fixed for this one
+        )  # 10.0, 0.1, 1.0, 0.0005
     return dataset
 
 

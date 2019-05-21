@@ -4,6 +4,7 @@ import torch
 import logging
 logging.basicConfig(format='%(levelname)s [%(asctime)s]: %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+import time
 
 
 # placeholder for recognition_train
@@ -17,9 +18,12 @@ class Trainer():
 
     def evaluate_model(self, params):
         self.model.set_parameters(params)
+        # start = time.time()
         focus = self.model.forward_all(self.dataset, batch_size=500, 
                                        ret_extra=self.ret_both)
+        # print("forward", time.time() - start)
         loss = self.loss_fn(focus)
+        # print("loss", time.time() - start)
         if self.verbose:
             logger.info('loss evaluated= %f\n', loss)
         return loss

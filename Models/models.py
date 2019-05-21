@@ -32,7 +32,16 @@ class pytorch_model():
     def concat(data, axis=0):
         return torch.cat(data, dim=axis)
 
+FixedCategorical = torch.distributions.Categorical
 
+old_sample = FixedCategorical.sample
+FixedCategorical.sample = lambda self: old_sample(self).unsqueeze(-1)
+
+log_prob_cat = FixedCategorical.log_prob
+FixedCategorical.log_probs = lambda self, actions: log_prob_cat(
+    self, actions.squeeze(-1)).view(actions.size(0), -1).sum(-1).unsqueeze(-1)
+
+FixedCategorical.mode = lambda self: self.probs.argmax(dim=-1, keepdim=True)
 
 class Model(nn.Module):
     def __init__(self, **kwargs):
@@ -42,7 +51,10 @@ class Model(nn.Module):
         self.name = default_value_arg(kwargs, 'name', 'option')
         self.no_preamble = default_value_arg(kwargs, 'no_preamble', False)
         self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
+        if args.true_environment:
+            self.no_preamble = True
         needs_final = default_value_arg(kwargs, 'needs_final', True)
+        self.has_final = needs_final
         self.option_values = torch.zeros(1, self.param_dim) # changed externally to the parameters
         self.parameterized_option = 0
         num_inputs = int(num_inputs)
@@ -78,6 +90,7 @@ class Model(nn.Module):
         elif args.activation == "tanh":
             self.acti = torch.tanh
         self.test = not args.train # testing mode for evaluation
+        print("current insize", self.insize)
             
     def init_last(self, num_outputs):
         self.critic_linear = nn.Linear(self.insize, 1)
@@ -96,20 +109,25 @@ class Model(nn.Module):
         relu_gain = nn.init.calculate_gain('relu')
         for layer in self.layers:
             if type(layer) == nn.Conv2d:
-                nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu') 
+                if self.init_form == "orth":
+                    nn.init.orthogonal_(layer.weight.data, gain=nn.init.calculate_gain('relu'))
+                else:
+                    nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu') 
             elif issubclass(type(layer), Model):
                 layer.reset_parameters()
             elif type(layer) == nn.Parameter:
-                nn.init.uniform_(layer.data, 0.0, 100/np.prod(layer.data.shape))#.01 / layer.data.shape[0])
+                nn.init.uniform_(layer.data, 0.0, 0.2/np.prod(layer.data.shape))#.01 / layer.data.shape[0])
             else:
                 fulllayer = layer
                 if type(layer) != nn.ModuleList:
                     fulllayer = [layer]
                 for layer in fulllayer:
                     # print("layer", self, layer)
+                    if self.init_form == "orth":
+                        nn.init.orthogonal_(layer.weight.data, gain=nn.init.calculate_gain('relu'))
                     if self.init_form == "uni":
                         # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
-                        nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])
+                         nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])
                     if self.init_form == "smalluni":
                         # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
                         nn.init.uniform_(layer.weight.data, -.0001 / layer.weight.data.shape[0], .0001 / layer.weight.data.shape[0])
@@ -121,13 +139,16 @@ class Model(nn.Module):
                         torch.nn.init.eye_(layer.weight.data)
                     if layer.bias is not None:                
                         nn.init.uniform_(layer.bias.data, 0.0, 1e-6)
+        if self.has_final:
+            nn.init.orthogonal_(self.action_probs.weight.data, gain=0.01)
         print("parameter number", self.count_parameters(reuse=False))
 
     def preamble(self, x, resp):
-        # if self.no_preamble:
-        if self.minmax is not None and self.use_normalize:
-            x = self.normalize(x)
-        x = x * self.scale
+        if not self.no_preamble:
+            # print("using preamble")
+            if self.minmax is not None and self.use_normalize:
+                x = self.normalize(x)
+            x = x * self.scale
         return x
 
         # nn.init.uniform_(self.critic_linear.weight.data, .9 / self.insize, 1.1 / self.insize)
@@ -158,15 +179,15 @@ class Model(nn.Module):
         input: [batch size, state size] (TODO: no multiple processes)
         output [batch size, 1], [batch size, 1], [batch_size, num_actions], [batch_size, num_actions]
         '''
-        action_probs = self.action_probs(x)
+        action_logits = self.action_probs(x)
         Q_vals = self.QFunction(x)
         values = self.critic_linear(x)
-        probs = F.softmax(action_probs, dim=1)
-        # print(probs)
-        log_probs = F.log_softmax(action_probs, dim=1)
-
-        dist_entropy = -(log_probs * probs).sum(-1).mean()
-        return values, dist_entropy, probs, Q_vals
+        probs = F.softmax(action_logits, dim=1)
+        # # print(probs)
+        log_probs = F.log_softmax(action_logits, dim=1)
+        # print(log_probs, action_logits - action_logits.logsumexp(dim=-1, keepdim=True))
+        # dist = FixedCategorical(logits=action_logits)
+        return values, action_logits - action_logits.logsumexp(dim=-1, keepdim=True), probs, Q_vals
 
     def forward(self, x, resp):
         '''
@@ -175,8 +196,8 @@ class Model(nn.Module):
         '''
         x = self.preamble(x, resp)
         x = self.hidden(x, resp)
-        values, dist_entropy, probs, Q_vals = self.last_layer(x)
-        return values, dist_entropy, probs, Q_vals
+        values, log_probs, probs, Q_vals = self.last_layer(x)
+        return values, log_probs, probs, Q_vals
 
     def save(self, pth):
         torch.save(self, os.path.join(pth, self.name + ".pt"))
@@ -200,7 +221,10 @@ class Model(nn.Module):
         for param in self.parameters():
             param_size = np.prod(param.size())
             cur_param_val = param_val[pval_idx : pval_idx+param_size]
-            param.data = torch.from_numpy(cur_param_val) \
+            if type(cur_param_val) == torch.Tensor:
+                param.data = cur_param_val.reshape(param.size()).float().clone()
+            else:
+                param.data = torch.from_numpy(cur_param_val) \
                               .reshape(param.size()).float()
             pval_idx += param_size
         if self.iscuda:
@@ -364,12 +388,13 @@ class DistributionalModel(BasicModel):
 
 from Models.basis_models import FourierBasisModel, GaussianBasisModel, GaussianMultilayerModel, GaussianDistributionModel
 from Models.tabular_models import TabularQ, TileCoding
-from Models.image_models import ObjectSumImageModel
+from Models.image_models import ObjectSumImageModel, RawModel
 models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, 
             "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel,
-            "sumimage": ObjectSumImageModel}
-from Models.transformer_models import ObjectVectorModel, VariableInputAttentionModel, FixedInputAttentionModel, MultiHeadedModel, ObjectAttentionModel
+            "sumimage": ObjectSumImageModel, 'raw': RawModel}
+from Models.transformer_models import ObjectVectorModel, ObjectCatVectorModel, VariableInputAttentionModel, FixedInputAttentionModel, MultiHeadedModel, ObjectAttentionModel
 models['vector'] = ObjectVectorModel
+models['vectorcat'] = ObjectCatVectorModel
 models['attention'] = VariableInputAttentionModel
 models['fixedattention'] = FixedInputAttentionModel
 models['objectattention'] = ObjectAttentionModel

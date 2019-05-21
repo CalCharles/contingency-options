@@ -253,11 +253,11 @@ class ChangepointMarkovReward(ChangepointReward):
         print(self.model.As[0].weight)
         print([val for val in zip(batch.squeeze(), model.forward(batch).squeeze())])
         var = torch.var(model.compute_error(self.pairs[m]), dim=0)
-        var[var < 4] = 4
-        var[var > 6] = 6
+        var[var < .1] = .1
+        # var[var > 6] = 6
         print(var)
         model.variance = var
-        self.markovModel = model
+        self.markovModel = model.cpu()
 
     def setvar(self, var):
         if type(var) == torch.tensor:
@@ -322,6 +322,7 @@ class LDSlearner(nn.Module):
     def cuda(self):
         self.is_cuda = True
         self.As.cuda()
+        return self
 
     def compute_prob(self, predstep, nextstep):
         # print("variance", self.variance)

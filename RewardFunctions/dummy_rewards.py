@@ -6,6 +6,25 @@ from RewardFunctions.changepointReward import ChangepointReward
 from file_management import get_edge
 from Environments.state_definition import GetState
 
+class RawReward(ChangepointReward):
+    def __init__(self, args):
+        super().__init__(None, args)
+        self.queue_len = args.changepoint_queue_len
+        self.rewards = pytorch_model.wrap(np.array([0 for i in range(args.changepoint_queue_len)]), cuda = args.cuda).detach()
+        self.rewards.requires_grad = False
+        self.reward_filled = 0
+        self.iscuda = args.cuda
+
+    def insert_reward(self, reward):
+        if self.reward_filled == self.queue_len:
+            self.rewards = self.rewards.roll(-1,0)
+        self.reward_filled += self.reward_filled < self.queue_len
+        self.rewards[self.reward_filled-1].copy_(pytorch_model.wrap(float(reward), cuda=self.iscuda))
+        # print(self.reward_filled, self.rewards, reward)
+
+    def compute_reward(self, states, actions, resps):
+        return self.rewards[-len(states):] 
+
 
 class BounceReward(ChangepointReward):
     def __init__(self, vel, args):

@@ -7,7 +7,7 @@ def add_changepoint_argument(parser):
 
 
 def add_dataset_argument(parser):
-    parser.add_argument('dataset_name', choices=['self', 'self-b', 'atari-ball', 'atari'],
+    parser.add_argument('dataset_name', choices=['self', 'self-b', 'atari-ball', 'atari', 'self-test', 'self-test2'],
                         help='game name to train with')
     parser.add_argument('--n_state', type=int, default=1000,
                         help='number of states in an episode')
@@ -26,6 +26,8 @@ def add_optimizer_argument(parser):
                         help='number of processors')
     parser.add_argument('--cheating', choices=['ball', 'paddle', 'gaussian'],
                         help='plot model filter')
+    parser.add_argument('--save-name', type=str, default="",
+                        help='name of file to save to (with .npy)')
 
 
 def add_model_argument(parser):
@@ -48,6 +50,14 @@ def add_model_argument(parser):
                         help='path to network weight for premise recognition')
     parser.add_argument('--premise_net', type=str, default=None,
                         help='path to network params for premise recognition')
+    parser.add_argument('--premise_path_2', type=str, default=None,
+                        help='path to network weight for premise recognition')
+    parser.add_argument('--premise_net_2', type=str, default=None,
+                        help='path to network params for premise recognition')
+    parser.add_argument('--train-ball', action='store_true', default=False,
+                        help='use if we need the ball model')  # move into net_params?
+    parser.add_argument('--cuda', action='store_true', default=False,
+                        help='use cuda')  # move into net_params?
 
 
 def add_loss_argument(parser):

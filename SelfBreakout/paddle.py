@@ -8,12 +8,13 @@ class Paddle(RawEnvironment):
     A fake environment that pretends that the paddle partion has been solved, gives three actions that produce
     desired behavior
     '''
-    def __init__(self):
+    def __init__(self, frameskip = 1):
         self.num_actions = 3
         self.itr = 0
         self.save_path = ""
-        self.screen = Screen()
+        self.screen = Screen(frameskip=frameskip)
         self.reward= 0
+        self.episode_rewards = self.screen.episode_rewards
 
     def set_save(self, itr, save_dir, recycle):
         self.save_path=save_dir

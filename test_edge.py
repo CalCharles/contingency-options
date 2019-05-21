@@ -45,7 +45,7 @@ if __name__ == "__main__":
     paddle_model.set_parameters(params)
     ball_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
     net_params = json.loads(open(ball_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/atari/42531_2_smooth_2.pth')
+    params = load_param('ObjectRecognition/models/atari/42531_2_smooth_3_2.pth')
     ball_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,

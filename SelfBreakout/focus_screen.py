@@ -10,30 +10,32 @@ class FocusEnvironment(RawEnvironment):
     A fake environment that pretends that the paddle partion has been solved, gives three actions that produce
     desired behavior
     '''
-    def __init__(self, focus_model):
+    def __init__(self, focus_model, frameskip=1):
         self.num_actions = 4
         self.itr = 0
         self.save_path = ""
-        self.screen = Screen()
-        self.focus_model = focus_model
+        self.screen = Screen(frameskip=frameskip)
+        self.focus_model = focus_model.cuda()
         self.factor_state = None
         self.reward = 0
+        self.episode_rewards = self.screen.episode_rewards
         # self.focus_model.cuda()
 
-    def set_save(self, itr, save_dir, recycle):
+    def set_save(self, itr, save_dir, recycle, all_dir=""):
         self.save_path=save_dir
         self.itr = itr
         self.recycle = recycle
         self.screen.save_path=save_dir
         self.screen.itr = itr
         self.screen.recycle = recycle
+        self.screen.all_dir = all_dir
         try:
             os.makedirs(save_dir)
         except OSError:
             pass
 
     def step(self, action):
-        # TODO: action is tenor, might not be safe assumption
+        # TODO: action is tensor, might not be safe assumption
         t = time.time()
         raw_state, raw_factor_state, done = self.screen.step(action, render=True)
         self.reward = self.screen.reward

@@ -17,6 +17,54 @@ from file_management import default_value_arg
 #         x = self.l1(inputs)
 #         out = self.l2(x)
 
+class ObjectCatVectorModel(Model): #TODO: make this a command line arg
+    '''
+    Simplest variable input network
+    '''
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        args, num_inputs, num_outputs, factor = self.get_args(kwargs)
+        self.class_sizes = default_value_arg(kwargs, 'class_sizes', [])
+        self.key_dim = args.key_dim
+
+        print(self.class_sizes, self.key_dim)
+        self.key_map = [nn.Linear(self.class_sizes[i], self.key_dim) for i in range(len(self.class_sizes))]
+        self.key_map = nn.ModuleList(self.key_map)
+        self.layers.append(self.key_map)
+        self.reduce_function = torch.cat # TODO: other transform functions (max pooling?)
+        kwargs['num_inputs'] = self.key_dim * len(self.class_sizes)
+        if args.post_transform_form == 'none':
+            self.post_network = None
+            self.insize = self.key_dim  * len(self.class_sizes)
+            self.init_last(num_outputs)
+        else:
+            kwargs['needs_final'] = False
+            self.post_network = models[args.post_transform_form](**kwargs)
+            self.layers.append(self.post_network)
+        self.train()
+        self.reset_parameters()
+
+    def hidden(self, x, resp):
+        maps = []
+        # fixed resp code:
+        lr = 0
+        maps = []
+        for i,r in enumerate(resp[0]):
+            # print(resp[0],r, self.class_sizes)
+            r = r.long().squeeze()
+            l = self.class_sizes[i]
+            cx = x[:, lr:r]
+            maps.append(self.acti(self.key_map[i](cx)))
+        # print(maps[0].shape, torch.stack(maps, dim = 1).shape, self.reduce_function(torch.stack(maps, dim = 1), dim=1).shape)
+        x = self.reduce_function(maps, dim=1)
+        # print(x.shape)
+        # x = self.acti(x)
+        # print(x.shape)
+        if self.post_network is not None:
+            x = self.post_network.hidden(x, resp)
+        return x
+
+
 class ObjectVectorModel(Model): 
     '''
     Simplest variable input network
@@ -191,7 +239,7 @@ class FixedInputAttentionModel(Model):
             kwargs['num_inputs'] = self.hidden_size
             kwargs['needs_final'] = False
             self.post_network = models[args.post_transform_form](**kwargs)
-            self.layers.append(post_network)
+            self.layers.append(self.post_network)
         self.layers += [self.key_map, self.query_map, self.value_map]
 
         self.train()
@@ -208,7 +256,7 @@ class FixedInputAttentionModel(Model):
         # print(k.shape)
         q = torch.matmul(x, self.query_map) # batch, input_size, input size x input size, key_dim
         # print(q.shape)
-        a = torch.bmm(k, q.transpose(1,2)) / self.dk # batch, input_size, key dim x batch, key_dim, input size
+        a = torch.bmm(k, q.transpose(1,2)) * self.ikd # batch, input_size, key dim x batch, key_dim, input size
         # print(a)
         x = torch.matmul(F.softmax(a, dim=2).transpose(1,2), self.value_map) # batch, input_size, input size -> batch, 1, input_size x input_size x value dim
         # x = x.mean(dim=1) # reduce along the keys so a single value is output
@@ -221,7 +269,7 @@ class FixedInputAttentionModel(Model):
     def hidden(self, x, resp):
         x = self.attention(x)
         if self.post_network is not None:
-            x = self.post_network.hidden(x)
+            x = self.post_network.hidden(x, resp)
         return x
 
     # def forward(self, x, resp):
@@ -343,5 +391,5 @@ class MultiHeadedModel(Model):
     #     return values, dist_entropy, probs, Q_vals
 
 
-attention_networks = {'fixedattention': FixedInputAttentionModel, 'vector': ObjectVectorModel, 'attention': VariableInputAttentionModel, 'objectattention': ObjectAttentionModel}
+attention_networks = {'fixedattention': FixedInputAttentionModel, 'vector': ObjectVectorModel, 'attention': VariableInputAttentionModel, 'objectattention': ObjectAttentionModel, 'vectorcat': ObjectCatVectorModel}
 models = {**models, **attention_networks}

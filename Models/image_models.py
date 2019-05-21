@@ -1,5 +1,5 @@
 import numpy as np
-import torch
+import torch, cv2
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
@@ -13,41 +13,84 @@ class ImageModel(Model):
         super().__init__(**kwargs)
         args, num_inputs, num_outputs, factor = self.get_args(kwargs)
         # TODO: assumes images of size 84x84, make general
-        self.conv1 = nn.Conv2d(1, 2 * factor, 8, stride=4)
+        self.no_preamble = True
+        self.num_stack = args.num_stack
+        self.factor = factor
+        self.conv1 = nn.Conv2d(self.num_stack, 2 * factor, 8, stride=4)
         self.conv2 = nn.Conv2d(2 * factor, 4 * factor, 4, stride=2)
-        self.conv3 = nn.Conv2d(4 * factor, 8 * factor, 3, stride=1)
+        self.conv3 = nn.Conv2d(4 * factor, 2 * factor, 3, stride=1)
         self.viewsize = 7
-        self.linear1 = nn.Linear(8 * factor * self.viewsize * self.viewsize, self.insize)
+        if args.post_transform_form == 'none':
+            self.linear1 = None
+            self.insize = 2 * self.factor * self.viewsize * self.viewsize
+            self.init_last(num_outputs)
+        else:
+            self.linear1 = nn.Linear(2 * factor * self.viewsize * self.viewsize, self.insize)
+            self.layers.append(self.linear1)
         self.factor = args.factor
         self.layers.append(self.conv1)
         self.layers.append(self.conv2)
         self.layers.append(self.conv3)
-        self.layers.append(self.linear1)
         self.reset_parameters()
 
     def hidden(self, inputs, resp):
         norm_term = 1.0
         if self.use_normalize:
             norm_term =  255.0
-        
-        x = self.conv1(x / norm_term)
+        # print(inputs.shape)
+        # print(x.sum())
+        x = self.conv1(inputs / norm_term)
+        # print(x.sum())
         x = self.acti(x)
 
         x = self.conv2(x)
+        # print(x.sum())
         x = self.acti(x)
 
         x = self.conv3(x)
+        # print(x.sum())
         x = self.acti(x)
         # print(x)
-        x = x.view(-1, 8 * self.factor * self.viewsize * self.viewsize)
-        x = self.linear1(x)
+        x = x.view(-1, 2 * self.factor * self.viewsize * self.viewsize)
+        # print(x.sum())
         x = self.acti(x)
+        if self.linear1 is not None:
+            x = self.linear1(x)
+            x = self.acti(x)
         return x
 
     # def forward(self, inputs, resp):
     #     x = self.hidden(inputs, resp)
     #     values, dist_entropy, probs, Q_vals = super().forward(x)
     #     return values, dist_entropy, probs, Q_vals
+
+class RawModel(ImageModel):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # args, num_inputs, num_outputs, factor = self.get_args(kwargs)
+        # # TODO: assumes images of size 84x84, make general
+        # self.conv1 = nn.Conv2d(1, 2 * factor, 8, stride=4)
+        # self.conv2 = nn.Conv2d(2 * factor, 4 * factor, 4, stride=2)
+        # self.conv3 = nn.Conv2d(4 * factor, 8 * factor, 3, stride=1)
+        # self.viewsize = 7
+        # self.linear1 = nn.Linear(8 * factor * self.viewsize * self.viewsize, self.insize)
+        # self.factor = args.factor
+        # self.layers.append(self.conv1)
+        # self.layers.append(self.conv2)
+        # self.layers.append(self.conv3)
+        # self.layers.append(self.linear1)
+        # self.reset_parameters()
+
+    def hidden(self, inputs, resp):
+        # print(inputs.shape)
+        inputs = inputs.view(-1, self.num_stack, 84, 84)
+        # cv2.imshow('frame',pytorch_model.unwrap(inputs[0][0]))
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     pass
+
+        x = super().hidden(inputs, resp)
+        return x
+
 
 class ObjectSumImageModel(ImageModel):
     def __init__(self, **kwargs):

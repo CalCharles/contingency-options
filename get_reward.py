@@ -1,5 +1,6 @@
 import os, pickle
 import numpy as np
+import torch
 from arguments import get_args
 from file_management import load_from_pickle, save_to_pickle, get_edge, get_cp_models_from_dict, read_obj_dumps, get_individual_data
 from RewardFunctions.dataTransforms import arg_transform
@@ -21,6 +22,7 @@ def load_from_pickle(pth):
 
 if __name__ == "__main__":
     args = get_args()
+    torch.cuda.set_device(args.gpu)
     # Required arguments:
         # record_rollouts
         # changepoint-dir
@@ -83,7 +85,6 @@ if __name__ == "__main__":
         if args.train:
             reward_function.generate_training_set(combined, models, np.array(changepoints))
             reward_function.train_rewards(20000)
-
         save_to_pickle(os.path.join(args.changepoint_dir, args.train_edge, "reward__function__" + str(i) +"__rwd.pkl"), reward_function)
         reward_fns.append(reward_function)
     # if args.train:

@@ -159,9 +159,16 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
                         option_actions[name][i] = 0
             end = time.time()
             total_elapsed += total_duration
-            log_stats = "Updates {}, num timesteps {}, FPS {}, reward {}".format(j, total_elapsed,
+            mean_reward = true_reward
+            best_reward = true_reward
+            if len(base_env.episode_rewards) > 0:
+                true_reward = np.median(base_env.episode_rewards)
+                mean_reward = np.mean(base_env.episode_rewards)
+                best_reward = np.max(base_env.episode_rewards)
+
+            log_stats = "Updates {}, num timesteps {}, FPS {}, true reward median: {}, mean: {}, max: {}".format(j, total_elapsed,
                        int(total_elapsed / (end - start)),
-                       true_reward/ (args.num_steps * args.log_interval))
+                       true_reward, mean_reward, best_reward)
             print(log_stats)
             true_reward = 0.0
             total_duration = 0

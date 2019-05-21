@@ -60,7 +60,7 @@ if __name__ == "__main__":
     for reward_class in reward_classes:
         reward_class.traj_dim = state_class.shape
     print(state_class.minmax)
-    behavior_policy = behavior_policies[args.behavior_policy]()
-    # behavior_policy = EpsilonGreedyProbs()
+    behavior_policy = behavior_policies[args.behavior_policy]() # choice of policy is irrelevant
+    # behavior_policy = EpsilonGreedyProbs() 
     train_dopamine(args, option_chain.save_dir, true_environment, train_models, proxy_environment,
             proxy_chain, reward_classes, state_class, num_actions, behavior_policy=behavior_policy)

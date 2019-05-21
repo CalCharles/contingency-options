@@ -38,6 +38,16 @@ class MultiOption():
                 class_sizes = state_class.sizes, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
         return model
 
+    def cuda():
+        for i in range(len(self.models)):
+            self.models[i] = model.cuda()
+        return self
+
+    def cpu():
+        for i in range(len(self.models)):
+            self.models[i] = model.cpu()
+        return self
+
     def train(self):
         for model in self.models:
             model.train()
@@ -47,6 +57,7 @@ class MultiOption():
         Naming for models is based on double underscore __
         parameterized options argument: 0: no parametrization, 1: discrete parameters, 2: continuous parameters, 3: combination of discrete and continuous (not implemented)
         '''
+        self.iscuda = False
         self.session(args)
         if not args.load_weights:
             self.models = []
@@ -96,16 +107,16 @@ class MultiOption():
         '''
         output: 4 x [batch_size, num_options, num_actions/1]
         '''
-        values, dist_entropy, probs, Q_vals = [], [], [], []
+        values, log_probs, probs, Q_vals = [], [], [], []
         for i in range(self.num_options):
             if self.parameterized_option == 1: # TODO: parametrized options only has one option (possibly a combination)
                 self.models[0].option_index = i
-            v, de, p, Q = self.models[i](state, resp)
+            v, lp, p, Q = self.models[i](state, resp)
             values.append(v)
-            dist_entropy.append(de)
+            log_probs.append(lp)
             probs.append(p)
             Q_vals.append(Q)
-        return torch.stack(values, dim=0), torch.stack(dist_entropy, dim=0), torch.stack(probs, dim=0), torch.stack(Q_vals, dim=0)
+        return torch.stack(values, dim=0), torch.stack(log_probs, dim=0), torch.stack(probs, dim=0), torch.stack(Q_vals, dim=0)
 
     def layers(self, state):
         '''
@@ -117,14 +128,14 @@ class MultiOption():
         return layers
 
 
-    def get_action(self, values, probs, Q_vals, index=-1):
+    def get_action(self, values, probs, log_probs, Q_vals, index=-1):
         '''
         output 3 x [num_option, batch_size, num_actions]
         '''
 
         if index == -1:
             index = self.option_index
-        return values[index], probs[index], Q_vals[index]
+        return values[index], probs[index], log_probs[index], Q_vals[index]
 
     def currentName(self):
         return self.models[self.option_index].name

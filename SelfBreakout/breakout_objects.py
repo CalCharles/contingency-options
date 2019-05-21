@@ -2,6 +2,9 @@
 
 import numpy as np
 
+paddle_width = 7
+paddle_velocity = 2
+
 class Object():
 
 	def __init__(self, pos, attribute):
@@ -55,15 +58,26 @@ class Ball(animateObject):
 		self.losses = 0
 		self.paddlehits = 0
 
-		# MODE 1
-		paddle_interact = {-2: np.array([-1, -1]), -1: np.array([-1, -1]), 0: np.array([-1, -1]), 1: np.array([-2, -1]),
-			2: np.array([-2, -1]), 3: np.array([-2, 1]), 4: np.array([-2, 1]), 5: np.array([-1, 1]), 6: np.array([-1, 1]),
-			7: np.array([-1, 1])}
+		# MODE 1 # only odd lengths valid, prefer 7,11,15, etc. 
+		self.paddle_interact = dict()
+		angles = [np.array([-1, -1]), np.array([-2, -1]), np.array([-2, 1]), np.array([-1, 1])]
+		total_number = paddle_width+3
+		if total_number % 4 == 0:
+			num_per = total_number // 4
+		else:
+			num_per = (total_number - 2) // 4
+		for i in range(-2,paddle_width+1):
+			if i == -2 and total_number % 4 != 0:
+				self.paddle_interact[i] = angles[0]
+			elif i == paddle_width and total_number % 4 != 0:
+				self.paddle_interact[i] = angles[3]
+			else:
+				self.paddle_interact[i] = angles[(i + 1) // num_per]
 
 		# MODE 2
 		# paddle_interact = {-2: np.array([-1, -1]), -1: np.array([-1, -1]), 0: np.array([-1, -1]), 1: np.array([-2, -1]),
-		# 	2: np.array([-2, -1]), 3: np.array([-2, 1]), 4: np.array([-2, 1]), 5: np.array([-1, 1]), 6: np.array([-1, 1]),
-		# 	7: np.array([-1, 1])}
+			# 2: np.array([-2, -1]), 3: np.array([-2, 1]), 4: np.array([-2, 1]), 5: np.array([-1, 1]), 6: np.array([-1, 1]),
+			# 7: np.array([-1, 1])}
 		# self.nohit_delay = 0
 
 	def interact(self, other):
@@ -74,27 +88,9 @@ class Ball(animateObject):
 		# print(self.apply_move, self.vel)
 		if intersection(self, other) and self.apply_move:
 			if other.name == "Paddle":
-				rel_x = self.pos[1] - other.pos[1]
-				if rel_x == -2:
-					self.vel = np.array([-1, -1])
-				elif rel_x == -1:
-					self.vel = np.array([-1, -1])
-				elif rel_x == 0:
-					self.vel = np.array([-1, -1])
-				elif rel_x == 1:
-					self.vel = np.array([-2, -1])
-				elif rel_x == 2:
-					self.vel = np.array([-2, -1])
-				elif rel_x == 3:
-					self.vel = np.array([-2, 1])
-				elif rel_x == 4:
-					self.vel = np.array([-2, 1])
-				elif rel_x == 5:
-					self.vel = np.array([-1, 1])
-				elif rel_x == 6:
-					self.vel = np.array([-1, 1])
-				elif rel_x == 7:
-					self.vel = np.array([-1, 1])
+				rel_x = self.next_pos[1] - other.pos[1]
+				# print(rel_x, self.pos[1], other.pos[1])
+				self.vel = self.paddle_interact[int(rel_x)].copy()
 				self.apply_move = False
 				self.paddlehits += 1
 			elif other.name.find("SideWall") != -1:
@@ -129,7 +125,7 @@ class Ball(animateObject):
 class Paddle(animateObject):
 	def __init__(self, pos, attribute, vel):
 		super(Paddle, self).__init__(pos, attribute, vel)
-		self.width = 7
+		self.width = paddle_width
 		self.height = 2
 		self.name = "Paddle"
 		self.nowall = False
@@ -145,7 +141,7 @@ class Paddle(animateObject):
 						self.pos = np.array([0,64])
 					self.vel = np.array([0,0])
 				else:
-					self.vel = np.array([0,-2])
+					self.vel = np.array([0,-paddle_velocity])
 				# self.vel = np.array([0,-2])
 			elif other.attribute == 3:
 				if self.pos[1] >= 64:
@@ -153,7 +149,7 @@ class Paddle(animateObject):
 						self.pos = np.array([0,12])
 					self.vel = np.array([0,0])
 				else:
-					self.vel = np.array([0,2])
+					self.vel = np.array([0,paddle_velocity])
 				# self.vel = np.array([0,2])
 
 class Wall(Object):

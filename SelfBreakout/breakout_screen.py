@@ -8,7 +8,7 @@ import os, copy
 from Environments.environment_specification import RawEnvironment
 
 class Screen(RawEnvironment):
-    def __init__(self):
+    def __init__(self, frameskip = 1):
         super(Screen, self).__init__()
         self.reset()
         self.num_actions = 4
@@ -16,6 +16,8 @@ class Screen(RawEnvironment):
         self.itr = 0
         self.save_path = ""
         self.recycle = -1
+        self.frameskip = frameskip
+        self.total_score = 0
 
     def reset(self):
         vel= np.array([np.random.randint(1,2), np.random.choice([-1,1])])
@@ -72,12 +74,13 @@ class Screen(RawEnvironment):
         self.render_frame()
         return self.frame, {obj.name: (obj.getMidpoint(), (obj.getAttribute(), )) for obj in self.objects}
 
-    def step(self, action, render=False, duplicate_actions=1):
+    def step(self, action, render=True): # TODO: remove render as an input variable
         done = False
-        for i in range(duplicate_actions):
-            self.reward = 0
+        last_loss = self.ball.losses
+        self.reward = 0
+        for i in range(self.frameskip):
             self.actions.take_action(action[0])
-            if len(self.save_path) != 0:
+            if len(self.save_path) != 0 and i == 0:
                 if self.itr != 0:
                     object_dumps = open(os.path.join(self.save_path, "object_dumps.txt"), 'a')
                 else:
@@ -92,13 +95,18 @@ class Screen(RawEnvironment):
                         preattr = obj2.attribute
                         obj1.interact(obj2)
                         if preattr != obj2.attribute:
-                            self.reward = 1
+                            self.reward += 1
+                            self.total_score += 1
             for ani_obj in self.animate:
                 ani_obj.move()
             extracted_state = {obj.name: (obj.getMidpoint(), (obj.getAttribute(), )) for obj in self.objects}
-            if self.ball.losses == 5:
-                self.average_points_per_life = self.get_num_points() / 10.0
+            if last_loss != self.ball.losses:
                 done = True
+            if self.ball.losses == 5:
+                self.average_points_per_life = self.total_score / 5.0
+                done = True
+                self.episode_rewards.append(self.total_score)
+                self.total_score = 0
                 self.reset()
             if self.itr % 100 == 0 and self.get_num_points() == len(self.blocks):
                 self.reset()
@@ -124,6 +132,13 @@ class Screen(RawEnvironment):
             object_dumps.write(obj.name + ":" + " ".join(map(str, obj.getMidpoint())) + " " + str(float(obj.attribute)) + "\t") # TODO: attributes are limited to single floats
         object_dumps.write("\n") # TODO: recycling does not stop object dumping
         imio.imsave(os.path.join(state_path, "state" + str(count % 2000) + ".png"), self.frame)
+        if len(self.all_dir) > 0:
+            state_path = os.path.join(save_path, self.all_dir)
+            try:
+                os.makedirs(state_path)
+            except OSError:
+                pass
+            imio.imsave(os.path.join(state_path, "state" + str(count) + ".png"), self.frame)
 
 
     def run(self, policy, iterations = 10000, render=False, save_path = "runs/", duplicate_actions=1):
@@ -328,6 +343,7 @@ def hot_actions(action_data):
 
 if __name__ == '__main__':
     screen = Screen()
-    policy = RandomPolicy(4)
+    # policy = RandomPolicy(4)
+    policy = RotatePolicy(4, 7)
     # policy = BouncePolicy(4)
-    screen.run(policy, render=True, iterations = 10000, duplicate_actions=1, save_path=sys.argv[1])
+    screen.run(policy, render=True, iterations = 1000, duplicate_actions=1, save_path=sys.argv[1])

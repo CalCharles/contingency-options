@@ -7,8 +7,12 @@ def get_args():
     parser = argparse.ArgumentParser(description='RL')
     # parser.add_argument('--algo', default='a2c',
     #                     help='algorithm to use: a2c, ppo, evo')
+
+    # environment hyperparameters
     parser.add_argument('--true-environment', action='store_true', default=False,
                         help='triggers the baseline methods')
+    parser.add_argument('--frameskip', type=int, default=1,
+                        help='number of frames to skip (default: 1 (no skipping))')
     # # optimization hyperparameters
     parser.add_argument('--lr', type=float, default=7e-4,
                         help='learning rate (default: 1e-6)')
@@ -23,10 +27,8 @@ def get_args():
     parser.add_argument('--gamma', type=float, default=0.99,
                         help='discount factor for rewards (default: 0.99)')
     # cost function hyperparameters
-    parser.add_argument('--return-enum', type=int, default=0,
-                        help='determines what return equation to use. Default is 0, which is default return, 0 is gae, 1 is buffer, 2 is segmented')
-    parser.add_argument('--return-format', type=int, default=0,
-                        help='0 for default, 1 for gae, 2 for return queue')
+    parser.add_argument('--return-form', default='true',
+                        help='determines what return equation to use. true is true returns, gae is gae (not implemented), value uses the value function')
     parser.add_argument('--tau', type=float, default=0.95,
                         help='gae parameter (default: 0.95)')
     parser.add_argument('--entropy-coef', type=float, default=1e-4,
@@ -223,7 +225,7 @@ def get_args():
                         help='num updates before changing model (default: 200 (1000 timesteps))')
     parser.add_argument('--reward-swapping', action='store_true', default=False,
                         help='if getting a reward only causes a change in policy, (default False)')
-    parser.add_argument('--done-swapping', type=int, default=99999,
+    parser.add_argument('--done-swapping', type=int, default=9999999999,
                         help='after n updates, the episode is determined by the episode from the true environment, (default 99999)')
 
     # Replay buffer settings
@@ -269,6 +271,8 @@ def get_args():
                     help='save past, saves a new net at the interval, -1 disables, must be a multiple of save-interval (default: -1)')
     parser.add_argument('--save-models', action ='store_true', default=False,
                         help='Saves environment and models to option chain directory if true')
+    parser.add_argument('--single-save-dir', default="",
+                        help='saves all images to a single directory with name all')
     # Option Chain Parameters
     parser.add_argument('--base-node', default="Action",
                         help='The name of the lowest node in the option chain (generally should be Action)')
@@ -333,20 +337,20 @@ def get_args():
     elif args.dp_gmm[0] == 'further':
         args.dp_gmm = [10, 6000, 1e-30, 'diag', 20]
     if args.champ_parameters[0] == "Paddle":
-        args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-1, 0]
+        args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-2, 3]
     elif args.champ_parameters[0] == "PaddleAtari":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1, 3]
     elif args.champ_parameters[0] == "Ball": 
-        args.champ_parameters = [15, 10, 2, 100, 100, 2, 1, 0] 
+        args.champ_parameters = [15, 10, 2, 100, 100, 2, 1, 3] 
     elif args.champ_parameters[0] == "BallAtari":
-        args.champ_parameters = [15, 10, 1, 100, 100, 2, .5, 3]
+        args.champ_parameters = [15, 7, 1, 100, 100, 2, .5, 3]
     else:
         args.champ_parameters = [float(p) for p in args.champ_parameters]
     if len(args.behavior_policy) == 0:
         print(args.optimizer_form in ["DQN", "SARSA", "TabQ", "Dist", "DDPG"])
         if args.optimizer_form in ["DQN", "SARSA", "TabQ", "Dist", "DDPG"]:
             args.behavior_policy = "egq"
-        elif args.optimizer_form in ["PPO", "A2C", "PG", "Evo", "GradEvo", "CMAES", "SVPG", "Hind", "SAC"]:
+        elif args.optimizer_form in ["PPO", "A2C", "PG", "Evo", "GradEvo", "CMAES", "SVPG", "Hind", "SAC", ""]:
             args.behavior_policy = "esp"
 
 

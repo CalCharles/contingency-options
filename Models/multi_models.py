@@ -14,6 +14,8 @@ class PopulationModel(Model):
         self.networks = nn.ModuleList(networks)
         self.mean = models[args.base_form](**kwargs)
         self.best = models[args.base_form](**kwargs)
+        self.main = models[args.base_form](**kwargs)
+        self.use_epsilons = args.optimizer_form == "EvoEps"
         # self.networks = networks
         self.layers += self.networks
         self.num_population = args.num_population
@@ -62,6 +64,8 @@ class PopulationModel(Model):
     def hidden(self, inputs, resp, idx=-1):
         if self.test or self.use_mean:
             return self.mean.hidden(inputs, resp)
+        if self.use_epsilons:
+            return self.main.hidden(inputs, resp)
         if idx < 0:
             return self.networks[self.current_network_index].hidden(inputs, resp)
         return self.networks[idx].hidden(inputs, resp)        
@@ -70,6 +74,8 @@ class PopulationModel(Model):
         # self.current_network_index = (self.current_network_index + 1) % self.num_population
         if self.test or self.use_mean:
             return self.mean(inputs, resp)
+        if self.use_epsilons:
+            return self.main(inputs, resp)
         if idx < 0:
             return self.networks[self.current_network_index](inputs, resp)
         return self.networks[idx](inputs, resp)
