@@ -48,7 +48,8 @@ class FocusEnvironment(RawEnvironment):
         else:
             object_dumps = open(os.path.join(self.save_path, "focus_dumps.txt"), 'w') # create file if it does not exist
         for key in factor_state.keys():
-            object_dumps.write(key + ":" + " ".join([str(fs) for fs in factor_state[key]]) + "\t") # TODO: attributes are limited to single floats
+            writeable = list(factor_state[key][0]) + list(factor_state[key][1])
+            object_dumps.write(key + ":" + " ".join([str(fs) for fs in writeable]) + "\t") # TODO: attributes are limited to single floats
         object_dumps.write("\n") # TODO: recycling does not stop object dumping
         # print("elapsed ", time.time() - t)
         return raw_state, factor_state, done

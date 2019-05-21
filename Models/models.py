@@ -42,6 +42,7 @@ class Model(nn.Module):
         self.name = default_value_arg(kwargs, 'name', 'option')
         self.no_preamble = default_value_arg(kwargs, 'no_preamble', False)
         self.param_dim = default_value_arg(kwargs, 'param_dim', 1)
+        needs_final = default_value_arg(kwargs, 'needs_final', True)
         self.option_values = torch.zeros(1, self.param_dim) # changed externally to the parameters
         self.parameterized_option = 0
         num_inputs = int(num_inputs)
@@ -61,11 +62,9 @@ class Model(nn.Module):
         self.num_outputs = num_outputs
         if args.model_form in ["gaussian", "fourier", "gaumulti", "gaudist"]:
             self.insize = args.factor # should get replaced in basis function section
-        self.critic_linear = nn.Linear(self.insize, 1)
-        self.time_estimator = nn.Linear(self.insize, 1)
-        self.QFunction = nn.Linear(self.insize, num_outputs)
-        self.action_probs = nn.Linear(self.insize, num_outputs)
-        self.layers = [self.critic_linear, self.time_estimator, self.QFunction, self.action_probs]
+        self.layers = []
+        if needs_final:
+            self.init_last(num_outputs)
         self.iscuda = args.cuda # TODO: don't just set this to true
         self.use_normalize = args.normalize
         self.init_form = args.init_form 
@@ -75,11 +74,21 @@ class Model(nn.Module):
         elif args.activation == "sin":
             self.acti = torch.sin
         elif args.activation == "sigmoid":
-            self.acti = F.sigmoid
+            self.acti = torch.sigmoid
         elif args.activation == "tanh":
-            self.acti = F.tanh
+            self.acti = torch.tanh
         self.test = not args.train # testing mode for evaluation
             
+    def init_last(self, num_outputs):
+        self.critic_linear = nn.Linear(self.insize, 1)
+        self.time_estimator = nn.Linear(self.insize, 1)
+        self.QFunction = nn.Linear(self.insize, num_outputs)
+        self.action_probs = nn.Linear(self.insize, num_outputs)
+        if len(self.layers) > 0:
+            self.layers = self.layers[4:]
+        self.layers = [self.critic_linear, self.time_estimator, self.QFunction, self.action_probs] + self.layers
+
+
     def get_args(self, kwargs):
         return kwargs['args'], kwargs['num_inputs'], kwargs['num_outputs'], kwargs['factor']
 
@@ -87,22 +96,31 @@ class Model(nn.Module):
         relu_gain = nn.init.calculate_gain('relu')
         for layer in self.layers:
             if type(layer) == nn.Conv2d:
-                nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu') 
+            elif issubclass(type(layer), Model):
+                layer.reset_parameters()
+            elif type(layer) == nn.Parameter:
+                nn.init.uniform_(layer.data, 0.0, 100/np.prod(layer.data.shape))#.01 / layer.data.shape[0])
             else:
-                if self.init_form == "uni":
-                    # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
-                    nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])
-                if self.init_form == "smalluni":
-                    # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
-                    nn.init.uniform_(layer.weight.data, 0.0, 1 / layer.weight.data.shape[0])
-                elif self.init_form == "xnorm":
-                    torch.nn.init.xavier_normal_(layer.weight.data)
-                elif self.init_form == "xuni":
-                    torch.nn.init.xavier_uniform_(layer.weight.data)
-                elif self.init_form == "eye":
-                    torch.nn.init.eye_(layer.weight.data)
-                if layer.bias is not None:                
-                    nn.init.uniform_(layer.bias.data, 0.0, 1e-6)
+                fulllayer = layer
+                if type(layer) != nn.ModuleList:
+                    fulllayer = [layer]
+                for layer in fulllayer:
+                    # print("layer", self, layer)
+                    if self.init_form == "uni":
+                        # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
+                        nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])
+                    if self.init_form == "smalluni":
+                        # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
+                        nn.init.uniform_(layer.weight.data, -.0001 / layer.weight.data.shape[0], .0001 / layer.weight.data.shape[0])
+                    elif self.init_form == "xnorm":
+                        torch.nn.init.xavier_normal_(layer.weight.data)
+                    elif self.init_form == "xuni":
+                        torch.nn.init.xavier_uniform_(layer.weight.data)
+                    elif self.init_form == "eye":
+                        torch.nn.init.eye_(layer.weight.data)
+                    if layer.bias is not None:                
+                        nn.init.uniform_(layer.bias.data, 0.0, 1e-6)
         print("parameter number", self.count_parameters(reuse=False))
 
     def preamble(self, x, resp):
@@ -350,6 +368,12 @@ from Models.image_models import ObjectSumImageModel
 models = {"basic": BasicModel, "dist": DistributionalModel, "gaudist": GaussianDistributionModel, "tab": TabularQ, 
             "tile": TileCoding, "fourier": FourierBasisModel, "gaussian": GaussianBasisModel, "gaumulti": GaussianMultilayerModel,
             "sumimage": ObjectSumImageModel}
+from Models.transformer_models import ObjectVectorModel, VariableInputAttentionModel, FixedInputAttentionModel, MultiHeadedModel, ObjectAttentionModel
+models['vector'] = ObjectVectorModel
+models['attention'] = VariableInputAttentionModel
+models['fixedattention'] = FixedInputAttentionModel
+models['objectattention'] = ObjectAttentionModel
+models['multihead'] = MultiHeadedModel
 from Models.parameterized_models import ParameterizedOneHotModel, ParameterizedContinuousModel, ParameterizedBoostDim
 models["paramhot"] = ParameterizedOneHotModel
 models["paramcont"] = ParameterizedContinuousModel

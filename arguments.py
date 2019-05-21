@@ -106,7 +106,7 @@ def get_args():
     parser.add_argument('--sample-schedule', type=int, default=-1,
                         help='number of updates to increase the duration by a factor of duration (default: 10)')
     parser.add_argument('--retest-schedule', type=int, default=-1,
-                        help='if true, increases retest on each sample schedule (default: False)')
+                        help='if nonnegative, increases every n steps (default: -1)')
     parser.add_argument('--elitism', action='store_true', default=False,
                         help='keep the best performing networks')
     parser.add_argument('--evo-gradient', type=float, default=-1,
@@ -132,6 +132,8 @@ def get_args():
                         help='base learning algorithm for running the gradient component')
     parser.add_argument('--evo-lr', type=float, default=.05,
                         help='the learning rate for the evolutionary steps (default .05, not used)')
+    parser.add_argument('--init-var', type=float, default=1.0,
+                        help='the initial variance (default 1.0)')
     # Stein Variational policy gradient hyperparameters
     parser.add_argument('--stein-alpha', type=float, default=.05,
                         help='the learning rate for the stein steps (default .05, not used)')
@@ -155,8 +157,21 @@ def get_args():
                         help='decides the amount the basis functions are connected (1, 2, 12, 22, 3)')
     parser.add_argument('--value-dim', type=int, default=1,
                         help='decides the amount the basis functions are connected (1, 2, 12, 22, 3)')
-    parser.add_argument('--post-transform-form', default='basic',
-                        help='has the same inputs as model-form, the model after the transform')
+    parser.add_argument('--post-transform-form', default='none',
+                        help='has the same inputs as model-form, the model after the transform. (default: none for none)')
+    parser.add_argument('--num-heads', type=int, default=1,
+                        help='number of heads for multiheaded attention (or multiple copies of any network) (default: 1)')
+    parser.add_argument('--attention-form', default='vector',
+                        help='has the same inputs as model-form, the model after the transform. (default: none for none)')
+    # Adjustment model variables
+    parser.add_argument('--adjustment-form', default='none',
+                        help='has the same inputs as model-form, the model for the base')
+    parser.add_argument('--correction-form', default='none',
+                        help='how the adjustment form relates to the base: none, linear, inbiaspost, inbiaspre, biaspost, biaspre')
+    parser.add_argument('--freeze-initial', action ='store_true', default=False,
+                        help='freeze the weights of the loaded network, do not use with no-adjustment')
+    parser.add_argument('--keep-initial-output', action ='store_true', default=False,
+                        help='use the output parameters from the loaded network (requires that dimensions of hidden layer match')
 
     # Behavior policy parameters
     parser.add_argument('--greedy-epsilon', type=float, default=0.1,
@@ -165,7 +180,7 @@ def get_args():
                     help='minimum percentage of random actions in epsilon greedy (if decaying)')
     parser.add_argument('--greedy-epsilon-decay', type=float, default=-1,
                     help='greedy epsilon decays by half every n updates (-1 is for no use)')
-    parser.add_argument('--behavior-policy', default='esp',
+    parser.add_argument('--behavior-policy', default='',
                         help='defines the behavior policy, as defined in BehaviorPolicies.behavior_policies')
 
     # pretraining arguments TODO: not implemented
@@ -188,15 +203,15 @@ def get_args():
                         help='random seed (default: 1)')
     parser.add_argument('--num-processes', type=int, default=1,
                         help='how many training CPU processes to use (default: 16)')
-    parser.add_argument('--lag-num', type=int, default=2,
-                        help='lag between states executed and those used for learning, to delay for reward computation (default: 2)')
+    parser.add_argument('--lag-num', type=int, default=1,
+                        help='lag between states executed and those used for learning, to delay for reward computation TODO: 1 is the minimum for reasons... (default: 1)')
     parser.add_argument('--num-steps', type=int, default=1,
                         help='number of reward checks before update (default: 1)')
     parser.add_argument('--num-grad-states', type=int, default=-1,
                         help='number of forward steps used to compute gradient, -1 for not used (default: -1)')
     parser.add_argument('--reward-check', type=int, default=5,
                         help='steps between a check for reward, (default 1)')
-    parser.add_argument('--num-update-model', type=int, default=3,
+    parser.add_argument('--num-update-model', type=int, default=1,
                         help='number of gradient steps before switching options (default: 3)')
     parser.add_argument('--changepoint-queue-len', type=int, default=30,
                         help='number of steps in the queue for computing the changepoints')
@@ -206,6 +221,10 @@ def get_args():
                         help='disables CUDA training')
     parser.add_argument('--warm-up', type=int, default=10,
                         help='num updates before changing model (default: 200 (1000 timesteps))')
+    parser.add_argument('--reward-swapping', action='store_true', default=False,
+                        help='if getting a reward only causes a change in policy, (default False)')
+    parser.add_argument('--done-swapping', type=int, default=99999,
+                        help='after n updates, the episode is determined by the episode from the true environment, (default 99999)')
 
     # Replay buffer settings
     parser.add_argument('--buffer-steps', type=int, default=-1,
@@ -281,17 +300,13 @@ def get_args():
                         help='gpu number to use (default: 0)')
     parser.add_argument('--num-frames', type=int, default=10e4,
                         help='number of frames to use for the training set (default: 10e6)')
-    parser.add_argument('--env-name', default='BreakoutNoFrameskip-v4',
-                        help='environment to train on (default: BreakoutNoFrameskip-v4)')
+    parser.add_argument('--env', default='SelfBreakout',
+                        help='environment to train on (default: SelfBreakout)')
     parser.add_argument('--train', action ='store_true', default=False,
                         help='trains the algorithm if set to true')
     # load variables
     parser.add_argument('--load-weights', action ='store_true', default=False,
                         help='load the options for the existing network')
-    parser.add_argument('--adjustment-form', default='basic',
-                        help='has the same inputs as model-form, the model for the base')
-    parser.add_argument('--freeze-initial', action ='store_true', default=False,
-                        help='freeze the weights of the loaded network, do not use with no-adjustment')
     # parametrized options parameters
     parser.add_argument('--parameterized-option', type=int, default=0,
                         help='parametrization enumerator,as defined in multioption, default no parametrization (default: 0)')
@@ -309,16 +324,31 @@ def get_args():
     args = parser.parse_args()
     if args.dp_gmm[0] == 'default':
         args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
-    if args.dp_gmm[0] == 'far':
+    elif args.dp_gmm[0] == 'ataripaddle':
+        args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
+    elif args.dp_gmm[0] == 'atariball':
         args.dp_gmm = [10, 6000, 1e-10, 'diag', 20]
-    if args.dp_gmm[0] == 'further':
+    elif args.dp_gmm[0] == 'far':
+        args.dp_gmm = [10, 6000, 1e-10, 'diag', 20]
+    elif args.dp_gmm[0] == 'further':
         args.dp_gmm = [10, 6000, 1e-30, 'diag', 20]
     if args.champ_parameters[0] == "Paddle":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-1, 0]
+    elif args.champ_parameters[0] == "PaddleAtari":
+        args.champ_parameters = [3, 5, 1, 100, 100, 2, 1, 3]
     elif args.champ_parameters[0] == "Ball": 
         args.champ_parameters = [15, 10, 2, 100, 100, 2, 1, 0] 
+    elif args.champ_parameters[0] == "BallAtari":
+        args.champ_parameters = [15, 10, 1, 100, 100, 2, .5, 3]
     else:
         args.champ_parameters = [float(p) for p in args.champ_parameters]
+    if len(args.behavior_policy) == 0:
+        print(args.optimizer_form in ["DQN", "SARSA", "TabQ", "Dist", "DDPG"])
+        if args.optimizer_form in ["DQN", "SARSA", "TabQ", "Dist", "DDPG"]:
+            args.behavior_policy = "egq"
+        elif args.optimizer_form in ["PPO", "A2C", "PG", "Evo", "GradEvo", "CMAES", "SVPG", "Hind", "SAC"]:
+            args.behavior_policy = "esp"
+
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 

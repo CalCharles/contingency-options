@@ -151,7 +151,7 @@ class ChangepointMarkovReward(ChangepointReward):
         self.eps = args.eps
         self.betas = args.betas
         self.weight_decay = args.weight_decay
-        self.max_dev = .1 # TODO: this doesn't need to be hardcoded
+        self.max_dev = .5 # TODO: this doesn't need to be hardcoded
 
     def form_batch(self, data):
         ''' 
@@ -253,9 +253,17 @@ class ChangepointMarkovReward(ChangepointReward):
         print(self.model.As[0].weight)
         print([val for val in zip(batch.squeeze(), model.forward(batch).squeeze())])
         var = torch.var(model.compute_error(self.pairs[m]), dim=0)
-        var[var < .3] = .3
+        var[var < 4] = 4
+        var[var > 6] = 6
+        print(var)
         model.variance = var
         self.markovModel = model
+
+    def setvar(self, var):
+        if type(var) == torch.tensor:
+            self.markovModel.variance = var
+        else: 
+            self.markovModel.variance = pytorch_model.wrap(var, cuda=self.cuda)
 
     def compute_fit(self, traj):
         '''
@@ -266,16 +274,20 @@ class ChangepointMarkovReward(ChangepointReward):
         pairs = self.pytorch_form_batch(traj)
         n_traj = self.markovModel(pairs[:,0])
         t_traj = pairs[:,1]
+        # print(n_traj.squeeze())
         probs = self.markovModel.compute_prob(n_traj, t_traj)
         probs = torch.sum(probs, dim=2).squeeze()
-        # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-3:])
+        # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-1:], self.markovModel.variance)
         return probs
 
     def compute_reward(self, states, actions, resps):
+        # print(states)
+        # print(actions)
         probs = self.compute_fit(states)
         reward = torch.ones(probs.size()) * -1
-        # print(states.squeeze(), actions.squeeze(), probs)
+        # print(states.squeeze(), actions.squeeze())
         reward[probs <= self.max_dev] = 2
+        # print(probs, self.max_dev, reward)
         # print(reward)
         # print(self.max_dev)
         if self.cuda:

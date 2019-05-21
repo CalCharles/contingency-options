@@ -35,8 +35,8 @@ if __name__ == "__main__":
     # python paddle_bounce.py --model-form paramboost --optimizer-form Hind --record-rollouts "data/cleanbounce/" --train-edge "Ball->Block" --num-stack 1 --train --num-iters 1000 --state-forms bounds vel bin --state-names Ball Ball Block --base-node Paddle --changepoint-dir ./data/paddlegraph --lr 7e-4 --behavior-policy esp --reward-form block --gamma .7 --init-form xnorm --factor 8 --num-layers 2 --base-optimizer PPO --parameterized-form basic --parameterized-option 2 --reward-check 10 --dilated-queue-len 20
     args = get_args()
     torch.cuda.set_device(args.gpu)
-    # true_environment = Paddle()
-    true_environment = PaddleNoWalls()
+    true_environment = Paddle()
+    # true_environment = PaddleNoWalls()
     # true_environment = PaddleNoBlocks()
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
@@ -45,13 +45,13 @@ if __name__ == "__main__":
 
     head, tail = get_edge(args.train_edge)
 
-    if args.reward_form == 'x':
+    if args.reward_form.find('x') != -1:
         reward_classes = [Xreward(args)]
-    elif args.reward_form == 'bounce':
+    elif args.reward_form.find('bounce') != -1:
         reward_classes = [BounceReward(-1, args)]
-    elif args.reward_form == 'dir':
+    elif args.reward_form.find('dir') != -1:
         reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
-    elif args.reward_form == 'block':
+    elif args.reward_form.find('block') != -1:
         reward_classes = [BlockReward(args)]
 
     train_models = MultiOption(len(reward_classes), models[args.model_form])

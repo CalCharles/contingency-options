@@ -6,9 +6,50 @@ from functools import partial
 
 from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
 
-from SelfBreakout.breakout_screen import read_obj_dumps, get_individual_data
+from SelfBreakout.breakout_screen import (
+    read_obj_dumps, get_individual_data,
+    RandomConsistentPolicy, RotatePolicy)
 from ObjectRecognition.gym_wrapper import make_env
 import ObjectRecognition.util as util
+
+
+# universal dataset parser
+def parse_dataset(dataset_name, n_state, binarize=None, offset_fix=None):
+    if dataset_name == 'self':
+        dataset = DatasetSelfBreakout(
+            'SelfBreakout/runs',  # object dump path
+            'SelfBreakout/runs/0',  # run states
+            n_state=n_state,  # set max number of states
+            binarize=binarize,  # binarize image to 0 and 1
+            offset_fix=offset_fix,  # offset of episode number
+        )  # 10.0, 0.1, 1.0, 0.0005
+    elif dataset_name == 'self-b':
+        dataset = DatasetSelfBreakout(
+            'SelfBreakout/runs_bounce',  # object dump path
+            'SelfBreakout/runs_bounce/0',  # run states
+            n_state=n_state,  # set max number of states
+            binarize=binarize,  # binarize image to 0 and 1
+            offset_fix=offset_fix,  # offset of episode number
+        )  # 10.0, 0.1, 1.0, 0.0005
+    elif dataset_name == 'atari-ball':
+        dataset = DatasetSelfBreakout(
+            'results/atariballfirsttest',  # object dump path
+            'results/atariballfirsttest/0',  # run states
+            n_state=n_state,  # set max number of states
+            binarize=binarize,  # binarize image to 0 and 1
+            offset_fix=0,  # offset of episode number, fixed for this one
+        )  # 10.0, 0.1, 1.0, 0.0005
+    elif dataset_name == 'atari':
+        # actor = partial(RandomConsistentPolicy, change_prob=0.35)
+        actor = partial(RotatePolicy, hold_count=4)
+        dataset = DatasetAtari(
+            'BreakoutNoFrameskip-v4',  # atari game name
+            actor,  # mock actor
+            n_state=n_state,  # set max number of states
+            save_path='results',  # save path for gym
+            binarize=binarize,  # binarize image to 0 and 1
+        )
+    return dataset
 
 
 # Dataset interface
@@ -63,7 +104,6 @@ class DatasetSelfBreakout(Dataset):
 
     def __init__(self, objdump_path, state_path, *args, **kwargs):
         super(DatasetSelfBreakout, self).__init__()
-        obj_dumps = read_obj_dumps(objdump_path)
         self.state_path = state_path
         self.frame_shape = (84, 84)
         self.n_state = kwargs.get('n_state', 1000)
@@ -74,14 +114,18 @@ class DatasetSelfBreakout(Dataset):
 
         self.block_size = min(self.block_size, self.n_state)
 
-        self.actions = np.array(
-            get_individual_data('Action', obj_dumps, pos_val_hash=2))
-        self.paddle_data = np.array(
-            get_individual_data('Paddle', obj_dumps, pos_val_hash=1),
-            dtype=int)
-        self.ball_data = np.array(
-            get_individual_data('Ball', obj_dumps, pos_val_hash=1),
-            dtype=int)
+        try:
+            obj_dumps = read_obj_dumps(objdump_path)
+            self.actions = np.array(
+                get_individual_data('Action', obj_dumps, pos_val_hash=2))
+            self.paddle_data = np.array(
+                get_individual_data('Paddle', obj_dumps, pos_val_hash=1),
+                dtype=int)
+            self.ball_data = np.array(
+                get_individual_data('Ball', obj_dumps, pos_val_hash=1),
+                dtype=int)
+        except FileNotFoundError as e:
+            print('WARNING: object dump not loaded, %s'%(e))
 
         self.reset()
         
@@ -157,7 +201,8 @@ class DatasetSelfBreakout(Dataset):
     def _load_image(self, idx):
         try:
             img = imio.imread(self._get_image_path(idx), as_gray=True) / 256.0
-        except FileNotFoundError:
+        except FileNotFoundError as e:
+            print('WARNING: failed to load image, %s'%(e))
             img = np.full(self.frame_shape, 0)
         return img
 

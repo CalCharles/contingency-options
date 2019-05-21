@@ -51,6 +51,8 @@ class OptionChain():
                     except FileNotFoundError as e:
                         proxy_env = ProxyEnvironment(d)
                         has_test = False
+                    print(d)
+                    proxy_env.proxy_chain[0] = self.base_environment
                     proxy_env.set_models(models)
                     if has_test:
                         proxy_env.set_test() # changes behavior policy to testing mode (no random actions)

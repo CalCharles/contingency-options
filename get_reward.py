@@ -32,7 +32,9 @@ if __name__ == "__main__":
         # reward-form
         # train (used for trainable rewards)
         # segment
-
+    # atari action->paddle: python get_reward.py --record-rollouts data/atarirandom/ --changepoint-dir data/atarigraph/ --train-edge "Action->Paddle" --transforms SVel SCorAvg --determiner overlap --reward-form markov --segment --train --num-stack 2 --focus-dumps-name focus_dumps.txt --dp-gmm atari
+    # python get_reward.py --record-rollouts data/atarirandom/ --changepoint-dir data/atarigraph/ --train-edge "Action->Paddle" --transforms WProx --determiner prox --reward-form changepoint --num-stack 1 --focus-dumps-name focus_dumps.txt --dp-gmm atari
+    # python get_reward.py --record-rollouts data/ataripaddle/ --changepoint-dir data/atarigraph/ --train-edge "Paddle->Ball" --transforms WProx --determiner prox --reward-form changepoint --num-stack 1 --focus-dumps-name focus_dumps.txt --dp-gmm atariball --period 5
     dataset_path = args.record_rollouts
     changepoints_path = args.record_rollouts # these are the same for creating rewards
     head, tail = get_edge(args.train_edge)
@@ -45,6 +47,10 @@ if __name__ == "__main__":
     # TODO: multiple tail support
     if tail[0] == "Action":
         correlate_trajectory = get_individual_data(tail[0], obj_dumps, pos_val_hash=2)
+        new_ct = np.zeros((len(correlate_trajectory), int(np.max(correlate_trajectory))+1))
+        hot_idxes = np.array(list(range(len(correlate_trajectory)))), correlate_trajectory.astype(int)
+        new_ct[np.array(list(range(len(correlate_trajectory)))), np.squeeze(correlate_trajectory.astype(int))] = 1
+        correlate_trajectory = new_ct
     else:
         correlate_trajectory = get_individual_data(tail[0], obj_dumps, pos_val_hash=1)
 
@@ -62,7 +68,7 @@ if __name__ == "__main__":
     clusters = MultipleCluster(args, BayesianGaussianMixture)
 
     # paddle uses "overlap", ball uses "prox", "proxVel"
-    determiner = determiners[args.determiner](prox_distance = args.period) # reusing period to define minimum distance# PureOverlapDeterminer(overlap_ratio = .95, min_cluster= 7)
+    determiner =     determiners[args.determiner](prox_distance = args.period, overlap_ratio=.5, min_cluster=15) # reusing period to define minimum distance# PureOverlapDeterminer(overlap_ratio = .95, min_cluster= 7)
     option_determiner_model = ChangepointModels(args, changepoint_model, transforms, clusters, determiner)
     option_determiner_model.changepoint_statistics(models, changepoints, trajectory, correlate_trajectory)
 
@@ -71,6 +77,7 @@ if __name__ == "__main__":
     except OSError:
         pass # folder already created
     print(args.changepoint_dir)
+    reward_fns = []
     for i in range(option_determiner_model.determiner.num_mappings):
         reward_function = reward_forms[args.reward_form](option_determiner_model, args, i)
         if args.train:
@@ -78,3 +85,10 @@ if __name__ == "__main__":
             reward_function.train_rewards(20000)
 
         save_to_pickle(os.path.join(args.changepoint_dir, args.train_edge, "reward__function__" + str(i) +"__rwd.pkl"), reward_function)
+        reward_fns.append(reward_function)
+    # if args.train:
+    #     minvar = np.min(np.max([rf.markovModel.variance.tolist() for rf in reward_fns]), axis=0)
+    #     print(minvar)
+    #     for i, rf in enumerate(reward_fns):
+    #         rf.setvar(minvar)
+    #         save_to_pickle(os.path.join(args.changepoint_dir, args.train_edge, "reward__function__" + str(i) +"__rwd.pkl"), rf)

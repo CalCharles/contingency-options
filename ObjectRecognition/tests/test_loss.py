@@ -36,8 +36,12 @@ def load_model(model_path, net_params_path, pmodel=None, *args, **kwargs):
     model.set_trainable('test_model')
     return model
 
+# flags
+is_plot_focus = False
+
+
 # game instance
-n_state = 1000
+n_state = 2000
 GAME_NAME = 'self'  # 'self', 'self-b', 'atari'
 if GAME_NAME == 'self':
     game = DatasetSelfBreakout(
@@ -71,10 +75,10 @@ dmiloss = SaliencyLoss(
     c_fn_2=partial(util.hinged_mean_square_deviation, 
                    alpha_d=0.3),  # TODO: parameterize this
     frame_dev_coeff= 0.0,
-    focus_dev_coeff= 20.0,
+    focus_dev_coeff= 0.0,
     frame_var_coeff= 0.0,
-    belief_dev_coeff= 0.0,
-    nb_size= (10, 10),
+    belief_dev_coeff= 1.0,
+    nb_size= (5, 5),
     verbose=True,
 )
 
@@ -82,11 +86,11 @@ dmiloss = SaliencyLoss(
 micplosses = []
 action_micploss = ActionMICPLoss(
     game,
-    mi_match_coeff= 1.0,
-    mi_diffs_coeff= 0.2,
+    mi_match_coeff= 50.0,
+    mi_diffs_coeff= 10.0,
     verbose=True,
 )
-# micplosses.append(action_micploss)
+micplosses.append(action_micploss)
 
 # premise loss
 pmodel_net_params_path = 'ObjectRecognition/net_params/two_layer_5_5.json'
@@ -102,8 +106,10 @@ paddle_model = load_model(
     'ObjectRecognition/net_params/two_layer.json',
     pmodel=pmodel)
 ball_model = load_model(
-    'results/cmaes_soln/focus_self/ball_bin.npy',
+    'results/cmaes_soln/focus_self/ball_bin_long.npy',
     'ObjectRecognition/net_params/two_layer.json',
+    # 'results/cmaes_soln/focus_self/ball_bin_long_smooth.pth',
+    # 'ObjectRecognition/net_params/attn_base.json',
     pmodel=pmodel)
 comp_model = load_model(
     'results/cmaes_soln/focus_self/42068_40.npy',
@@ -114,17 +120,27 @@ premise_micploss = PremiseMICPLoss(
     game,
     'premise',
     mi_match_coeff= 0.0,
-    mi_diffs_coeff= 0.0,
-    mi_valid_coeff= 0.0,
-    mi_cndcp_coeff= 1.0,
+    mi_diffs_coeff= 1.0,
+    mi_valid_coeff= 1.0,
+    mi_cndcp_coeff= 20.0,
     prox_dist= 0.05,
     verbose=True,
 )
-micplosses.append(premise_micploss)
+# micplosses.append(premise_micploss)
+attn_premise_micploss = AttentionPremiseMICPLoss(
+    game,
+    'premise',
+    mi_match_coeff=0.0,
+    mi_diffs_coeff=0.0,
+    active_attn_coeff=1.0,
+    prox_dist=0.1,
+    attn_t=0.7,
+    verbose=True,
+)
 
 # combine every loss together
-micploss = CollectionMICPLoss(*micplosses)
-loss = CombinedLoss(dmiloss, micploss)
+micploss = CollectionMICPLoss(micplosses)
+loss = CombinedLoss([dmiloss, micploss], [attn_premise_micploss])
 print(loss)
 loss_fn = loss.forward
 
@@ -132,12 +148,12 @@ loss_fn = loss.forward
 LIMIT = n_state
 L = game.idx_offset
 R = L + LIMIT
-paddle_model_focus = paddle_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True)
-ball_model_focus = ball_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True)
-comp_model_focus = comp_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True)
+paddle_model_focus = paddle_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True, ret_extra=True)
+ball_model_focus = ball_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True, ret_extra=True)
+comp_model_focus = comp_model.forward(torch.from_numpy(game.get_frame(0, LIMIT)).float(), ret_numpy=True, ret_extra=True)
 random_focus = np.random.rand(LIMIT, 2)
 random_focus = {
-    'premise': paddle_model_focus['premise'],
+    'premise': paddle_model_focus[0]['premise'],
     '__train__': random_focus,
 }
 try:
@@ -145,7 +161,7 @@ try:
 except:
     ideal_paddle = np.random.rand(LIMIT, 2)
 ideal_paddle = {
-    'premise': paddle_model_focus['premise'],
+    'premise': paddle_model_focus[0]['premise'],
     '__train__': ideal_paddle,
 }
 try:
@@ -153,15 +169,15 @@ try:
 except:
     ideal_ball = np.random.rand(LIMIT, 2)
 ideal_ball = {
-    'premise': paddle_model_focus['premise'],
+    'premise': paddle_model_focus[0]['premise'],
     '__train__': ideal_ball,
 }
-fix_jump_focus = copy.deepcopy(paddle_model_focus)
+fix_jump_focus = copy.deepcopy(paddle_model_focus[0])
 fix_jump_focus['__train__'] = np.zeros(fix_jump_focus['__train__'].shape)
-fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]] = paddle_model_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]]
+fix_jump_focus['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]] = paddle_model_focus[0]['__train__'][[LIMIT//6, LIMIT//4, LIMIT//2]]
 
 # plot tracking paddle
-if False:
+if is_plot_focus:
     L, R = 20, 30
     plot_focus(game, range(L, R), ideal_paddle['__train__'][L:R])
     plot_focus(game, range(L, R), ideal_ball['__train__'][L:R])

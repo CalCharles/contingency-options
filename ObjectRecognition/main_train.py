@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 from SelfBreakout.breakout_screen import RandomConsistentPolicy, RotatePolicy
 from ChangepointDetection.LinearCPD import LinearCPD
 from ChangepointDetection.CHAMP import CHAMPDetector
-from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
+from ObjectRecognition.dataset import parse_dataset
 from ObjectRecognition.model import (
     ModelFocusCNN, ModelFocusBoost,
     ModelAttentionCNN,
@@ -57,10 +57,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train object recognition')
     parser.add_argument('savedir',
                         help='base directory to save results')
-    parser.add_argument('game', choices=['self', 'self-b', 'atari'],
-                        help='game name to train with')
-    parser.add_argument('net',
-                        help='network params JSON file')
     parser.add_argument('--verbose', action='store_true', default=False,
                         help='number of training iterations')
     add_args.add_changepoint_argument(parser)
@@ -90,34 +86,13 @@ if __name__ == '__main__':
         - SelfBreakout
         - Atari OpenAI Gym
     """
-    if args.game == 'self':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs',  # object dump path
-            'SelfBreakout/runs/0',  # run states
-            n_state=args.n_state,  # set max number of states
-            binarize=args.binarize,  # binarize image to 0 and 1
-            offset_fix=args.offset_fix,  # offset of episode number
-        )  # 10.0, 0.1, 1.0, 0.0005
-    elif args.game == 'self-b':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs_bounce',  # object dump path
-            'SelfBreakout/runs_bounce/0',  # run states
-            n_state=args.n_state,  # set max number of states
-            binarize=args.binarize,  # binarize image to 0 and 1
-            offset_fix=args.offset_fix,  # offset of episode number
-        )  # 10.0, 0.1, 1.0, 0.0005
-    elif args.game == 'atari':
-        # actor = partial(RandomConsistentPolicy, change_prob=0.35)
-        actor = partial(RotatePolicy, hold_count=5)
-        dataset = DatasetAtari(
-            'BreakoutNoFrameskip-v4',  # atari game name
-            actor,  # mock actor
-            n_state=args.n_state,  # set max number of states
-            save_path='results',  # save path for gym
-            binarize=args.binarize,  # binarize image to 0 and 1
-        )
-
-
+    dataset = parse_dataset(
+        dataset_name=args.dataset_name,
+        n_state=args.n_state,
+        binarize=args.binarize,
+        offset_fix=args.offset_fix
+    )
+    
     """
     Changepoint Detector
         - specify changepoint detector which fits the dynamic of the object
@@ -169,7 +144,7 @@ if __name__ == '__main__':
         )
 
     # paddle model for premise MICP loss
-    if args.premise_micp or args.attn_premise_micp:
+    if args.premise_micp:
         pmodel_weight_path = args.premise_path
         pmodel_net_params_text = open(args.premise_net).read()
         pmodel_net_params = json.loads(pmodel_net_params_text)
@@ -179,7 +154,10 @@ if __name__ == '__main__':
             net_params=pmodel_net_params,
         )
         pmodel.set_parameters(pmodel_params)
-        model.add_model('premise', pmodel, [])
+        # model.add_model('premise', pmodel, [])
+        model.add_model('premise', pmodel, [], 
+                        augment_fn=partial(util.remove_mean_batch, 
+                                           nb_size=(8, 8)))
         # model.add_model('premise', pmodel, [],
         #                 augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
         model.add_model('train', train_model, ['premise'])
@@ -196,7 +174,9 @@ if __name__ == '__main__':
             - mutual information with action
             - OR MI with premise
     """
-    seq_loss = []
+    focus_loss = []
+    attn_loss = []
+    ret_both = False
     if args.saliency:
         saliencyloss = SaliencyLoss(
             dataset,
@@ -209,7 +189,7 @@ if __name__ == '__main__':
             nb_size= (10, 10),  # TODO: auto-parameter?
             verbose=args.verbose,
         )
-        seq_loss.append(saliencyloss)
+        focus_loss.append(saliencyloss)
     if args.action_micp or args.premise_micp:
         seq_micploss = []
         if args.action_micp:
@@ -234,25 +214,26 @@ if __name__ == '__main__':
             )
             seq_micploss.append(premise_micploss)
         micploss = CollectionMICPLoss(
-            *seq_micploss,
+            seq_micploss,
             agg_fn=np.mean,
             cp_detector=cpd,
         )
-        seq_loss.append(micploss)
+        focus_loss.append(micploss)
     if args.attn_premise_micp:
         attn_premise_micploss = AttentionPremiseMICPLoss(
             dataset,
             'premise',
             mi_match_coeff=args.attn_premise_micp[0],  # ?
             mi_diffs_coeff=args.attn_premise_micp[1],  # ?
-            temp_loss_coeff=args.attn_premise_micp[2],  # ?
+            active_attn_coeff=args.attn_premise_micp[2],  # ?
             prox_dist=args.attn_premise_micp[3],  # ?
             attn_t=args.attn_premise_micp[4],  # ?
             batch_size=500,
             verbose=args.verbose,
         )
-        seq_loss.append(attn_premise_micploss)
-    loss = CombinedLoss(*seq_loss)
+        ret_both = True
+        attn_loss.append(attn_premise_micploss)
+    loss = CombinedLoss(focus_loss, attn_loss)
     logger.info(loss)
 
 
@@ -279,6 +260,7 @@ if __name__ == '__main__':
         model, 
         loss.forward, 
         cmaes_opt, 
+        ret_both=ret_both,
         verbose=args.verbose,
     )
     logger.info("result params: %s", str(result))

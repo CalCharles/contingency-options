@@ -4,6 +4,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from functools import partial
+from Models.models import pytorch_model
+
+import logging
+logging.basicConfig(format='%(levelname)s [%(asctime)s]: %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from ObjectRecognition.dataset import Dataset
 import ObjectRecognition.util as util
@@ -68,10 +73,13 @@ def load_param(param_path, ext=None):
 
 class ModelObject(nn.Module):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super(ModelObject, self).__init__()
         self.use_prior = False
         self.parameter_count = -1
+
+        # preprocessing
+        self.binarize = kwargs.get('binarize', None)
 
 
     # set parameter corresponding to given param type
@@ -120,7 +128,7 @@ class ModelObject(nn.Module):
             prev_out = None
             for i in range(game_env.n_state):
                 frames = game_env.get_frame(i, i+1)  # batch format
-                frames = torch.from_numpy(frames).float()
+                frames = self.preprocess(frames)
                 forward_out = self.forward(frames,
                                         prev_out=prev_out, 
                                         ret_numpy=True,
@@ -135,7 +143,7 @@ class ModelObject(nn.Module):
             for l in range(0, game_env.n_state, batch_size):
                 r = min(l + batch_size, game_env.n_state)
                 frames = game_env.get_frame(l, r)
-                frames = torch.from_numpy(frames).float()
+                frames = self.preprocess(frames)
                 forward_out = self.forward(frames,
                                         ret_numpy=True,
                                         ret_extra=ret_extra)
@@ -148,6 +156,15 @@ class ModelObject(nn.Module):
         if ret_extra:
             return outputs, extra
         return outputs
+
+
+    # preprocess input
+    def preprocess(self, frames):
+        if self.binarize:
+            frames = util.binarize(frames, self.binarize)
+        if isinstance(frames, np.ndarray):
+            frames = torch.from_numpy(frames).float()
+        return frames
 
 
 """
@@ -166,6 +183,7 @@ class ModelFocusInterface(nn.Module):
 
 
     # push input forward
+    @torch.no_grad()
     def forward(self, img, prev_out=None):
         raise NotImplementedError
 
@@ -217,7 +235,7 @@ def prior_filter(prevs, shape):
 
 class ModelFocusCNN(ModelObject, ModelFocusInterface):
     def __init__(self, image_shape, net_params, *args, **kwargs):
-        super(ModelFocusCNN, self).__init__()
+        super(ModelFocusCNN, self).__init__(*args, **kwargs)
 
         # interface parameters
         if len(image_shape) == 2:
@@ -259,37 +277,40 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
 
 
     # push input forward
+    @torch.no_grad()
     def forward(self, img, prev_out=None, ret_numpy=True, ret_extra=False):
         out = img
         for layer in self.layers:
-            out = layer(out)
+            out = layer(out).detach()
         if prev_out is not None:  # apply prior filter if specified
             pfilter = prior_filter(prev_out, out.size())
-            pfilter = torch.from_numpy(pfilter).float()
+            pfilter = self.preprocess(pfilter)
             out = torch.mul(out, pfilter)
         focus_out = self.argmax_xy(out)
 
         focus_out = focus_out if ret_numpy \
                     else torch.from_numpy(focus_out).float()
         if ret_extra:
-            return focus_out, out.detach().numpy()
+            return focus_out, pytorch_model.unwrap(out)
         return focus_out
 
 
     # pick max coordinate
     def argmax_xy(self, out):
-        batch_size = out.size(0)
-        row_size = out.size(2)
-        col_size = out.size(3)
+        out = pytorch_model.unwrap(out)
+        batch_size = out.shape[0]
+        row_size = out.shape[2]
+        col_size = out.shape[3]
         
         if self.argmax_mode == 'first':
             # first argmax
-            mx, argmax = out.reshape((batch_size, -1)).max(1)
+            argmax = np.argmax(out.reshape((batch_size, -1)), axis=1)
         elif self.argmax_mode == 'rand':
             # random argmax for tie-breaking
             out = out.reshape((batch_size, -1))
+            out_max = np.max(out, axis=1)
             argmax = np.array([np.random.choice(np.flatnonzero(line == line_max)) 
-                               for line, line_max in zip(out, out.max(1)[0])])
+                               for line, line_max in zip(out, out_max)])
         else:
             raise ValueError('argmax_mode %s invalid'%(self.argmax_mode))
         
@@ -318,10 +339,119 @@ class ModelFocusCNN(ModelObject, ModelFocusInterface):
             self.net_params)
 
 
+# focus model using mean and variance
+class ModelFocusMeanVar(ModelObject, ModelFocusInterface):
+    def __init__(self, img_mean, img_var, *args, **kwargs):
+        super(ModelFocusMeanVar, self).__init__(*args, **kwargs)
+
+        # mean and variance
+        assert img_mean.shape == img_var.shape
+        assert len(img_mean.shape) == 3
+        self.img_mean = img_mean
+        self.img_var = img_var
+        self.match_shape = self.img_mean.shape
+        self.pad_shape = ((self.match_shape[-2]+1)//2, (self.match_shape[-1]+1)//2)
+
+        # extra...
+        self.argmax_mode = kwargs.get('argmax_mode', 'first')  # 'first', 'rand'
+
+
+    # push input forward
+    @torch.no_grad()
+    def forward(self, imgs, prev_out=None, ret_numpy=True, ret_extra=False):
+        match_field = np.zeros((imgs.shape[0],) + imgs.shape[-2:])
+        for i in range(imgs.shape[0]):  # batch
+            for j in range(imgs.shape[1]):  # channel
+                pad_frame = np.pad(imgs[i, j], self.pad_shape, 'constant')
+                for x in range(imgs.shape[2]):
+                    for y in range(imgs.shape[3]):
+                        match_field[i, x, y] += self.match(
+                            pad_frame[None, x:x+self.match_shape[-2],
+                                      y:y+self.match_shape[-1]]
+                        )
+                # match_field[i] = np.exp(match_field[i] - np.max(match_field[i]))
+                # match_field[i] = match_field[i] / np.sum(match_field[i])
+
+        focus_out = self.argmax_xy(match_field)
+        focus_out = focus_out if ret_numpy \
+                    else torch.from_numpy(focus_out).float()
+        if ret_extra:
+            return focus_out, match_field
+        return focus_out
+
+
+    # matching function
+    def match(self, img):
+        # self.img_mean[:, :10, :] = None
+        # self.img_mean[:, :, :10] = None
+        sel_bool = ~np.isnan(self.img_mean)
+        img_sel = img[sel_bool]
+        mean_sel = self.img_mean[sel_bool]
+        var_sel = self.img_var[sel_bool]
+        return -np.sum((img_sel - mean_sel)**2 / var_sel)
+        # return -np.sum((img_sel - mean_sel)**2)
+
+
+    # pick max coordinate
+    def argmax_xy(self, out):
+        # return util.argmax2d(out, self.argmax_mode)
+        batch_size = out.shape[0]
+        row_size = out.shape[1]
+        col_size = out.shape[2]
+        
+        if self.argmax_mode == 'first':
+            # first argmax
+            argmax = np.argmax(out.reshape((batch_size, -1)), axis=1)
+        elif self.argmax_mode == 'rand':
+            # random argmax for tie-breaking
+            out = out.reshape((batch_size, -1))
+            out_max = np.max(out, axis=1)
+            argmax = np.array([np.random.choice(np.flatnonzero(line == line_max)) 
+                               for line, line_max in zip(out, out_max)])
+        else:
+            raise ValueError('argmax_mode %s invalid'%(self.argmax_mode))
+        
+        argmax %= row_size * col_size  # in case of multiple filters
+        argmax_coor = np.array([np.unravel_index(argmax_i, (row_size, col_size)) 
+                                for argmax_i in argmax], dtype=float)
+        argmax_coor = argmax_coor / np.array([row_size, col_size])
+        return argmax_coor
+
+
+    # train frmo focus model
+    @staticmethod
+    def from_focus_model(focus_model_forward, dataset, nb_size, batch_size=100):
+        n_channel = 1  # dataset.get_shape()[-3]  # TODO: properly do this
+        match_size = (n_channel, nb_size[0]*2+1, nb_size[1]*2+1)
+        img_stack = np.zeros((dataset.n_state,) + match_size)
+        weight_stack = np.zeros(dataset.n_state)
+        cur_n = 0
+
+        for l in range(0, dataset.n_state, batch_size):
+            print(l)  # TODO: remove
+            r = min(l + batch_size, dataset.n_state)
+            frames = dataset.get_frame(l, r)
+            focus, extra = focus_model_forward(frames)
+            neighbor = util.extract_neighbor(dataset, focus, np.arange(l, r),
+                                             nb_size=nb_size)
+            img_stack[l:r, 0] = neighbor  # properly channels?
+            weight_stack[l:r] = util.focus_intensity(focus[l:r], extra[l:r])
+
+        img_mean = np.average(img_stack, weights=weight_stack, axis=0)
+        img_var = np.average((img_stack - img_mean)**2, weights=weight_stack, 
+                             axis=0)**0.5  # TODO: this is biased
+        return ModelFocusMeanVar(img_mean, img_var)
+
+
+    # pretty print
+    def __str__(self, prefix=''):
+        return prefix + 'FocusMeanVar:'
+
+
 # Boosting from multiple neuron network based on change points
 class ModelFocusBoost(ModelObject, ModelFocusInterface):
     def __init__(self, cp_detector, *models, **kwargs):
-        super(ModelFocusBoost, self).__init__()
+        super(ModelFocusBoost, self).__init__(*args, **kwargs)
 
         # save models in sequential hierarchy
         self.models = models
@@ -332,6 +462,7 @@ class ModelFocusBoost(ModelObject, ModelFocusInterface):
 
 
     # push input forward
+    @torch.no_grad()
     def forward(self, imgs, batch_size=100):
         n_img = imgs.shape[0]
         outputs = np.zeros((n_img,) + self.output_size(), dtype=float)
@@ -417,8 +548,8 @@ Attention models: given a image, return a same-size attention intensity
 # TODO: refactor focus into attention
 
 class ModelAttentionCNN(ModelObject):
-    def __init__(self, image_shape, net_params):
-        super(ModelAttentionCNN, self).__init__()
+    def __init__(self, image_shape, net_params, *args, **kwargs):
+        super(ModelAttentionCNN, self).__init__(*args, **kwargs)
 
         # interface parameters
         if len(image_shape) == 2:
@@ -461,7 +592,7 @@ class ModelAttentionCNN(ModelObject):
         out = img
         for layer in self.layers:
             out = layer(out)
-        return out if not ret_numpy else out.detach().numpy()
+        return out if not ret_numpy else pytorch_model.unwrap(out)
 
 
     # input size of this network
@@ -478,6 +609,9 @@ class ModelAttentionCNN(ModelObject):
     def from_focus_model(self, focus_model_forward, dataset, *args, **kwargs):
         lr = kwargs.get('lr', 1e-3)
         n_iter = kwargs.get('n_iter', 100)
+        epoch = kwargs.get('epoch', None)
+        if epoch is not None:
+            logger.info('EPOCH %3d: lr= %f, n_iter= %d'%(epoch, lr, n_iter))
 
         # get target attention
         if isinstance(dataset, Dataset):
@@ -487,25 +621,31 @@ class ModelAttentionCNN(ModelObject):
             frames = dataset
         if isinstance(frames, np.ndarray):
             frames = torch.from_numpy(frames).float()
-        focus = focus_model_forward(frames)
+        focus, intensity = focus_model_forward(frames, ret_extra=True)
         focus_attn = util.focus2attn(
             focus,
             self.input_shape,
             fn=partial(util.gaussian_pdf, normalized=False))
-        focus_attn = 10 * focus_attn - 1  # rescale
+        # focus_attn = 10 * focus_attn - 1  # rescale
         focus_attn = torch.from_numpy(focus_attn).float()
+        focus_weight = util.focus_intensity(focus, intensity)
+        focus_weight = torch.from_numpy(focus_weight).float()
+        focus_weight_sum = focus_weight.sum()
 
         # train
         lda_1 = 2 # attention regularization
         optimizer = optim.Adam(self.parameters(), lr=lr)
         for t in range(n_iter):
             output = self(frames)
-            loss = (output - focus_attn).pow(2).mean() \
-                   + (lda_1 + 1) * output.abs().mean()
+            # loss = (output - focus_attn).pow(2).mean() \
+            #        + (lda_1 + 1) * output.abs().mean()
+            loss = -(focus_weight 
+                     * (util.nn_logsoftmax(output) * focus_attn).mean(dim=(-1, -2, -3))
+                   ).sum() / focus_weight_sum
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print('iteration %4d: loss= %f'%(t, loss.item()))
+            logger.info('iteration %2d: loss= %f'%(t, loss.item()))
 
 
     # pretty print
@@ -550,10 +690,12 @@ class ModelCollectionDAG():
 
     def __init__(self, *args, **kwargs):
         self.model_list = dict()  # model collection
-        self.model_augment = dict()  # operation after forward
+        self.model_augment_pt = dict()  # postprocessing after forward
+        self.model_augment_fn = dict()  # operation after forward
         self.model_dep = dict()  # dependency graph
         self.model_dir = dict()  # evaluation direction graph
         self.augment_combine = kwargs.get('augment_combine', util.pick_first)
+        self.iscuda = False
 
         # model states
         self.train_model_id = None  # for set_parameters
@@ -561,22 +703,27 @@ class ModelCollectionDAG():
 
     # add model node to the graph
     # e.g. add_model('ball', ball_model, ['paddle'])
-    def add_model(self, model_id, model, dep, augment_fn=util.noop_x):
+    def add_model(self, model_id, model, dep, 
+                  augment_pt=util.noop_y,
+                  augment_fn=util.noop_x):
         if model_id in self.model_list.keys():
             raise ValueError('model %s already exists'%model_id)
         for d_model_id in dep:
             if d_model_id not in self.model_list.keys():
                 raise ValueError('dependency model "%s" unknown'%d_model_id)
         self.model_list[model_id] = model
-        self.model_augment[model_id] = augment_fn
+        self.model_augment_pt[model_id] = augment_pt
+        self.model_augment_fn[model_id] = augment_fn
         self.model_dep[model_id] = dep
         self.model_dir[model_id] = []
         for d_model_id in dep:
             self.model_dir[d_model_id].append(model_id)
 
-    # def cuda(self):
-    #     for key in self.model_list.keys():
-    #         self.model_list[key] = self.model_list[key].cuda() # TODO: write a cpu function
+    def cuda(self):
+        for key in self.model_list.keys():
+            self.model_list[key] = self.model_list[key].cuda() # TODO: write a cpu function
+        self.iscuda = True
+        return self
 
 
     # set trainable model, only supported one trainable model
@@ -601,13 +748,15 @@ class ModelCollectionDAG():
 
 
     # forward
+    @torch.no_grad()
     def forward(self, img, ret_numpy=False, ret_extra=False):
         outs = dict()
         extras = dict()
         augment_img = dict()
         for model_id in toposort(self.model_dir):
             cur_model = self.model_list[model_id]
-            cur_augment = self.model_augment[model_id]
+            cur_augment_pt = self.model_augment_pt[model_id]
+            cur_augment_fn = self.model_augment_fn[model_id]
 
             # get input image
             prev_img = [augment_img[d_model_id] 
@@ -618,17 +767,26 @@ class ModelCollectionDAG():
                 cur_img = self.augment_combine(prev_img)
 
             # forward the model
-            if ret_extra:
-                outs[model_id], extras[model_id] = cur_model.forward(cur_img,
-                    ret_numpy=ret_numpy,
-                    ret_extra=ret_extra)
-            else:
-                outs[model_id] = cur_model.forward(cur_img,
-                    ret_numpy=ret_numpy,
-                    ret_extra=ret_extra)
+            # print(cur_img)
+            cur_img = cur_model.preprocess(cur_img)
+            # print(cur_img)
+            if self.iscuda and not cur_img.is_cuda:
+                cur_img = cur_img.cuda()
+            outs[model_id], extras[model_id] = cur_model.forward(cur_img,
+                ret_numpy=ret_numpy,
+                ret_extra=True)
+            # if ret_extra:
+            #     outs[model_id], extras[model_id] = cur_model.forward(cur_img,
+            #         ret_numpy=ret_numpy,
+            #         ret_extra=ret_extra)
+            # else:
+            #     outs[model_id] = cur_model.forward(cur_img,
+            #         ret_numpy=ret_numpy,
+            #         ret_extra=ret_extra)
+            outs[model_id] = cur_augment_pt(extras[model_id], outs[model_id])
 
             # update augmented image
-            augment_img[model_id] = cur_augment(cur_img, outs[model_id])
+            augment_img[model_id] = cur_augment_fn(cur_img, outs[model_id])
 
         if self.train_model_id:
             outs['__train__'] = outs[self.train_model_id]

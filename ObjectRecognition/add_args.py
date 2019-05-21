@@ -7,6 +7,8 @@ def add_changepoint_argument(parser):
 
 
 def add_dataset_argument(parser):
+    parser.add_argument('dataset_name', choices=['self', 'self-b', 'atari-ball', 'atari'],
+                        help='game name to train with')
     parser.add_argument('--n_state', type=int, default=1000,
                         help='number of states in an episode')
     parser.add_argument('--binarize', type=float, default=None,
@@ -27,6 +29,10 @@ def add_optimizer_argument(parser):
 
 
 def add_model_argument(parser):
+    parser.add_argument('net',
+                        help='network params JSON file')
+    parser.add_argument('--modelID', default='unspecified',
+                        help='model params file')
     parser.add_argument('--model_type',
                         choices=['focus', 'attn'], default='focus',
                         help='model type')
@@ -58,5 +64,5 @@ def add_loss_argument(parser):
                         metavar=('MATCH', 'DIFFS', 'VALID', 'CNDCP', 'PROX-DIST'),
                         help='coefficients for premise MICP loss')
     parser.add_argument('--attn_premise_micp', type=float, nargs=5, default=None,
-                        metavar=('MATCH', 'DIFFS', 'TEMP', 'PROX-DIST', 'ATTN-T'),
+                        metavar=('MATCH', 'DIFFS', 'ACTIVE', 'PROX-DIST', 'ATTN-T'),
                         help='coefficients for premise MICP loss')

@@ -1,4 +1,5 @@
 import torch
+import time
 from Models.models import pytorch_model
 import numpy as np
 from RewardFunctions.changepointReward import ChangepointReward
@@ -36,6 +37,7 @@ class BounceReward(ChangepointReward):
         '''
         rewards = []
         # print(states.shape)
+        # start = time.time()
         for last_state, state, action, nextstate in zip(states, states[1:], actions, states[2:]):
             last_state = last_state.squeeze()
             state = state.squeeze()
@@ -44,6 +46,8 @@ class BounceReward(ChangepointReward):
             state_second = state[:2]
             proximity = state[:2] - state[-2:]
             state_third = nextstate[:2]
+            # s1 = time.time()
+            # print("separate ", s1 - start)
             # print(state_second.shape, state.shape, state_first.shape)
             v1 = state_second - state_first
             v2 = state_third - state_second
@@ -62,6 +66,8 @@ class BounceReward(ChangepointReward):
                             else:
                                 rewards.append(0.25)
                             rewarded = True
+            # s2 = time.time()
+            # print("rew ", s1 - s2)
             if not rewarded:
                 if self.form == 'dense':
                     # rewards.append(-abs(proximity[1] / (proximity[0] + .1) * .1))
@@ -73,11 +79,12 @@ class BounceReward(ChangepointReward):
                     else:
                         rewards.append(-abs(proximity[1]) * 0.001)
                 else:
-                    # print(proximity[0])
-                    if proximity[0] == 3:# and self.form == 'neg' or self.form == 'dir':
+                    # print(state, proximity[0])
+                    if proximity[0] > 3 and self.form.find('neg') != -1:
                         rewards.append(-1)
                     else:
                         rewards.append(0)
+            # print("prewrap ", time.time() - s2)
         return pytorch_model.wrap(rewards, cuda=self.cuda)
 
 class Xreward(ChangepointReward):
@@ -151,7 +158,7 @@ class BlockReward(ChangepointReward):
         return pytorch_model.wrap(np.stack(states), cuda=self.cuda)
 
 class RewardRight(ChangepointReward):
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
 
         TODO: make support multiple processes
@@ -159,15 +166,15 @@ class RewardRight(ChangepointReward):
         '''
         rewards = []
         for state, action, nextstate in zip(states, actions, states[1:]):
-            # print(state)
+            # print(state, state - nextstate == -1)
             if state - nextstate == -1:
-                rewards.append(2)
+                rewards.append(1)
             else:
-                rewards.append(-1)
+                rewards.append(0)
         return pytorch_model.wrap(rewards, cuda=True)
 
 class RewardLeft(ChangepointReward):
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
 
         TODO: make support multiple processes
@@ -177,14 +184,14 @@ class RewardLeft(ChangepointReward):
         for state, action, nextstate in zip(states, actions, states[1:]):
             # print(state)
             if state - nextstate == 1:
-                rewards.append(2)
+                rewards.append(1)
             else:
-                rewards.append(-1)
+                rewards.append(0)
         return pytorch_model.wrap(rewards, cuda=True)
 
 
 class RewardCenter(ChangepointReward):
-    def compute_reward(self, states, actions):
+    def compute_reward(self, states, actions, resps):
         '''
 
         TODO: make support multiple processes
@@ -194,7 +201,43 @@ class RewardCenter(ChangepointReward):
         for state, action, nextstate in zip(states, actions, states[1:]):
             # print(state)
             if state - nextstate == 0:
-                rewards.append(2)
+                rewards.append(1)
             else:
-                rewards.append(-1)
+                rewards.append(0)
+        return pytorch_model.wrap(rewards, cuda=True)
+
+class RewardCorner(ChangepointReward):
+    def compute_reward(self, states, actions, resps):
+        '''
+
+        TODO: make support multiple processes
+        possibly make this not iterative?
+        '''
+        rewards = []
+        for state, action, nextstate in zip(states, actions, states[1:]):
+            # print(state)
+            if state - nextstate == 1:
+                rewards.append(1)
+            else:
+                rewards.append(0)
+        return pytorch_model.wrap(rewards, cuda=True)
+
+class RewardTarget(ChangepointReward):
+    def __init__(self, model, args, target):
+        super().__init__(model, args)
+        self.target = target
+
+    def compute_reward(self, states, actions, resps):
+        '''
+
+        TODO: make support multiple processes
+        possibly make this not iterative?
+        '''
+        rewards = []
+        for state, action, nextstate in zip(states, actions, states[1:]):
+            # print(state)
+            if np.linalg.norm(state - self.target) == 0:
+                rewards.append(1)
+            else:
+                rewards.append(-0.01)
         return pytorch_model.wrap(rewards, cuda=True)

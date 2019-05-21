@@ -77,8 +77,9 @@ class CMAEvolutionStrategyWrapper(OptimizerInterface):
         # TODO: isolate this for concurrent usage?
         # TODO: more config to CMA-ES
         # initialize pycma class
-        xinit = np.random.normal(loc=0.0, scale=1.0, size=self.dim)
-        from ObjectRecognition.model import load_param; xinit = load_param('results/cmaes_soln/focus_self/ball_bin.npy')  # TODO: remov
+        xinit = np.random.normal(loc=0.0, scale=np.sqrt(2.0/self.dim), 
+                                 size=self.dim)
+        from ObjectRecognition.model import load_param; xinit = load_param('results/cmaes_soln/focus_self/ball_bin_long.npy')  # TODO: remov
         if self.cheating:  # for testing filter generality
             xinit = util.cheat_init_center((10, 10), 3, self.cheating) 
             self.cmaes_params['popsize'] = 2

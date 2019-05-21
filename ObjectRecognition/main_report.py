@@ -13,7 +13,6 @@ import torch
 import matplotlib.pyplot as plt
 import cma
 from functools import partial
-from scipy.misc import imsave
 
 from arguments import get_args
 
@@ -22,7 +21,7 @@ from SelfBreakout.breakout_screen import (
     RandomConsistentPolicy, RotatePolicy)
 from ChangepointDetection.LinearCPD import LinearCPD
 from ChangepointDetection.CHAMP import CHAMPDetector
-from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
+from ObjectRecognition.dataset import parse_dataset
 from ObjectRecognition.model import (
     ModelFocusCNN, ModelFocusBoost, 
     ModelCollectionDAG, load_param)
@@ -89,12 +88,15 @@ def plot_focus(dataset, indices, all_focus):
     plt.show()
 
 
-def save_imgs(imgs, save_path):
+def save_imgs(imgs, save_path, title_extra=False):
     save_subpath = util.get_dir(os.path.join(save_path, 'intensity'))
     for i, img in enumerate(imgs):
-        file_name = 'intensity_%d.png'%(i)
+        if title_extra:
+            file_name = 'intensity_%d_%.2f.png'%(i, title_extra[i])
+        else:
+            file_name = 'intensity_%d.png'%(i)
         file_path = os.path.join(save_subpath, file_name)
-        imsave(file_path, util.feature_normalize(img[0]))
+        util.imsave(file_path, util.feature_normalize(img[0]))
     print('focus intensity saved under', save_subpath)
 
 
@@ -109,7 +111,7 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
         # focused neighbor image
         file_name = 'focus_img_%d.png'%(i)
         file_path = os.path.join(save_path, file_name)
-        imsave(file_path, img)
+        util.imsave(file_path, img)
     print('saved under', save_path)
 
     pos_cnt = np.zeros(dataset.get_shape()[-2:])
@@ -121,39 +123,67 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
         # marker
         file_name = 'marker_%d.png'%(i)
         marker_file_path = os.path.join(save_subpath, file_name)
-        marker_pos = (all_focus[i] * dataset.get_shape()[2:]).astype(int)
+        marker_pos = np.around(all_focus[i] * dataset.get_shape()[2:]).astype(int)
         img[0, marker_pos[0], :] = 1
         img[0, :, marker_pos[1]] = 1
         if cp_mask[i]:
             img = 1 - img
         pos_cnt[marker_pos[0], marker_pos[1]] += 1
-        imsave(marker_file_path, img[0])
+        util.imsave(marker_file_path, img[0])
     print('focus by marker saved under', save_subpath)
 
     if np.sum(pos_cnt) > 0:
-        pos_cnt = np.sqrt(1.0 - (pos_cnt / np.max(pos_cnt) - 1)**2)
         pos_cnt_file_path = os.path.join(save_path, 'counter_pos.png')
-        imsave(pos_cnt_file_path, pos_cnt)
+        util.count_imsave(pos_cnt_file_path, pos_cnt)
         print('position count saved at', pos_cnt_file_path)
+
+
+def plot_inten_curve(save_path, all_focus, intensity, dataset):
+    inten_x = []
+    for i in range(len(intensity)):
+        marker_pos = np.around(all_focus[i] * dataset.get_shape()[2:]).astype(int)
+        # if intensity[i, 0, marker_pos[0], marker_pos[1]] < 8:
+        #     all_focus[i, ...] = 0.0
+        # inten_x.append(intensity[i, 0, marker_pos[0], marker_pos[1]])
+        inten_x.append(np.max(intensity[i, 0]))
+
+    # pretty plotting
+    PER_R = 200
+    SZ = 2.0
+    NR = min((len(inten_x)+1) // PER_R, 5)
+    fig, axes = plt.subplots(ncols=1, nrows=NR, figsize=(SZ*6, SZ*NR))
+    for i in range(NR):
+        xs = inten_x[i*PER_R:(i+1)*PER_R]
+        axes[i].plot(np.arange(len(xs)) + i*PER_R, xs)
+    inten_plot_path = os.path.join(save_path, 'inten_curve.png')
+    plt.savefig(inten_plot_path)
+    print('save intensity curve to', inten_plot_path)
+    return inten_x
 
 
 def report_model(save_path, dataset, model, prefix, plot_flags, cpd):
     focus = model.forward_all(dataset, batch_size=400, 
                               ret_extra=plot_flags['plot_intensity'])
+
     if plot_flags['plot_intensity']:
+        inten_title = plot_inten_curve(save_path, focus[0]['__train__'],
+                                       focus[1]['__train__'], dataset)
         save_imgs(focus[1]['__train__'], save_path)
-        focus = focus[0]['__train__']
+        focus = focus[0]
     else:
-        focus = focus['__train__']
+        focus = focus
+
+    if plot_flags['plot_loss']:
+        print('loss eval:', plot_flags['plot_loss'].forward(focus))
 
     if plot_flags['plot_focus']:
         # compute changepoints if needed
         changepoints = []
         if plot_flags['plot_cp']:
-            _, changepoints = cpd.generate_changepoints(focus)
+            _, changepoints = cpd.generate_changepoints(focus['__train__'])
 
         # plot and save into directories
-        save_focus_img(dataset, focus, save_path, changepoints)
+        save_focus_img(dataset, focus['__train__'], save_path, changepoints)
 
 if __name__ == '__main__':
     import argparse
@@ -161,12 +191,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Report for Object Recognition')
     parser.add_argument('dir',
                         help='base directory')
-    parser.add_argument('game', choices=['self', 'atari'],
-                        help='game name to report with')
-    parser.add_argument('net',
-                        help='network params JSON file')
-    parser.add_argument('modelID',
-                        help='model params file')
     parser.add_argument('--plot-filter', action='store_true', default=False,
                         help='plot model filter')
     parser.add_argument('--plot-focus', action='store_true', default=False,
@@ -175,6 +199,8 @@ if __name__ == '__main__':
                         help='indicate changepoint frames (with --plot-focus)')
     parser.add_argument('--plot-intensity', action='store_true', default=False,
                         help='plot focus intensity (output before argmax)')
+    parser.add_argument('--plot-loss', action='store_true', default=False,
+                        help='evaluate and plot loss function')
     add_args.add_changepoint_argument(parser)
     add_args.add_dataset_argument(parser)
     add_args.add_model_argument(parser)
@@ -188,6 +214,7 @@ if __name__ == '__main__':
         'plot_focus': args.plot_focus,
         'plot_cp': args.plot_cp,
         'plot_intensity': args.plot_intensity,
+        'plot_loss': args.plot_loss,
     }
 
     # CHAMP parameters
@@ -201,24 +228,12 @@ if __name__ == '__main__':
     """
     Game Construction
     """
-    # pick game
-    if args.game == 'self':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs_bounce',  # object dump path
-            'SelfBreakout/runs_bounce/0',  # run states
-            n_state=args.n_state,  # set max number of states
-            binarize=args.binarize,  # binarize image to 0 and 1
-            offset_fix=args.offset_fix,  # offset of episode number
-        )  # 10.0, 0.1, 1.0, 0.0005
-    elif args.game == 'atari':
-        actor = partial(RotatePolicy, hold_count=10)
-        dataset = DatasetAtari(
-            'BreakoutNoFrameskip-v4',  # atari game name
-            actor,  # mock actor
-            n_state=args.n_state,  # set max number of states
-            save_path='results',  # save path for gym
-            binarize=args.binarize,  # binarize image to 0 and 1
-        )
+    dataset = parse_dataset(
+        dataset_name=args.dataset_name,
+        n_state=args.n_state,
+        binarize=args.binarize,
+        offset_fix=args.offset_fix
+    )
 
     """
     Changepoint Detector
@@ -277,13 +292,48 @@ if __name__ == '__main__':
         )
         pmodel.set_parameters(pmodel_params)
         # model.add_model('premise', pmodel, [])
+        # model.add_model('premise', pmodel, [], augment_fn=util.remove_mean_batch)
         model.add_model('premise', pmodel, [], 
-                        augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
-        model.add_model('train', r_model, ['premise'])
+                         augment_fn=partial(util.remove_mean_batch, nb_size=(8, 8)))
+        # model.add_model('premise', pmodel, [], 
+        #                 augment_fn=util.RemoveMeanMemory(nb_size=(5, 5)))
+        # model.add_model('premise', pmodel, [], 
+        #                  augment_fn=partial(util.remove_mean_batch, nb_size=(3, 8)),
+        #                  augment_pt=util.JumpFiltering(2, 0.05))
+
+        # model.add_model('train', r_model, ['premise'])
+        # model.add_model('train', r_model, ['premise'],
+        #                 augment_pt=util.JumpFiltering(3, 0.1))
+        # model.add_model('train', r_model, ['premise'],
+        #                 augment_pt=util.LowIntensityFiltering(8.0))
+        f1 = util.LowIntensityFiltering(7.0)
+        f2 = util.JumpFiltering(2, 0.1)
+        def f(x, y):
+            return f2(x, f1(x, y))
+        model.add_model('train', r_model, ['premise'], augment_pt=f)
     else:
         model.add_model('train', r_model, [])
     model.set_trainable('train')
     print(model)
+
+    """
+    Load a loss
+    """
+    if plot_flags['plot_loss']:
+        premise_micploss = PremiseMICPLoss(
+            dataset,
+            'premise',
+            mi_match_coeff= 0.0,
+            mi_diffs_coeff= 0.0,
+            mi_valid_coeff= 0.0,
+            mi_cndcp_coeff= 1.0,
+            prox_dist= 0.090,
+            verbose=True,
+        )
+        micploss = CollectionMICPLoss(premise_micploss)
+        loss = CombinedLoss([micploss])
+        print(loss)
+        plot_flags['plot_loss'] = loss
 
     """
     Do the report

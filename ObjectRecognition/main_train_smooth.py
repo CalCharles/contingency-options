@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from functools import partial
 
 from SelfBreakout.breakout_screen import RandomConsistentPolicy, RotatePolicy
-from ObjectRecognition.dataset import DatasetSelfBreakout, DatasetAtari
+from ObjectRecognition.dataset import parse_dataset
 from ObjectRecognition.model import (
     ModelFocusCNN, ModelAttentionCNN,
     ModelCollectionDAG, load_param)
@@ -15,55 +15,50 @@ import ObjectRecognition.add_args as add_args
 import ObjectRecognition.util as util
 
 
+# get frame from dataset, mode in ['rand', 'range']
+def get_frames(dataset, n_state, n_state_used, mode='rand'):
+    assert mode in ['rand', 'range']
+    if mode == 'rand':
+        state_idxs = np.random.choice(np.arange(n_state), size=n_state_used, 
+                                      replace=False)
+    elif mode == 'range':
+        state_idxs = np.arange(n_state_used)
+    return torch.from_numpy(dataset.get_frame(state_idxs)).float()
+
+
 if __name__ == '__main__':
-    net_path = 'ObjectRecognition/net_params/attn_base.json'
-    model_path = 'results/cmaes_soln/focus_self/ball_bin_long_smooth.pth'
-    # model_path = 'results/cmaes_soln/focus_atari_breakout/42101_22_smooth.pth'
+    net_path = 'ObjectRecognition/net_params/attn_softmax.json'
+    model_path = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth_4.pth'
     image_shape = (84, 84)
-    n_state_used = 40
+    n_state_used = 200
     is_train = True
+    is_preview = False
+    n_epoch = 50  # int or None
+    n_iter = 10
 
     # get dataset
-    n_state = 10000
+    binarize = 0.01
+    n_state = 2000
     offset_fix = 0
-    GAME_NAME = 'self-b'  # 'self', 'self-b', 'atari'
-    if GAME_NAME == 'self':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs',
-            'SelfBreakout/runs/0',
-            binarize=0.1,
-            n_state=n_state,
-            offset_fix=offset_fix,
-        )
-    elif GAME_NAME == 'self-b':
-        dataset = DatasetSelfBreakout(
-            'SelfBreakout/runs_bounce',
-            'SelfBreakout/runs_bounce/0',
-            binarize=0.1,
-            n_state=n_state,
-            offset_fix=offset_fix,
-        )
-    elif GAME_NAME == 'atari':
-        dataset = DatasetAtari(
-            'BreakoutNoFrameskip-v4',
-            partial(RandomConsistentPolicy, change_prob=0.35),
-            n_state=n_state,
-            save_path='results',
-            normalized_coor=True,
-            offset_fix=offset_fix,
-        )
+    GAME_NAME = 'atari-ball'
+    dataset = parse_dataset(
+        dataset_name=GAME_NAME,
+        n_state=n_state,
+        binarize=binarize,
+        offset_fix=offset_fix
+    )
 
     # get ball model
-    prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_base.json'
-    prev_weight_path_1 = 'results/cmaes_soln/focus_self/paddle_bin_long_smooth_2.pth'
+    prev_net_params_path_1 = 'ObjectRecognition/net_params/attn_softmax.json'
+    prev_weight_path_1 = 'results/cmaes_soln/focus_atari_breakout/paddle_bin_smooth.pth'
     prev_net_params_1 = json.loads(open(prev_net_params_path_1).read())
     prev_model_1 = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=prev_net_params_1,
     )
     prev_model_1.set_parameters(load_param(prev_weight_path_1))
-    prev_net_params_path_2 = 'ObjectRecognition/net_params/two_layer.json'
-    prev_weight_path_2 = 'results/cmaes_soln/focus_self/ball_bin_long.npy'
+    prev_net_params_path_2 = 'ObjectRecognition/net_params/attn_softmax.json'
+    prev_weight_path_2 = 'results/cmaes_soln/focus_atari_breakout/42531_2_smooth_3_2.pth'
     prev_net_params_2 = json.loads(open(prev_net_params_path_2).read())
     prev_model_2 = ModelFocusCNN(
         image_shape=(84, 84),
@@ -71,24 +66,26 @@ if __name__ == '__main__':
     )
     prev_model_2.set_parameters(load_param(prev_weight_path_2))
     prev_model = ModelCollectionDAG()
-    prev_model.add_model('model_1', prev_model_1, [], augment_fn=util.remove_mean)
-    prev_model.add_model('model_2', prev_model_2, ['model_1'])
-    def prev_forward(xs):
-        return prev_model.forward(xs, ret_numpy=True)['model_2']
+    prev_model.add_model('model_1', prev_model_1, [], 
+                         augment_fn=partial(util.remove_mean_batch, nb_size=(3, 8)),
+                         augment_pt=util.JumpFiltering(2, 0.05))
+    prev_model.add_model('model_2', prev_model_2, ['model_1'],
+                         augment_pt=util.JumpFiltering(3, 0.1))
+    def prev_forward(xs, ret_extra=False):
+        model_name = 'model_2'
+        out = prev_model.forward(xs, ret_numpy=True, ret_extra=ret_extra)
+        if ret_extra:
+            return out[0][model_name], out[1][model_name]
+        return out[model_name]
     print('smoothing:', prev_model)
 
     # get dataset
-    state_idxs = np.random.choice(np.arange(n_state//4), size=n_state_used, 
-                                  replace=False)
-    print(state_idxs)
-    frames = dataset.get_frame(state_idxs)
-    frames = torch.from_numpy(frames).float()
-    focus = prev_forward(frames)
-    focus_attn = util.focus2attn(
-        focus,
-        image_shape,
-        fn=partial(util.gaussian_pdf, normalized=False))
-    if is_train:
+    if is_train and is_preview:
+        frames = get_frames(dataset, n_state, n_state_used, mode='rand')
+        focus_attn = util.focus2attn(
+            prev_forward(frames),
+            image_shape,
+            fn=partial(util.gaussian_pdf, normalized=False))
         NC = 20
         for i in range(0, n_state_used, NC):
             fig, axes = plt.subplots(ncols=NC, nrows=2, figsize=(NC, 2))
@@ -106,12 +103,26 @@ if __name__ == '__main__':
 
     # train
     if is_train:
-        model.from_focus_model(prev_forward, frames, n_iter=500)
+        for i in range(n_epoch):
+            frames = get_frames(dataset, n_state, n_state_used, mode='rand')
+            model.from_focus_model(
+                prev_forward,
+                frames,
+                lr=1e-3 * (0.1**(i//20)),
+                n_iter=n_iter,
+                epoch=i,
+            )
+
     else:
         model.load_state_dict(torch.load(model_path))
         model.eval()
 
     # forward
+    frames = get_frames(dataset, n_state, n_state_used, mode='rand')
+    focus_attn = util.focus2attn(
+        prev_forward(frames),
+        image_shape,
+        fn=partial(util.gaussian_pdf, normalized=False))
     attn = model.forward(frames, ret_numpy=True)
 
     # plots
