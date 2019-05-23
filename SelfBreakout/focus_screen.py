@@ -1,4 +1,4 @@
-import os, time
+import os, time, cv2
 from SelfBreakout.breakout_screen import Screen
 from Environments.environment_specification import RawEnvironment
 from file_management import get_edge
@@ -10,7 +10,7 @@ class FocusEnvironment(RawEnvironment):
     A fake environment that pretends that the paddle partion has been solved, gives three actions that produce
     desired behavior
     '''
-    def __init__(self, focus_model, frameskip=1):
+    def __init__(self, focus_model, frameskip=1, display=False):
         self.num_actions = 4
         self.itr = 0
         self.save_path = ""
@@ -19,6 +19,7 @@ class FocusEnvironment(RawEnvironment):
         self.factor_state = None
         self.reward = 0
         self.episode_rewards = self.screen.episode_rewards
+        self.display=display
         # self.focus_model.cuda()
 
     def set_save(self, itr, save_dir, recycle, all_dir=""):
@@ -45,6 +46,26 @@ class FocusEnvironment(RawEnvironment):
             factor_state[key] = (np.squeeze(factor_state[key]), (1.0,))
         factor_state['Action'] = raw_factor_state['Action']
         self.factor_state = factor_state
+
+        if self.display:
+            rs = raw_state.copy()
+            time_dict = factor_state
+            pval = ""
+            for k in time_dict.keys():
+                if k != 'Action' and k != 'Reward':
+                    raw_state[int(time_dict[k][0][0]), :] = 255
+                    raw_state[:, int(time_dict[k][0][1])] = 255
+                if k == 'Action' or k == 'Reward':
+                    pval += k + ": " + str(time_dict[k][1]) + ", "
+                else:
+                    pval += k + ": " + str(time_dict[k][0]) + ", "
+            # print(pval[:-2])
+            raw_state = cv2.resize(raw_state, (336, 336))
+            cv2.imshow('frame',raw_state)
+            if cv2.waitKey(1) & 0xFF == ord(' ') & 0xFF == ord('c'):
+                pass
+
+
         if self.screen.itr != 0:
             object_dumps = open(os.path.join(self.save_path, "focus_dumps.txt"), 'a')
         else:

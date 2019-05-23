@@ -205,7 +205,7 @@ def get_args():
                         help='random seed (default: 1)')
     parser.add_argument('--num-processes', type=int, default=1,
                         help='how many training CPU processes to use (default: 16)')
-    parser.add_argument('--lag-num', type=int, default=1,
+    parser.add_argument('--lag-num', type=int, default=2,
                         help='lag between states executed and those used for learning, to delay for reward computation TODO: 1 is the minimum for reasons... (default: 1)')
     parser.add_argument('--num-steps', type=int, default=1,
                         help='number of reward checks before update (default: 1)')
@@ -271,6 +271,8 @@ def get_args():
                     help='save past, saves a new net at the interval, -1 disables, must be a multiple of save-interval (default: -1)')
     parser.add_argument('--save-models', action ='store_true', default=False,
                         help='Saves environment and models to option chain directory if true')
+    parser.add_argument('--display-focus', action ='store_true', default=False,
+                        help='shows an image with the focus at each timestep like a video')
     parser.add_argument('--single-save-dir', default="",
                         help='saves all images to a single directory with name all')
     # Option Chain Parameters
@@ -341,7 +343,7 @@ def get_args():
     elif args.champ_parameters[0] == "PaddleAtari":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1, 3]
     elif args.champ_parameters[0] == "Ball": 
-        args.champ_parameters = [15, 10, 2, 100, 100, 2, 1, 3] 
+        args.champ_parameters = [15, 10, 1, 100, 100, 2, 1e-2, 3] 
     elif args.champ_parameters[0] == "BallAtari":
         args.champ_parameters = [15, 7, 1, 100, 100, 2, .5, 3]
     else:

@@ -91,12 +91,12 @@ if __name__ == '__main__':
         prev_model_2.set_parameters(load_param(prev_weight_path_2))
     prev_model = ModelCollectionDAG()
     prev_model.add_model('model_1', prev_model_1, [], 
-                         augment_fn=partial(util.remove_mean_batch, nb_size=(3, 8)),
-                         augment_pt=util.JumpFiltering(2, 0.05))
+                         augment_fn=partial(util.remove_mean_batch, nb_size=(3, 8)))
+                         # augment_pt=util.JumpFiltering(2, 0.05))
     last_model = 'model_1'
     if args.train_ball:
-        prev_model.add_model('model_2', prev_model_2, ['model_1'],
-                             augment_pt=util.JumpFiltering(3, 0.1))
+        prev_model.add_model('model_2', prev_model_2, ['model_1'])#,
+                             # augment_pt=util.JumpFiltering(3, 0.1))
         last_model = 'model_2'
     def prev_forward(xs, ret_extra=False):
         model_name = last_model

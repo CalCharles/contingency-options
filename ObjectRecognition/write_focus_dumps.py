@@ -26,8 +26,12 @@ if __name__ == '__main__':
                         help='base directory to save results')
     parser.add_argument('--length', type=int, default=50000,
                         help='number of records to load')
+    parser.add_argument('--gpu', type=int, default=0,
+                        help='the gpu to run on')
     parser.add_argument('--ball', action='store_true', default=False,
                         help='use if we need the ball model')  # move into net_params?
+    parser.add_argument('--cuda', action='store_true', default=False,
+                        help='use if we have cuda')  # move into net_params?
     args = parser.parse_args()
     # paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
     paddle_model_net_params_path = 'ObjectRecognition/net_params/%s.json'%args.params_name
@@ -53,7 +57,7 @@ if __name__ == '__main__':
         )
         ball_model.set_parameters(params)
     model = ModelCollectionDAG()
-    model.add_model('Paddle', paddle_model, [], augment_fn=util.RemoveMeanMemory(nb_size=(3, 8)))
+    model.add_model('Paddle', paddle_model, [], augment_fn=util.RemoveMeanMemory(nb_size=(8, 8)))
     if args.ball:
         f1 = util.LowIntensityFiltering(8.0)
         f2 = util.JumpFiltering(3, 0.05)
@@ -62,6 +66,9 @@ if __name__ == '__main__':
             # model.add_model('train', r_model, ['premise'], augment_pt=f)
 
         model.add_model('Ball', ball_model, ['Paddle'])#, augment_pt=f)#,augment_pt=util.JumpFiltering(2, 0.05))
+    if args.cuda:
+        torch.cuda.set_device(1)
+        model = model.cuda()
     raw_files = deque(maxlen=args.length)
     for root, dirs, files in os.walk(args.dataset, topdown=False):
         dirs.sort(key=lambda x: int(x))

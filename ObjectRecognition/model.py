@@ -640,7 +640,6 @@ class ModelAttentionCNN(ModelObject):
         if next(self.parameters()).is_cuda:
             focus_attn = focus_attn.cuda()
             focus_weight = focus_weight.cuda()
-            focus_weight = focus_weight.cuda()
             focus_weight_sum = focus_weight_sum.cuda()
         # train
         lda_1 = 2 # attention regularization

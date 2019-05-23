@@ -16,13 +16,14 @@ class Paddle(RawEnvironment):
         self.reward= 0
         self.episode_rewards = self.screen.episode_rewards
 
-    def set_save(self, itr, save_dir, recycle):
+    def set_save(self, itr, save_dir, recycle, all_dir=""):
         self.save_path=save_dir
         self.itr = itr
         self.recycle = recycle
         self.screen.save_path=save_dir
         self.screen.itr = itr
         self.screen.recycle = recycle
+        self.all_dir = all_dir
 
         try:
             os.makedirs(save_dir)

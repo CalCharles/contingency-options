@@ -157,6 +157,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             # rl = time.time()
             # print("run loop", start - rl)
             rewards = proxy_environment.computeReward(m+1)
+            # print(rewards.sum())
             # a = time.time()
             # print("reward time", a-s)
             change, target = proxy_environment.determineChanged(m+1)

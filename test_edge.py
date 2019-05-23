@@ -34,27 +34,31 @@ if __name__ == "__main__":
     args = get_args()
     torch.cuda.set_device(args.gpu)
     # # loading vision model
-    paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
+    paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
+    # paddle_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
     net_params = json.loads(open(paddle_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/atari/paddle_bin_smooth.pth')
+    params = load_param('results/cmaes_soln/focus_self/paddle.pth')
+    # params = load_param('ObjectRecognition/models/atari/paddle_bin_smooth.pth')
     paddle_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
-        binarize = 0.001
+        binarize = 0.000
     )
     paddle_model.set_parameters(params)
+    # ball_model_net_params_path = 'ObjectRecognition/net_params/attn_base.json'
     ball_model_net_params_path = 'ObjectRecognition/net_params/attn_softmax.json'
     net_params = json.loads(open(ball_model_net_params_path).read())
-    params = load_param('ObjectRecognition/models/atari/42531_2_smooth_3_2.pth')
+    params = load_param('results/cmaes_soln/focus_self/ball.pth')
+    # params = load_param('ObjectRecognition/models/atari/42531_2_smooth_3_2.pth')
     ball_model = ModelFocusCNN(
         image_shape=(84, 84),
         net_params=net_params,
-        binarize = 0.1
+        binarize = 0.0
     )
     ball_model.set_parameters(params)
     model = ModelCollectionDAG()
-    model.add_model('Paddle', paddle_model, [], augment_fn=util.RemoveMeanMemory(nb_size=(3, 8)))
-    f1 = util.LowIntensityFiltering(8.0)
+    model.add_model('Paddle', paddle_model, [], augment_fn=util.RemoveMeanMemory(nb_size=(8, 8)))
+    f1 = util.LowIntensityFiltering(6.0)
     f2 = util.JumpFiltering(3, 0.05)
     def f(x, y):
         return f2(x, f1(x, y))
@@ -63,12 +67,18 @@ if __name__ == "__main__":
     model.add_model('Ball', ball_model, ['Paddle'], augment_pt=f)#,augment_pt=util.JumpFiltering(2, 0.05))
     # ####
 
-    if args.reward_form in ['bounce', 'dir', 'dirneg']:
+    if args.true_environment:
+        model = None
+    print(args.true_environment, args.env)
+    if args.env == 'SelfBreakout':
+        if args.true_environment:
+            true_environment = Screen(frameskip=args.frameskip)
+        else:
+            true_environment = FocusEnvironment(model, display=args.display_focus)
+    elif args.reward_form in ['bounce', 'dir', 'dirneg']:
         true_environment = Paddle()
-    elif args.env.find("Atari") != -1:
-        true_environment = FocusAtariEnvironment(model, args.env[len("Atari"):], 9999, 0, args.save_dir)
-    else:
-        true_environment = FocusEnvironment(model)
+    elif args.env.find('Atari') != -1:
+        true_environment = FocusAtariEnvironment(model, args.env[len("Atari"):], args.seed, 0, args.save_dir)
     dataset_path = args.record_rollouts
     changepoint_path = args.changepoint_dir
     option_chain = OptionChain(true_environment, args.changepoint_dir, args.train_edge, args)

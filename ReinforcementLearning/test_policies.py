@@ -62,8 +62,8 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
             raw_actions = []
             rollouts.cuda()
             current_state, current_resp = proxy_environment.getHistState()
-            values, dist_entropy, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0), current_resp.unsqueeze(0))
-            v, ap, qv = train_models.get_action(values, action_probs, Q_vals)
+            values, log_probs , action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0), current_resp.unsqueeze(0))
+            v, ap, lp, qv = train_models.get_action(values, action_probs, log_probs, Q_vals)
             cp_state = proxy_environment.changepoint_state([raw_state])
             ep_reward += base_env.reward
             # print(ap, qv)
@@ -80,6 +80,11 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
                 ep_reward = 0
                 # print("reached end")
             # proxy_environment.determine_swaps(length, needs_rewards=True) # doesn't need to generate rewards
+        if len(base_env.episode_rewards) > 0:
+            true_reward = np.median(base_env.episode_rewards)
+            mean_reward = np.mean(base_env.episode_rewards)
+            best_reward = np.max(base_env.episode_rewards)
+            print("true reward median: %f, mean: %f, max: %f"%(true_reward, mean_reward, best_reward))
 
         print(args.num_iters)
         print(action_probs)

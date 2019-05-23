@@ -55,6 +55,7 @@ class SaliencyLoss(FocusLoss):
             nb_size=self.nb_size)
         frame_dev = self._deviation_1(frames)
         focus_dev = self._deviation_2(focus)
+        stationary_penalty = .01/(.01 + self._deviation_1(focus))
         frame_var = self._variance(frames)
 
         belief_dev = 0
@@ -79,7 +80,8 @@ class SaliencyLoss(FocusLoss):
         return  self.frame_dev_coeff*frame_dev \
             + self.focus_dev_coeff*focus_dev \
             - self.frame_var_coeff*frame_var \
-            + self.belief_dev_coeff*belief_dev
+            + self.belief_dev_coeff*belief_dev \
+            + stationary_penalty
 
 
     # feature deviation from consecutive elements

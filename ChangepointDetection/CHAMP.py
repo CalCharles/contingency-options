@@ -325,7 +325,7 @@ class CHAMPDetector(ChangepointDetector):
 
 if __name__ == "__main__":
     # python ChangepointDetection/CHAMP.py --train-edge "Action->Paddle" --record-rollouts data/random/ --champ-parameters "Paddle"
-    # python ChangepointDetection/CHAMP.py --train-edge "Paddle->Ball" --record-rollouts data/integrationpaddle/ --champ-parameters "Ball" > integration/ballCHAMP.txt
+    # python ChangepointDetection/CHAMP.py --train-edge "Paddle->Ball" --record-rollouts data/integrationpaddle/ --champ-parameters "Ball" --focus-dumps-name focus_dumps.txt > integration/ballCHAMP.txt
     # atari action paddle: python ChangepointDetection/CHAMP.py --train-edge "Action->Paddle" --record-rollouts data/atarirandom/ --champ-parameters "PaddleAtari" --focus-dumps-name focus_dumps.txt > atarichampout.txt
     args = get_args()
     detector = CHAMPDetector(args.train_edge, args.champ_parameters)

@@ -105,6 +105,7 @@ def load_from_txt(txt_pth):
     f = open(txt_pth, 'r')
     last_5_ep_rewards = []
     rewards = []
+    timesteps = []
     last_timestep = [0]
     last_timestep_reward = [0]
     for l in f.readlines():
@@ -115,12 +116,20 @@ def load_from_txt(txt_pth):
         #     last_5_ep_rewards.append(v)
         #     rewards.append(np.sum(last_5_ep_rewards) / len(last_5_ep_rewards))
         if l.find('num timesteps') != -1:
-            last_timestep.append(int(l.split(',')[1].split(' ')[-1]))
+            timesteps.append(int(l.split(',')[1].split(' ')[-1]))
             # last_timestep_reward.append(len(rewards) - 1)
             if l.find('true_reward') != -1:
-                tm = l[.find('true_reward'):]
+                tm = l[l.find('true_reward'):]
                 if tm.find('mean') != -1:
-                    rewards.append(float(tm[l.find('mean') + 5:l.find('max') - 2]))
+                    rewards.append(float(tm[tm.find('mean') + 6:tm.find('max') - 2]))
+                else:
+                    rewards.append(float(tm[len('true_reward')+1:tm.find(',')]))
+            if l.find('true reward') != -1:
+                tm = l[l.find('true reward'):]
+                # print(tm[tm.find('mean') + 6:tm.find('max') - 2])
+                if tm.find('mean') != -1:
+                    # print(tm[tm.find('mean') + 6:tm.find('max') - 2] + "e")
+                    rewards.append(float(tm[tm.find('mean') + 6:tm.find('max') - 2]))
                 else:
                     rewards.append(float(tm[len('true_reward')+1:tm.find(',')]))
     # timesteps = []
@@ -149,63 +158,64 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     xlim = 0
-    for m_idx, root_dir in enumerate(args.log_dir):
+    # for m_idx, root_dir in enumerate(args.log_dir):
 
-        # look for all the possible sub log dirs
-        dirs = [root_dir] + glob.glob(root_dir+'/*/')
-        dirs = [d for d in dirs if len(glob.glob(d+'/*.csv'))>0]
-        print (dirs)
+    #     # look for all the possible sub log dirs
+    #     dirs = [root_dir] + glob.glob(root_dir+'/*/')
+    #     dirs = [d for d in dirs if len(glob.glob(d+'/*.csv'))>0]
+    #     print (dirs)
 
-        curves = []
-        names = []
-        for root in dirs:
-            tx, ty = load_data(root, 1, 100)
-            if tx is not None:
-                curves.append((tx, ty))
-                names.append(root.strip('/').split('/')[-1])
-                xlim = max(xlim, max(tx))
+    #     curves = []
+    #     names = []
+    #     for root in dirs:
+    #         tx, ty = load_data(root, 1, 100)
+    #         if tx is not None:
+    #             curves.append((tx, ty))
+    #             names.append(root.strip('/').split('/')[-1])
+    #             xlim = max(xlim, max(tx))
 
 
-        if args.plotall:
-            for idx, (x,y) in enumerate(curves):
-                plt.plot(x, y, label = names[idx])
+    #     if args.plotall:
+    #         for idx, (x,y) in enumerate(curves):
+    #             plt.plot(x, y, label = names[idx])
         
-        else:
-            # show average curve + std
-            tx, ty = zip(*curves)
+    #     else:
+    #         # show average curve + std
+    #         tx, ty = zip(*curves)
             
-            # min_len = min(map(len, tx))
-            # tx, ty = tx[0][:min_len], [t[:min_len] for t in ty]
+    #         # min_len = min(map(len, tx))
+    #         # tx, ty = tx[0][:min_len], [t[:min_len] for t in ty]
 
-            max_len = max(map(len, tx))
-            tx = max(tx, key=lambda x: len(x))
-            ty = [t+[t[-1]]*(max_len-len(t)) for t in ty]
+    #         max_len = max(map(len, tx))
+    #         tx = max(tx, key=lambda x: len(x))
+    #         ty = [t+[t[-1]]*(max_len-len(t)) for t in ty]
 
-            ty = np.array(ty)
-            y_mean = np.mean(ty, 0)
-            y_err = np.std(ty, 0)
+    #         ty = np.array(ty)
+    #         y_mean = np.mean(ty, 0)
+    #         y_err = np.std(ty, 0)
 
-            root_name = root_dir.strip('/').split('/')[-1]
-            if args.labels is not None:
-                root_name = args.labels[m_idx]
+    #         root_name = root_dir.strip('/').split('/')[-1]
+    #         if args.labels is not None:
+    #             root_name = args.labels[m_idx]
 
-            plt.semilogx(tx, y_mean, label=root_name, color=color_defaults[m_idx+6])
-            plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx+6])
+    #         plt.semilogx(tx, y_mean, label=root_name, color=color_defaults[m_idx+6])
+    #         plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx+6])
 
-    print(args.txt_dir, args.log_dir)
+    # print(args.txt_dir, args.log_dir)
     for m_idx, root_dir in enumerate(args.txt_dir):
 
         # look for all the possible sub log dirs
         pths = glob.glob(root_dir+'*.txt')
-        print(pths)
+        print(pths, root_dir)
         curves = []
         names = []
         for pth in pths:
             tx, ty = load_from_txt(pth)
+            print(pth)
             if tx is not None:
                 tx, ty  = tx[:6000], ty[:6000]
                 curves.append((tx, ty))
-                names.append(root.strip('/').split('/')[-1])
+                names.append(root_dir.strip('/').split('/')[-1])
                 xlim = max(xlim, max(tx))
                 # print(tx, ty)
                 print(len(tx[:6000]), len(ty[:6000]))
@@ -232,13 +242,18 @@ if __name__=='__main__':
                 root_name = args.labels[m_idx]
             
             plt.semilogx(tx, y_mean, label=root_name, color=color_defaults[m_idx])
+            # plt.plot(tx, y_mean, label=root_name, color=color_defaults[m_idx])
             plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx])
-    plt.plot([0, xlim], [28, 28], linewidth =.5, color = color_defaults[7])
-    plt.xticks([1000, 10000, 50000, 1e5, 6.8e5], ["1k", "10k", "50k", "500k", "680k"])
+    # plt.plot([0, xlim], [244, 244], linewidth =2, color = color_defaults[7], label="HyPE Test Performance at 55k frames ")
+    plt.plot([0, xlim], [17.5, 17.5], linewidth =2, color = color_defaults[7], label="HyPE Test Performance at 55k frames ")
+    plt.plot([55000, 55000], [0, 20], linewidth =1, color = color_defaults[7])
+    # plt.xticks([1e5, 2e5, 3e5, 4e5, 5e5, 6e5, 7e5, 8e5, 9e5, 10e5], ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "1m"])
+    plt.xticks([1e3, 1e4, 1e5, 5e5, 1e6, 5e6], ["1k", "10k", "100k", "500k", "1m", "5m"])
     xlim = min(xlim, args.xlim)
     # plt.xlim(0, math.ceil(xlim/1e6)*1e6)
     plt.xlim(0, xlim)
-    plt.ylim(0, 30)
+    plt.ylim(0, 20)
+    # plt.ylim(0, 270)
     plt.xlabel('Number of Timesteps')
     plt.ylabel('Average Rewards per Episode')
     plt.title(args.title)
