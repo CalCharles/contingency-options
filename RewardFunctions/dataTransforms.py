@@ -53,8 +53,31 @@ class VelocitySegmentTransform(SegmentTransform):
         changepoints.pop(-1)
         return data
 
+class ProximitySegmentTransform(SegmentTransform):
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window=None):
+        values = trajectory[changepoints[0]:changepoints[1] + 1]
+        stats = np.mean(np.abs(values - correlate_trajectory[changepoints[0]:changepoints[1] + 1]), axis=0)
+        return stats
 
-class SegmentAccelerationTransform(SegmentTransform):
+    def mode_statistics(self, models, changepoints, trajectory=[], values=[], window=-1):
+        '''
+        values should have at least one more than total.
+        gathers changepoint data which is the average of deltas within a segment
+        '''
+        total = len(trajectory)
+        changepoints.append(total)
+        values = np.abs(trajectory - values)
+        c_d = {changepoints[i]: values[changepoints[i]:changepoints[i+1]] for i in range(len(changepoints)-1)}
+        changepoint_statistics = {key: [np.max(np.mean(c_d[key], axis = 0))] for key in c_d.keys()}
+        dat = [(key, val) for key, val in changepoint_statistics.items()]
+        dat.sort(key=lambda x: x[0])
+        data = np.array([val for key,val in dat])
+        print(data)
+        changepoints.pop(-1)
+        return data
+
+
+class AccelerationSegmentTransform(SegmentTransform):
     def format_function(self, models, changepoints, correlate_trajectory, trajectory, window=None):
         # ignores spurious changepoints
         values1 = trajectory[changepoints[0]:changepoints[1] + 1]
@@ -101,6 +124,33 @@ class SegmentCorrelateAverageTransform(SegmentTransform):
         dat.sort(key=lambda x: x[0])
         data = np.array([val for key,val in dat])
         changepoints.pop(-1)
+        return data
+
+class SegmentProxVelocity(SegmentTransform):
+    '''
+    This takes the velocity statistics of the object only during a proximal occurrance. 
+    '''
+    def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
+        values = trajectory[changepoints[0]:changepoints[1]]
+        values = values[1:] - values[:-1]
+
+        stats = np.concatenate(np.max(values, axis = 0), 
+            [np.mean(np.max(np.abs(values - correlate_trajectory[changepoints[0]:changepoints[1] + 1]), axis=1), axis=0)], axis=0)
+        return stats
+
+    def mode_statistics(self, models, changepoints, trajectory=[], correlate=[], window=-1):
+        total = len(trajectory)
+        changepoints.append(total)
+        # models is not models here, but the actual correlate data
+        values = trajectory[1:] - trajectory[:-1]
+        corr = trajectory - correlate
+        c_d = {changepoints[i]: values[changepoints[i]:changepoints[i+1]] for i in range(len(changepoints)-1)}
+        o_d = {changepoints[i]: corr[changepoints[i]:changepoints[i+1]] for i in range(len(changepoints)-1)}
+        # print(c_d, o_d)
+        changepoint_statistics = {key: np.concatenate([np.max(c_d[key], axis = 0), [np.mean(np.max(np.abs(o_d[key]), axis=1), axis=0)]], axis=0) for key in c_d.keys()}
+        dat = [(key, val) for key, val in changepoint_statistics.items()]
+        dat.sort(key=lambda x: x[0])
+        data = np.array([v1 for key, v1 in dat])#, np.array([v2 for key,(v1, v2) in dat])
         return data
 
 class WindowTransform(InputTransformer):
@@ -168,7 +218,7 @@ class WindowCorrelateAverageTransform(WindowTransform):
 
 
 class WindowCorrelateProximityPostVelocity(WindowTransform):
-    '''
+    '''https://www.chess.com/live#g=3967371832
     This takes the velocity statistics of the object only after a proximal occurrance. 
     '''
     def format_function(self, models, changepoints, correlate_trajectory, trajectory, window):
@@ -264,8 +314,8 @@ class WindowCorrelateProximityNoHop(WindowTransform):
         return data
 
 
-arg_transform = {"param": ParameterTransform, "SVel": VelocitySegmentTransform, "SAcc": SegmentAccelerationTransform, 
-        "SCorAvg": SegmentCorrelateAverageTransform, "WPos": WindowPositionTransform, "WCorAvg": WindowCorrelateAverageTransform,
+arg_transform = {"param": ParameterTransform, "SVel": VelocitySegmentTransform, "SAcc": AccelerationSegmentTransform, 
+        "SCorAvg": SegmentCorrelateAverageTransform, "SProx": ProximitySegmentTransform, "SProxVel": SegmentProxVelocity, "WPos": WindowPositionTransform, "WCorAvg": WindowCorrelateAverageTransform,
         "WVel": WindowPostVelocity, "WProx": WindowCorrelateProximity}
 
 

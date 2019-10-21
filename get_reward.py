@@ -4,7 +4,7 @@ import torch
 from arguments import get_args
 from file_management import load_from_pickle, save_to_pickle, get_edge, get_cp_models_from_dict, read_obj_dumps, get_individual_data
 from RewardFunctions.dataTransforms import arg_transform
-from RewardFunctions.changepointClusterModels import MultipleCluster, BayesianGaussianMixture
+from RewardFunctions.changepointClusterModels import MultipleCluster, BayesianGaussianMixture, cluster_models
 from RewardFunctions.changepointDeterminers import determiners
 from RewardFunctions.changepointCorrelation import ChangepointModels
 from RewardFunctions.changepointReward import reward_forms
@@ -37,6 +37,9 @@ if __name__ == "__main__":
     # atari action->paddle: python get_reward.py --record-rollouts data/atarirandom/ --changepoint-dir data/atarigraph/ --train-edge "Action->Paddle" --transforms SVel SCorAvg --determiner overlap --reward-form markov --segment --train --num-stack 2 --focus-dumps-name focus_dumps.txt --dp-gmm atari
     # python get_reward.py --record-rollouts data/atarirandom/ --changepoint-dir data/atarigraph/ --train-edge "Action->Paddle" --transforms WProx --determiner prox --reward-form changepoint --num-stack 1 --focus-dumps-name focus_dumps.txt --dp-gmm atari
     # python get_reward.py --record-rollouts data/ataripaddle/ --changepoint-dir data/atarigraph/ --train-edge "Paddle->Ball" --transforms WProx --determiner prox --reward-form changepoint --num-stack 1 --focus-dumps-name focus_dumps.txt --dp-gmm atariball --period 5
+    # python get_reward.py --record-rollouts data/pusherrandom/ --changepoint-dir data/fullpusher/ --train-edge "Action->Gripper" --transforms SVel SCorAvg --determiner overlap --reward-form markov --segment --train --num-stack 2 --gpu 1
+    # python get_reward.py --record-rollouts data/extragripper/ --changepoint-dir data/pushergraphvec/ --train-edge "Gripper->Block" --transforms SProxVel --determiner merged --reward-form changepoint --segment --num-stack 2 --gpu 1 --cluster-model FDPGMM --period 9 --dp-gmm block --min-cluster 5
+    # python get_reward.py --record-rollouts data/pusherrandom/ --changepoint-dir data/fullpusher/ --train-edge "Action->Gripper" --transforms SVel SCorAvg --determiner overlap --reward-form markov --segment --train --num-stack 2 --gpu 1 > pusher/reward_training.txt
     dataset_path = args.record_rollouts
     changepoints_path = args.record_rollouts # these are the same for creating rewards
     head, tail = get_edge(args.train_edge)
@@ -67,10 +70,10 @@ if __name__ == "__main__":
     transforms = [arg_transform[tform]() for tform in args.transforms]
 
     # TODO: other cluster models?
-    clusters = MultipleCluster(args, BayesianGaussianMixture)
+    clusters = MultipleCluster(args, cluster_models[args.cluster_model])
 
     # paddle uses "overlap", ball uses "prox", "proxVel"
-    determiner =     determiners[args.determiner](prox_distance = args.period, overlap_ratio=.5, min_cluster=15) # reusing period to define minimum distance# PureOverlapDeterminer(overlap_ratio = .95, min_cluster= 7)
+    determiner =     determiners[args.determiner](prox_distance = args.period, overlap_ratio=.5, min_cluster=args.min_cluster) # reusing period to define minimum distance# PureOverlapDeterminer(overlap_ratio = .95, min_cluster= 7)
     option_determiner_model = ChangepointModels(args, changepoint_model, transforms, clusters, determiner)
     option_determiner_model.changepoint_statistics(models, changepoints, trajectory, correlate_trajectory)
 

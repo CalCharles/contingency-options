@@ -1,4 +1,5 @@
 from SelfBreakout.breakout_screen import Screen
+from Pushing.screen import Pushing
 from file_management import load_from_pickle, get_edge
 import glob, os
 from Models.models import models
@@ -18,6 +19,7 @@ import json
 import torch
 from AtariEnvironments.focus_atari import FocusAtariEnvironment
 from RewardFunctions.dummy_rewards import RawReward
+import numpy as np
 
 if __name__ == "__main__":
     # used arguments
@@ -38,7 +40,8 @@ if __name__ == "__main__":
         # first train: python add_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/integrationpaddle/" --train-edge "Paddle->Ball" --num-stack 1 --train --num-iters 100 --state-forms prox vel vel --state-names Paddle Ball Paddle --changepoint-dir ./data/atarigraph/ --lr 5e-3 --greedy-epsilon .01 --behavior-policy esp --gamma 0 --init-form smalluni --factor 12 --num-layers 1 --base-form basic --num-population 10 --retest 2 --OoO-eval --sample-duration 100 --sample-schedule 15 --done-swapping 0 --warm-up 0 --log-interval 1 --init-var 5e-2 --scale 1 --reward-check 20 --focus-dumps-name focus_dumps.txt --env AtariBreakoutNoFrameskip-v0 --save-dir data/atariball --save-models --save-graph data/atariballgraph --save-interval 1  > atariball.txt
         # train baseline: python add_edge.py --model-form raw --optimizer-form A2C --record-rollouts "data/random/" --train-edge "Action->Reward" --num-stack 4 --train --num-iters 1000000 --state-forms raw --state-names Paddle --changepoint-dir ./data/rawgraph/ --reward-form raw --lr 7e-4 --greedy-epsilon 0 --value-loss-coef 0.5 --optim RMSprop --behavior-policy esp --gamma 0.99 --init-form orth --factor 16 --num-layers 1 --warm-up 0 --log-interval 100 --entropy-coef .01 --normalize --reward-check 5 --changepoint-queue 5 --env AtariBreakoutNoFrameskip-v0 --gpu 3 --true-environment --lag-num 0 --post-transform-form linear --return-form value > a2c.txt
         # python add_edge.py --model-form raw --optimizer-form PPO --record-rollouts "data/random/" --train-edge "Action->Reward" --num-stack 4 --train --num-iters 1000000 --state-forms raw --state-names Paddle --changepoint-dir ./data/rawgraph/ --reward-form raw --lr 2.5e-4 --greedy-epsilon 0 --gamma 0.99 --value-loss-coef 0.5 --optim RMSprop --init-form orth --factor 16 --num-layers 1 --warm-up 0 --log-interval 10 --entropy-coef .01 --normalize --reward-check 128 --changepoint-queue 128 --buffer-clip 128 --num-grad-states 32 --grad-epoch 4 --clip-param 0.1 --env AtariBreakoutNoFrameskip-v0 --gpu 2 --true-environment --lag-num 0 --post-transform-form linear --return-form normal > ataribaseline.txt
-        # 
+        # Action->Gripper: ython add_edge.py --env SelfPusher --true-environment --model-form basic --optimizer-form DQN --record-rollouts "data/pusherrandom/" --changepoint-dir data/fullpusher/ --train-edge "Action->Gripper" --num-stack 2 --train --num-iters 500 --save-dir data/pusheraction --state-forms bounds --state-names Gripper --frameskip 3 --init-form smalluni --save-models --save-graph data/fullpusher/Action-\>Gripper/ > ./pusher/action_gripper.txt
+        # Gripper->Block (touch): python add_edge.py --model-form vector --optimizer-form PPO --record-rollouts "data/extragripper/" --train-edge "Gripper->Block" --num-stack 1 --train --num-iters 1000 --state-forms prox bounds bounds --state-names Gripper Block Block --env SelfPusher --true-environment --base-node Action --changepoint-dir ./data/pushergraph/ --lr 7e-5 --behavior-policy esp --gamma .99 --init-form xnorm --num-layers 1 --reward-check 128 --changepoint-queue-len 128 --greedy-epsilon .001 --log-interval 10 --num-steps 1 --frameskip 3 --factor 16 --key-dim 2048 --num-grad-states 32 --return-form value --grad-epoch 8 --acti sin --save-dir ../datasets/caleb_data/blockvec --save-graph data/blockvec --save-models > blockvec.txt
     args = get_args()
     torch.cuda.set_device(args.gpu)
 
@@ -78,6 +81,11 @@ if __name__ == "__main__":
     if args.true_environment:
         model = None
     print(args.true_environment, args.env)
+    if args.env == 'SelfPusher':
+        if args.true_environment:
+            true_environment = Pushing(pushgripper=True, frameskip=args.frameskip)
+        else:
+            true_environment = None # TODO: implement
     if args.env == 'SelfBreakout':
         if args.true_environment:
             true_environment = Screen(frameskip=args.frameskip)
@@ -93,22 +101,29 @@ if __name__ == "__main__":
     reward_paths.sort(key=lambda x: int(x.split("__")[2]))
 
     head, tail = get_edge(args.train_edge)
-
+    if args.reward_form == 'rawdist' and args.env == 'SelfPusher':
+        true_environment.use_distance_reward()
+        args.reward_form = 'raw'
     if args.reward_form != 'raw':
         reward_classes = [load_from_pickle(pth) for pth in reward_paths]
         for rc in reward_classes:
             if type(rc) == ChangepointMarkovReward:
-                rc.markovModel.cuda()
+                rc.markovModel = rc.markovModel.cuda(args.gpu)
     else:
         reward_classes = [RawReward(args)]
     # train_models = MultiOption(1, BasicModel)
-    train_models = MultiOption(len(reward_paths), models[args.model_form])
     # learning_algorithm = DQN_optimizer()
     learning_algorithm = learning_algorithms[args.optimizer_form]()
     # learning_algorithm = DDPG_optimizer()
     environments = option_chain.initialize(args)
-    print(environments)
+    print("ENVS: ", [e.name for e in environments])
     proxy_environment = environments.pop(-1)
+    if args.load_weights:
+        print(proxy_environment.models.cuda)
+        proxy_environment.models.cuda(device=args.gpu)
+        train_models = proxy_environment.models
+    else:
+        train_models = MultiOption(len(reward_paths), models[args.model_form])
     proxy_chain = environments
     if len(environments) > 1: # there is a difference in the properties of a proxy environment and the true environment
         num_actions = len(environments[-1].reward_fns)
@@ -117,6 +132,19 @@ if __name__ == "__main__":
     print(args.state_names, args.state_forms)
     state_class = GetState(head, state_forms=list(zip(args.state_names, args.state_forms)))
     state_class.minmax = compute_minmax(state_class, dataset_path, filename=args.focus_dumps_name)
+    if args.normalize:
+        minv = []
+        maxv = []
+        for f in args.state_forms:
+            if f == 'prox':
+                minv += [-84,-84]
+                maxv += [84,84]
+            elif f == 'bounds':
+                minv += [0,0]
+                maxv += [84,84]
+        state_class.minmax = np.stack((np.array(minv), np.array(maxv)))
+        print(state_class.minmax)
+
     behavior_policy = behavior_policies[args.behavior_policy]()
     # behavior_policy = EpsilonGreedyProbs()
     save_graph = args.save_graph

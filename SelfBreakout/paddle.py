@@ -20,9 +20,7 @@ class Paddle(RawEnvironment):
         self.save_path=save_dir
         self.itr = itr
         self.recycle = recycle
-        self.screen.save_path=save_dir
-        self.screen.itr = itr
-        self.screen.recycle = recycle
+        self.screen.set_save(itr, save_dir, recycle, all_dir)
         self.all_dir = all_dir
 
         try:

@@ -1,8 +1,9 @@
 # Screen
-import sys
+import sys, cv2
 sys.path.insert(0, "/home/calcharles/research/contingency-options/")
 import numpy as np
 from SelfBreakout.breakout_objects import *
+# from breakout_objects import *
 import imageio as imio
 import os, copy
 from Environments.environment_specification import RawEnvironment
@@ -55,6 +56,7 @@ class Screen(RawEnvironment):
         ball, paddle = self.ball, self.paddle
         self.frame[ball.pos[0]:ball.pos[0]+ball.height, ball.pos[1]:ball.pos[1]+ball.width] = 1 * 255
         self.frame[paddle.pos[0]:paddle.pos[0]+paddle.height, paddle.pos[1]:paddle.pos[1]+paddle.width] = .75 * 255
+        return self.frame
 
     def extracted_state(self):
         return np.array([obj.getMidpoint() for obj in self.objects], dtype=np.float64)
@@ -116,7 +118,7 @@ class Screen(RawEnvironment):
         self.itr += 1
         return self.frame, extracted_state, done
 
-    def write_objects(self, object_dumps, save_path):
+    def write_objects(self, object_dumps, save_path): # TODO: put into parent class
         if self.recycle > 0:
             state_path = os.path.join(save_path, str((self.itr % self.recycle)//2000))
             count = self.itr % self.recycle
@@ -240,6 +242,29 @@ class BouncePolicy(Policy):
         else:
             return 0
 
+def demonstrate(save_dir, num_frames, pushgripper=False):
+    domain = Screen()
+    quit = False
+    domain.set_save(0, save_dir, 0)
+
+    for i in range(num_frames):
+        frame = domain.render_frame()
+        cv2.imshow('frame',frame)
+        action = 0
+        key = cv2.waitKey(500)
+        if key == ord('q'):
+            quit = True
+        elif key == ord('a'):
+            action = 2
+        elif key == ord('w'):
+            action = 0
+        elif key == ord('s'):
+            action = 0
+        elif key == ord('d'):
+            action = 3
+        domain.step([action])
+
+
 def abbreviate_obj_dump_file(pth, new_path, get_last=-1):
     total_len = 0
     if get_last > 0:
@@ -344,6 +369,7 @@ def hot_actions(action_data):
 if __name__ == '__main__':
     screen = Screen()
     # policy = RandomPolicy(4)
-    policy = RotatePolicy(4, 7)
+    policy = RotatePolicy(4, 9)
     # policy = BouncePolicy(4)
     screen.run(policy, render=True, iterations = 1000, duplicate_actions=1, save_path=sys.argv[1])
+    # demonstrate(sys.argv[1], 1000)

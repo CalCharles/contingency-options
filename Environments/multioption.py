@@ -31,6 +31,9 @@ class MultiOption():
                 minmax = (np.hstack((minmax[0], parameter_minmax[0])) , np.hstack((minmax[1], parameter_minmax[1])))
         if model_class is None:
             print(self.option_class)
+            if self.option_class is None:
+                self.option_class = models['basic']
+            print(minmax)
             model = self.option_class(args=args, num_inputs=state_class.flat_state_size() * args.num_stack, num_outputs=num_actions, 
                 class_sizes = state_class.sizes, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
         else:
@@ -38,14 +41,18 @@ class MultiOption():
                 class_sizes = state_class.sizes, factor=args.factor, name = args.unique_id + "__" + str(i) +"__", minmax = minmax, sess=self.sess, param_dim=parameter)
         return model
 
-    def cuda():
-        for i in range(len(self.models)):
-            self.models[i] = model.cuda()
+    def cuda(self, device = -1):
+        if device == -1:
+            for i in range(len(self.models)):
+                self.models[i] = self.models[i].cuda()
+        else:
+            for i in range(len(self.models)):
+                self.models[i] = self.models[i].cuda(device=device)            
         return self
 
-    def cpu():
+    def cpu(self):
         for i in range(len(self.models)):
-            self.models[i] = model.cpu()
+            self.models[i] = self.models[i].cpu()
         return self
 
     def train(self):
@@ -71,7 +78,9 @@ class MultiOption():
                     model = model.cuda()
                 self.models.append(model) # make this an argument controlled parameter
             else:
+                print('num opts', num_options)
                 for i in range(num_options):
+                    print("option", i)
                     model = self.create_model(args, state_class, parameter_minmax, i, num_actions)
                     # since name is args.unique_id + str(i), this means that unique_id should be the edge, in form head_tail
                     if args.cuda:
@@ -103,7 +112,7 @@ class MultiOption():
         if self.parameterized_option == 2:
             self.models[0].option_input = parameter
 
-    def determine_action(self, state, resp):
+    def determine_action(self, state, resp, use_grad=True):
         '''
         output: 4 x [batch_size, num_options, num_actions/1]
         '''
@@ -112,6 +121,11 @@ class MultiOption():
             if self.parameterized_option == 1: # TODO: parametrized options only has one option (possibly a combination)
                 self.models[0].option_index = i
             v, lp, p, Q = self.models[i](state, resp)
+            if not use_grad:
+                Q.detach()
+                p.detach()
+                lp.detach()
+                v.detach()
             values.append(v)
             log_probs.append(lp)
             probs.append(p)
@@ -228,5 +242,6 @@ class MultiOption():
                 if args.cuda:
                     new_model = new_model.cuda()
                 self.models.append(new_model)
+        # print (self.models)
         self.num_options = num_models
         self.option_index = 0

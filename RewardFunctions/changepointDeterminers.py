@@ -57,17 +57,29 @@ class PureOverlapDeterminer(ChangepointDeterminer):
         keys = list(overlap.keys())
         keys.sort()
         self.key_mapping = dict()
-        i = 1
+        pure_queue = []
         for m in keys:
             if totals[m] < self.min_cluster:
                 self.empty_clusters.add(m)
             elif pure_ratio[m] > self.overlap_ratio:
-                self.pure_clusters.add(m)
-                self.key_mapping[m] = i
-                i += 1
+                pure_queue.append(m)
             else:
                 self.mixed_clusters.add(m)
                 self.key_mapping[m] = 0
+        i = 1
+        old_mixed= self.mixed_clusters.copy()
+        for m in pure_queue:
+            inmixed = False
+            for mi in old_mixed:
+                print(m, mode_models.mean()[0][mi], mode_models.mean()[0][m], np.sum(np.abs(mode_models.mean()[0][mi] - mode_models.mean()[0][m])))
+                if np.sum(np.abs(mode_models.mean()[0][mi] - mode_models.mean()[0][m])) < .3:
+                    self.mixed_clusters.add(m) # if you have the same mean as one of the mixed clusters, add to mixed
+                    inmixed = True
+                    self.key_mapping[m] = 0
+            if not inmixed:
+                self.key_mapping[m] = i
+                self.pure_clusters.add(m)
+                i += 1
         print(self.mixed_clusters, self.pure_clusters, i)
         self.num_mappings = i
 
@@ -123,13 +135,94 @@ class ProximityDeterminer(ChangepointDeterminer):
                 mode_assignments.append(self.key_mapping[am[0]])
         return np.array(mode_assignments)
 
+class MergedDeterminer(ChangepointDeterminer):
+    '''
+    finds modes based on whether they are proximal and then the subsequent behavior (velocity)
+    '''
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # self.prox_distance = default_value_arg(kwargs, 'prox_distance', 6) # TODO: Set proximal distance based on ...
+        self.min_cluster = default_value_arg(kwargs, 'min_cluster', 5)
+
+    def fit_narrow_modes(self, changepoint_models, mode_models, assigned_modes):
+        # find clusters with used 
+        seen_modes = Counter()
+        for mode in assigned_modes.squeeze():
+            # print(mode, assigned_modes.shape)
+            seen_modes[mode] += 1
+        self.used_clusters = set()
+        for k in seen_modes.keys():
+            if seen_modes[k] > self.min_cluster:
+                self.used_clusters.add(k)
+        print("used, seen", self.used_clusters, seen_modes)
+        # TODO: Fix it so that proximal distance is only used when relevant
+        self.key_mapping = dict()
+        k = 0 # no mixed clusters in this case, because we only concern with proximal
+        for i, mean in enumerate(mode_models.mean()[0]):
+            if i in self.used_clusters:
+                self.key_mapping[i] = k
+        self.num_mappings = k + 1
+        print("num mappings ", k + 1, self.key_mapping)
+        print(mode_models.mean())
+
+    def collapse_assignments(self, assigned_modes):
+        mode_assignments = []
+        for am in assigned_modes.squeeze():
+            if am not in self.key_mapping:
+                mode_assignments.append(-1)
+            else:
+                mode_assignments.append(self.key_mapping[am])
+        return np.array(mode_assignments)
+
+class BehaviorDeterminer(ChangepointDeterminer):
+    '''
+    finds modes based on whether they are proximal and then the subsequent behavior (velocity)
+    '''
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # self.prox_distance = default_value_arg(kwargs, 'prox_distance', 6) # TODO: Set proximal distance based on ...
+        self.min_cluster = default_value_arg(kwargs, 'min_cluster', 5)
+
+    def fit_narrow_modes(self, changepoint_models, mode_models, assigned_modes):
+        # find clusters with used 
+        seen_modes = Counter()
+        for mode in assigned_modes.squeeze():
+            # print(mode, assigned_modes.shape)
+            seen_modes[mode] += 1
+        self.used_clusters = set()
+        for k in seen_modes.keys():
+            if seen_modes[k] > self.min_cluster:
+                self.used_clusters.add(k)
+        print("used, seen", self.used_clusters, seen_modes)
+        # TODO: Fix it so that proximal distance is only used when relevant
+        self.key_mapping = dict()
+        k = 0 # no mixed clusters in this case, because we only concern with proximal
+        for i, mean in enumerate(mode_models.mean()[0]):
+            if i in self.used_clusters:
+                self.key_mapping[i] = k
+                k += 1
+        self.num_mappings = k
+        print("num mappings ", k, self.key_mapping)
+        print(mode_models.mean())
+
+    def collapse_assignments(self, assigned_modes):
+        mode_assignments = []
+        for am in assigned_modes.squeeze():
+            if am not in self.key_mapping:
+                mode_assignments.append(-1)
+            else:
+                mode_assignments.append(self.key_mapping[am])
+        return np.array(mode_assignments)
+
+
 class ProximityBehaviorDeterminer(ChangepointDeterminer):
     '''
     finds modes based on whether they are proximal and then the subsequent behavior (velocity)
     '''
-    def __init__(self, prox_distance=3, min_cluster = 10):
-        self.prox_distance = prox_distance # TODO: Set proximal distance based on ...
-        self.min_cluster = min_cluster
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.prox_distance = default_value_arg(kwargs, 'prox_distance', 6) # TODO: Set proximal distance based on ...
+        self.min_cluster = default_value_arg(kwargs, 'min_cluster', 7)
 
     def fit_narrow_modes(self, changepoint_models, mode_models, assigned_modes):
         # find clusters with used 
@@ -165,4 +258,4 @@ class ProximityBehaviorDeterminer(ChangepointDeterminer):
                 mode_assignments.append(self.key_mapping[(am[0], am[1])])
         return np.array(mode_assignments)
 
-determiners = {"overlap": PureOverlapDeterminer, "prox": ProximityDeterminer, "proxVel": ProximityBehaviorDeterminer}
+determiners = {"overlap": PureOverlapDeterminer, "prox": ProximityDeterminer, "proxVel": ProximityBehaviorDeterminer, 'behav': BehaviorDeterminer, 'merged': MergedDeterminer}

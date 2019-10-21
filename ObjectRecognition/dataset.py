@@ -65,6 +65,30 @@ def parse_dataset(dataset_name, n_state, binarize=None, offset_fix=None):
             binarize=binarize,  # binarize image to 0 and 1
             offset_fix=0,  # offset of episode number, fixed for this one
         )  # 10.0, 0.1, 1.0, 0.0005
+    elif dataset_name == 'self-test-push':
+        dataset = DatasetPush(
+            'data/pushrandom',  # object dump path
+            'data/pushrandom/0',  # run states
+            n_state=n_state,  # set max number of states
+            binarize=binarize,  # binarize image to 0 and 1
+            offset_fix=0,  # offset of episode number, fixed for this one
+        )  # 10.0, 0.1, 1.0, 0.0005
+    elif dataset_name == 'self-test-pusher':
+        dataset = DatasetPush(
+            'data/pusherrandom',  # object dump path
+            'data/pusherrandom/0',  # run states
+            n_state=n_state,  # set max number of states
+            binarize=binarize,  # binarize image to 0 and 1
+            offset_fix=0,  # offset of episode number, fixed for this one
+        )  # 10.0, 0.1, 1.0, 0.0005
+    elif dataset_name == 'self-test2-push':
+        dataset = DatasetPush(
+            'data/pushstick',  # object dump path
+            'data/pushstick/all',  # run states
+            n_state=n_state,  # set max number of states
+            binarize=binarize,  # binarize image to 0 and 1
+            offset_fix=0,  # offset of episode number, fixed for this one
+        )  # 10.0, 0.1, 1.0, 0.0005
     return dataset
 
 
@@ -114,6 +138,8 @@ class Dataset(DatasetInterface):
         return action_cp
 
 
+
+
 # breakout saved scene loading, handle block loading
 class DatasetSelfBreakout(Dataset):
     TOTAL_STATE = 10000  # TODO: realize this?
@@ -145,7 +171,6 @@ class DatasetSelfBreakout(Dataset):
 
         self.reset()
         
-
     # retrieve selected actions associated with frames
     def retrieve_action(self, idxs):
         return self.actions[idxs + self.idx_offset]
@@ -228,6 +253,43 @@ class DatasetSelfBreakout(Dataset):
         # to simulate generating new episode
         real_idx = idx + self.idx_offset
         return os.path.join(self.state_path, 'state%d.png'%(real_idx))
+
+# breakout saved scene loading, handle block loading
+class DatasetPush(DatasetSelfBreakout):
+    TOTAL_STATE = 10000  # TODO: realize this?
+
+    def __init__(self, objdump_path, state_path, *args, **kwargs):
+        super(DatasetPush, self).__init__()
+        self.state_path = state_path
+        self.frame_shape = (84, 84)
+        self.n_state = kwargs.get('n_state', 1000)
+        self.block_size = kwargs.get('block_size', 10000)
+        self.binarize = kwargs.get('binarize', None)
+        self.offset_fix = kwargs.get('offset_fix', None)
+        self.frame_l, self.frame_r = 0, -1  # uninitialized frame interval
+
+        self.block_size = min(self.block_size, self.n_state)
+
+        try:
+            obj_dumps = read_obj_dumps(objdump_path)
+            self.actions = np.array(
+                get_individual_data('Action', obj_dumps, pos_val_hash=2))
+            self.gripper_data = np.array(
+                get_individual_data('Gripper', obj_dumps, pos_val_hash=1),
+                dtype=int)
+            # self.stick_data = np.array(
+            #     get_individual_data('Stick', obj_dumps, pos_val_hash=1),
+            #     dtype=int)
+            self.block_data = np.array(
+                get_individual_data('Block', obj_dumps, pos_val_hash=1),
+                dtype=int)
+            self.target_data = np.array(
+                get_individual_data('Target', obj_dumps, pos_val_hash=1),
+                dtype=int)
+        except FileNotFoundError as e:
+            print('WARNING: object dump not loaded, %s'%(e))
+
+        self.reset()
 
 
 # access to atari games

@@ -26,7 +26,10 @@ class pytorch_model():
 
     @staticmethod
     def unwrap(data):
-        return data.clone().detach().cpu().numpy()
+        if type(data) == torch.Tensor:
+            return data.clone().detach().cpu().numpy()
+        else:
+            return data
 
     @staticmethod
     def concat(data, axis=0):
@@ -148,7 +151,7 @@ class Model(nn.Module):
             # print("using preamble")
             if self.minmax is not None and self.use_normalize:
                 x = self.normalize(x)
-            x = x * self.scale
+            # x = x * self.scale
         return x
 
         # nn.init.uniform_(self.critic_linear.weight.data, .9 / self.insize, 1.1 / self.insize)
@@ -171,6 +174,7 @@ class Model(nn.Module):
 
     def normalize(self, x):
         return (x - self.minmax[0]) / (abs(self.minmax[1] - self.minmax[0]) + 1e-10)
+        # return (x - self.minmax[0]) / (abs(self.minmax[1] - self.minmax[0]) + 1e-10)
 
     def last_layer(self, x):
         '''

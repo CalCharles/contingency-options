@@ -7,6 +7,7 @@ from torch.autograd import Variable
 import imageio as imio
 from Models.models import pytorch_model, models
 from collections import deque
+from RewardFunctions.changepointReward import ChangepointDetectionReward
 
 
 
@@ -16,6 +17,8 @@ class RawEnvironment():
         self.itr = 0 # this is used for saving, and is set externally
         self.save_path = "" # save dir also is set externally
         self.episode_rewards = deque(maxlen=10)
+        self.all_dir = ""
+        self.name = "ABSTRACT_BASE"
 
     def step(self, action):
         '''
@@ -132,7 +135,8 @@ class ProxyEnvironment():
         '''
         self.proxy_chain = proxy_chain
         for i, env in enumerate(self.proxy_chain[1:]):
-            env.proxy_chain = self.proxy_chain[:len(self.proxy_chain) - i - 1] 
+            print(env.name, [e.name for e in self.proxy_chain], [e.name for e in self.proxy_chain[:i+1]])
+            env.proxy_chain = self.proxy_chain[:i + 1] 
             env.iscuda = args.cuda # TODO: changes to this probably will cause breaking
             if args.cuda:
                 current_cuda = torch.device('cuda:' + str(args.gpu))
@@ -208,6 +212,7 @@ class ProxyEnvironment():
                 pass
             self.save_files = []
             for name in self.get_names():
+                print(self.get_names())
                 if name.find("->") != -1:
                     name = name.split("->")[0] # use the base
                 f = open(os.path.join(self.save_path, name + "_actions.txt"), 'w')
@@ -230,7 +235,6 @@ class ProxyEnvironment():
     def duplicate(self, args):
         if len(self.reward_fns) > len(self.models.models) or args.model_form == 'adjust' or (args.model_form == 'population' and type(self.models.models[0]) != models['population']):
             # self.reward_fns[0].parameter_minmax = None
-            print(self.name, self.reward_fns)
             self.models.duplicate(len(self.reward_fns), args, self.stateExtractor, self.action_size, self.reward_fns[0].parameter_minmax)
 
     def set_proxy_chain(self, proxy_chain):
@@ -300,21 +304,25 @@ class ProxyEnvironment():
         extracted state is the proxy extracted state, raw state is the full raw state (raw_state, factored state),
         done defines if a trajectory ends, action_list is all the actions taken by all the options in the chain
         '''
+        # print(self.name)
         if self.swap:
             self.current_action = action
         else:
             action = self.current_action
         if model:
             if self.swap:
+                old_action = action
                 values, log_probs, probs, Q_vals = self.models.determine_action(self.current_state.unsqueeze(0), self.current_resp.unsqueeze(0))
                 vals, action_probs, log_probs, Q_vs = self.models.get_action(values, probs, log_probs, Q_vals, index = int(action))
                 action = self.behavior_policy.take_action(action_probs, Q_vs)
                 self.current_action = action
+                # print(self.name, action, old_action, self.stateExtractor.names, self.stateExtractor.fnames, self.current_state, self.current_resp)
             else:
                 action = self.current_action
             # if issubclass(self.models.currentModel(), DopamineModel): 
             #     reward = self.computeReward(rollout, 1)
             #     action = self.models.currentModel().forward(self.current_state, reward[self.models.option_index])
+        # print([p.name for p in self.proxy_chain])
         if len(self.proxy_chain) > 1:
             state, base_state, resp, done, action_list = self.proxy_chain[-1].step(action, model=True, action_list = [action] + action_list)
             raw_state, factored_state = base_state
@@ -398,8 +406,14 @@ class ProxyEnvironment():
         # print(states)
         # print(self.reward_fns)
         # start=time.time()
+
+        precomputed = None
+        if type(self.reward_fns[0]) == ChangepointDetectionReward: # hacky way to precompute changepoints, but improves speed by a lot
+            precomputed = self.reward_fns[0].precompute(states,actions,resps)
+        
         for reward_fn in self.reward_fns:
-            rwd = reward_fn.compute_reward(states,actions,resps)
+            # print(states, actions, resps)
+            rwd = reward_fn.compute_reward(states,actions,resps, precomputed = precomputed)
             # xloss = -(states[:,1] - states[:,-1]).abs() * 1e-4
             if len(rwd) < length: # queue not yet filled enough
                 ext = torch.zeros((length - len(rwd), )).cuda().detach()
@@ -410,6 +424,7 @@ class ProxyEnvironment():
 
             # rwd += xloss
             rewards.append(rwd)
+        # print(rewards, length, states, actions)
         # print(rewards, states)
         # print(time.time() - start)
         # print(torch.stack(rewards, dim=0)[:,-length:].shape)
@@ -417,6 +432,8 @@ class ProxyEnvironment():
         # print(length, self.lag_num, self.changepoint_filled)
         # print(states, rewards)
         self.current_rewards = torch.stack(rewards, dim=0)[:,max(self.changepoint_filled-length-self.lag_num, 0):self.changepoint_filled-self.lag_num]
+        # print(states.shape, self.current_rewards.shape)
+        # print(torch.cat([self.current_rewards.transpose(0,1), states[-self.current_rewards.shape[1]:]], dim=1)[:100])
         # print(torch.stack(rewards, dim=0).shape)
         # print(self.current_rewards.shape, self.changepoint_filled-length-self.lag_num,self.changepoint_filled-self.lag_num, torch.stack(rewards, dim=0).shape)
         # error

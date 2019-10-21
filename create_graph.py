@@ -15,7 +15,6 @@ import numpy as np
 from scipy.signal import medfilt
 matplotlib.rcParams.update({'font.size': 8})
 
-
 def smooth_reward_curve(x, y):
     # Halfwidth of our smoothing convolution
     halfwidth = min(31, int(np.ceil(len(x) / 30)))
@@ -101,7 +100,7 @@ color_defaults = [
     '#17becf'  # blue-teal
 ]
 
-def load_from_txt(txt_pth):
+def load_from_txt(txt_pth, start = 0, stops = -1):
     f = open(txt_pth, 'r')
     last_5_ep_rewards = []
     rewards = []
@@ -115,23 +114,37 @@ def load_from_txt(txt_pth):
         #         last_5_ep_rewards.pop(0)
         #     last_5_ep_rewards.append(v)
         #     rewards.append(np.sum(last_5_ep_rewards) / len(last_5_ep_rewards))
-        if l.find('num timesteps') != -1:
-            timesteps.append(int(l.split(',')[1].split(' ')[-1]))
+        # if l.find('num timesteps') != -1:
+            # timesteps.append(int(l.split(',')[1].split(' ')[-1]))
             # last_timestep_reward.append(len(rewards) - 1)
-            if l.find('true_reward') != -1:
-                tm = l[l.find('true_reward'):]
-                if tm.find('mean') != -1:
-                    rewards.append(float(tm[tm.find('mean') + 6:tm.find('max') - 2]))
-                else:
-                    rewards.append(float(tm[len('true_reward')+1:tm.find(',')]))
-            if l.find('true reward') != -1:
-                tm = l[l.find('true reward'):]
-                # print(tm[tm.find('mean') + 6:tm.find('max') - 2])
-                if tm.find('mean') != -1:
-                    # print(tm[tm.find('mean') + 6:tm.find('max') - 2] + "e")
-                    rewards.append(float(tm[tm.find('mean') + 6:tm.find('max') - 2]))
-                else:
-                    rewards.append(float(tm[len('true_reward')+1:tm.find(',')]))
+
+        if l.find('Episode Reward') != -1:
+            # print(l, l.split('  ')[2].split(' '))
+            timesteps.append(start + float(l.split('  ')[2].split(' ')[1]))
+            last_5_ep_rewards.append(float(l.split('  ')[1]))
+            if len(last_5_ep_rewards) > 150:
+                last_5_ep_rewards.pop(0)
+            if len(last_5_ep_rewards) < 150:
+                timesteps.pop(0)
+                continue
+            rewards.append(np.mean(last_5_ep_rewards))
+            if stops > -1:
+                if float(l.split('  ')[2].split(' ')[1]) > stops:
+                    break
+            # if l.find('true_reward') != -1:
+            #     tm = l[l.find('true_reward'):]
+            #     if tm.find('mean') != -1:
+            #         rewards.append(float(tm[tm.find('mean') + 6:tm.find('max') - 2]))
+            #     else:
+            #         rewards.append(float(tm[len('true_reward')+1:tm.find(',')]))
+            # if l.find('true reward') != -1:
+            #     tm = l[l.find('true reward'):]
+            #     # print(tm[tm.find('mean') + 6:tm.find('max') - 2])
+            #     if tm.find('mean') != -1:
+            #         # print(tm[tm.find('mean') + 6:tm.find('max') - 2] + "e")
+            #         rewards.append(float(tm[tm.find('mean') + 6:tm.find('max') - 2]))
+            #     else:
+            #         rewards.append(float(tm[len('true_reward')+1:tm.find(',')]))
     # timesteps = []
     # for ri, rin, t, tn in zip(last_timestep_reward[:-1], last_timestep_reward[1:], last_timestep[:-1], last_timestep[1:]):
     #     for i in range(rin - ri):
@@ -149,15 +162,16 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(description='RL')
     parser.add_argument('--log-dir', metavar='log_dir', nargs='+')
     parser.add_argument('--txt-dir', metavar='txt_dir', nargs='+')
+    parser.add_argument('--txt-files', metavar='txt_files', nargs='+')
     parser.add_argument('--model', default='a2c')
     parser.add_argument('--title', default='Graph')
     parser.add_argument('--plotall', action = 'store_true', default=False)
     parser.add_argument('--labels', metavar='labels', nargs='+')
-    parser.add_argument('--xlim', type=float, default=10e6)
+    parser.add_argument('--xlim', type=float, default=25e5)
     parser.add_argument('--target', default='plot.png')    
     args = parser.parse_args()
 
-    xlim = 0
+    # xlim = 0
     # for m_idx, root_dir in enumerate(args.log_dir):
 
     #     # look for all the possible sub log dirs
@@ -202,57 +216,81 @@ if __name__=='__main__':
     #         plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx+6])
 
     # print(args.txt_dir, args.log_dir)
-    for m_idx, root_dir in enumerate(args.txt_dir):
 
-        # look for all the possible sub log dirs
-        pths = glob.glob(root_dir+'*.txt')
-        print(pths, root_dir)
-        curves = []
-        names = []
-        for pth in pths:
-            tx, ty = load_from_txt(pth)
-            print(pth)
-            if tx is not None:
-                tx, ty  = tx[:6000], ty[:6000]
-                curves.append((tx, ty))
-                names.append(root_dir.strip('/').split('/')[-1])
-                xlim = max(xlim, max(tx))
-                # print(tx, ty)
-                print(len(tx[:6000]), len(ty[:6000]))
-                # plt.plot(tx, ty)
-                # plt.show()
 
-        else:
-            # show average curve + std
-            tx, ty = zip(*curves)
+    # for m_idx, root_dir in enumerate(args.txt_dir):
+
+    #     # look for all the possible sub log dirs
+    #     pths = glob.glob(root_dir+'*.txt')
+    #     print(pths, root_dir)
+    #     curves = []
+    #     names = []
+    #     for pth in pths:
+    #         tx, ty = load_from_txt(pth)
+    #         print(pth)
+    #         if tx is not None:
+    #             tx, ty  = tx[:6000], ty[:6000]
+    #             curves.append((tx, ty))
+    #             names.append(root_dir.strip('/').split('/')[-1])
+    #             xlim = max(xlim, max(tx))
+    #             # print(tx, ty)
+    #             print(len(tx[:6000]), len(ty[:6000]))
+    #             # plt.plot(tx, ty)
+    #             # plt.show()
+
+    #     else:
+    #         # show average curve + std
+    #         tx, ty = zip(*curves)
             
-            # min_len = min(map(len, tx))
-            # tx, ty = tx[0][:min_len], [t[:min_len] for t in ty]
+    #         # min_len = min(map(len, tx))
+    #         # tx, ty = tx[0][:min_len], [t[:min_len] for t in ty]
 
-            max_len = max(map(len, tx))
-            tx = max(tx, key=lambda x: len(x))
-            ty = [t+[t[-1]]*(max_len-len(t)) for t in ty]
+    #         max_len = max(map(len, tx))
+    #         tx = max(tx, key=lambda x: len(x))
+    #         ty = [t+[t[-1]]*(max_len-len(t)) for t in ty]
 
-            ty = np.array(ty)
-            y_mean = np.mean(ty, 0)
-            y_err = np.std(ty, 0)
+    #         ty = np.array(ty)
+    #         y_mean = np.mean(ty, 0)
+    #         y_err = np.std(ty, 0)
 
-            root_name = root_dir.strip('/').split('/')[-1]
-            if args.labels is not None:
-                root_name = args.labels[m_idx]
+    #         root_name = root_dir.strip('/').split('/')[-1]
+    #         if args.labels is not None:
+    #             root_name = args.labels[m_idx]
             
-            plt.semilogx(tx, y_mean, label=root_name, color=color_defaults[m_idx])
-            # plt.plot(tx, y_mean, label=root_name, color=color_defaults[m_idx])
-            plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx])
+    #         # plt.semilogx(tx, y_mean, label=root_name, color=color_defaults[m_idx])
+    #         # for i in y_mean:
+    #             # print(y_mean[0])
+    #         plt.plot(tx, y_mean, label=root_name, color=color_defaults[m_idx])
+    #         plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx])
+    if len(args.txt_files) > 0:
+        ax, ay = [], []
+        start = 0
+        stops = [50000, 1500000, 1000000]
+        for stop, pth in zip(stops, args.txt_files):
+            tx, ty = load_from_txt(pth, start=start, stops=stop)
+            # print(tx,ty)
+            ax += tx
+            ay += ty
+            start = stop
+        ax = np.array(ax)
+        ay = (np.array(ay) + .3) / 1.2
+        print(len(ax), len(ay))
+        plt.plot(ax, ay, label="HyPE", color=color_defaults[0])
+        # plt.fill_between(ax, ay + .01, ay-.01, alpha=0.1, color=color_defaults[0])
+    # plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx])
     # plt.plot([0, xlim], [244, 244], linewidth =2, color = color_defaults[7], label="HyPE Test Performance at 55k frames ")
-    plt.plot([0, xlim], [17.5, 17.5], linewidth =2, color = color_defaults[7], label="HyPE Test Performance at 55k frames ")
-    plt.plot([55000, 55000], [0, 20], linewidth =1, color = color_defaults[7])
+    # plt.plot([0, xlim], [17.5, 17.5], linewidth =2, color = color_defaults[7], label="HyPE Test Performance at 55k frames ")
+    plt.plot([2000, 2000], [-0.0, 20], linewidth =1, color = color_defaults[4])
+    plt.plot([10000, 10000], [-0.0, 20], linewidth =1, color = color_defaults[5])
+    plt.plot([50000, 50000], [-0.0, 20], linewidth =1, color = color_defaults[6])
+    plt.plot([1500000, 1500000], [-0.0, 20], linewidth =1, color = color_defaults[7])
     # plt.xticks([1e5, 2e5, 3e5, 4e5, 5e5, 6e5, 7e5, 8e5, 9e5, 10e5], ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "1m"])
-    plt.xticks([1e3, 1e4, 1e5, 5e5, 1e6, 5e6], ["1k", "10k", "100k", "500k", "1m", "5m"])
-    xlim = min(xlim, args.xlim)
+    plt.xticks([1e5, 4e5, 7e5, 10e5, 13e5, 16e5, 20e5], ["100k", "400k", "700k", "1m", '1.3m', '1.6m', '2.0m'])
+    # plt.xticks([1e3, 1e4, 1e5, 5e5, 1e6, 5e6], ["1k", "10k", "100k", "500k", "1m", "5m"])
+    # xlim = min(xlim, args.xlim)
     # plt.xlim(0, math.ceil(xlim/1e6)*1e6)
-    plt.xlim(0, xlim)
-    plt.ylim(0, 20)
+    plt.xlim(0, args.xlim)
+    plt.ylim(-0.0, 1)
     # plt.ylim(0, 270)
     plt.xlabel('Number of Timesteps')
     plt.ylabel('Average Rewards per Episode')

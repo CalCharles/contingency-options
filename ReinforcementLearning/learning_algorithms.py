@@ -146,6 +146,7 @@ class LearningOptimizer():
                 grad_indexes = np.random.choice(possible_indexes, min(num_grad_states, n_states), replace=False, p=weights) # should probably choose from the actually valid indices...
             else:
                 n_states = (use_range[0], min(buffer_at, use_range[1]))
+                # print(buffer_at, rol.buffer_filled)
 
                 possible_indexes = list(range(*n_states))
                 # print(possible_indexes)
@@ -343,6 +344,8 @@ class DQN_optimizer(LearningOptimizer):
         # # self.step_counter += 1
         for _ in range(args.grad_epoch):
             state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, value_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index, use_range=use_range, weights=args.prioritized_replay)    
+            # print(current_state_eval.shape, next_current_state_eval.shape)
+            # time.sleep(1)
             values, _, action_probs, q_values = train_models.determine_action(current_state_eval, resp_eval)
             _, log_probs, anp, next_q_values = train_models.determine_action(next_current_state_eval, resp_eval)
             _, action_probs, _, q_values = train_models.get_action(values, action_probs, log_probs, q_values)
@@ -421,12 +424,13 @@ class PPO_optimizer(LearningOptimizer):
         # print("GRAD EPOCH", args.grad_epoch)
         for _ in range(args.grad_epoch):
             # s = time.time()
-            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, value_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index, use_range=use_range, weights=args.prioritized_replay)
+            state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, value_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index, match_option= args.match_option, use_range=use_range, weights=args.prioritized_replay)
             # at = time.time()
             # print("lo5ading", at-s)
             if len(state_eval) <= 1: # can't take std of a single value
                 value_loss, action_loss, dist_entropy, entropy_loss, action_log_probs = None, None, None, None, None
                 continue
+            # print(state_eval[0,-2:], next_state_eval[0, -2:], rollout_rewards[0])
             values, log_probs, action_probs, qvs = train_models.determine_action(current_state_eval, resp_eval)
             # _, _, old_action_probs, qvs = self.old_models.determine_action(current_state_eval)
             values, action_probs, log_probs, qvs = train_models.get_action(values, action_probs, log_probs, qvs)
@@ -543,6 +547,7 @@ class A2C_optimizer(LearningOptimizer):
 class SoftActorCritic_optimizer(LearningOptimizer):
     def initialize(self, args, train_models, reward_classes = None):
         super().initialize(args, train_models)
+        self.Q2 = copy.deepcopy(train_models)
         for model in train_models.models:
             self.optimizers.append(initialize_optimizer(args, model))
 

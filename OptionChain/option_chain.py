@@ -126,6 +126,8 @@ class OptionChain():
         for le, env in zip(env_order[1:-1], env_order[2:]):
             env.action_size = len(le.reward_fns) # TODO: handle parametrized reward functions
         print("env order", env_order[-1].name)
+        # for i in range(len(env_order)):
+        #     env_order[i].proxy_chain = env_order[:len(env_order) - i - 1]
         return env_order
 
     def add_edge(self, edge):

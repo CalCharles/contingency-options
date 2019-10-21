@@ -327,6 +327,8 @@ if __name__ == "__main__":
     # python ChangepointDetection/CHAMP.py --train-edge "Action->Paddle" --record-rollouts data/random/ --champ-parameters "Paddle"
     # python ChangepointDetection/CHAMP.py --train-edge "Paddle->Ball" --record-rollouts data/integrationpaddle/ --champ-parameters "Ball" --focus-dumps-name focus_dumps.txt > integration/ballCHAMP.txt
     # atari action paddle: python ChangepointDetection/CHAMP.py --train-edge "Action->Paddle" --record-rollouts data/atarirandom/ --champ-parameters "PaddleAtari" --focus-dumps-name focus_dumps.txt > atarichampout.txt
+    # gripper python ChangepointDetection/CHAMP.py --train-edge "Action->Gripper" --record-rollouts data/pusherrandom/ --champ-parameters "Paddle"
+    # python ChangepointDetection/CHAMP.py --train-edge "Gripper->Block" --record-rollouts data/extragripper/ --champ-parameters "Paddle"
     args = get_args()
     detector = CHAMPDetector(args.train_edge, args.champ_parameters)
     data = detector.load_obj_dumps(args, dumps_name=args.focus_dumps_name)

@@ -20,7 +20,7 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
     base_env.set_save(0, args.save_dir, args.save_recycle)
     if reward_classes is not None:
         proxy_environment.reward_fns = reward_classes
-    args.changepoint_queue_len = max(args.changepoint_queue_len, args.num_iters)
+    args.changepoint_queue_len = max(args.changepoint_queue_len, args.num_iters * args.num_update_model)
     proxy_environment.initialize(args, proxy_chain, proxy_environment.reward_fns, state_class, behavior_policy)
     print(base_env.save_path)
     behavior_policy.initialize(args, num_actions)
@@ -48,16 +48,22 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
     option_value = collections.Counter()
     raw_states = dict()
     ep_reward = 0
-    rollouts.set_parameters(args.num_iters * train_models.num_options)
+    rollouts.set_parameters(args.num_iters * args.num_update_model)
     # if args.num_iters > rollouts.changepoint_queue_len:
     #     rollouts.set_changepoint_queue(args.num_iters)
     done = False
-    for i in range(train_models.num_options):
-        train_models.option_index = i
+    ctr = 0
+    raw_indexes = dict()
+    for i in range(args.num_iters):
+        train_models.option_index = np.random.randint(train_models.num_options)
         train_models.currentModel().test = True
-        raw_states[train_models.currentName()] = []
+        if train_models.currentName() not in raw_states:
+            raw_states[train_models.currentName()] = []
+            raw_indexes[train_models.currentName()] = []
 
-        for j in range(args.num_iters):
+        for j in range(args.num_update_model):
+            raw_indexes[train_models.currentName()].append(ctr)
+            ctr += 1
             fcnt += 1
             raw_actions = []
             rollouts.cuda()
@@ -68,8 +74,10 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
             ep_reward += base_env.reward
             # print(ap, qv)
             action = behavior_policy.take_action(ap, qv)
+            # print(train_models.currentName(), action, qv.squeeze())
             rollouts.insert(False, state, current_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), done, current_resp, action, cp_state[0], train_models.currentOptionParam(), train_models.option_index, None, None, action_probs, Q_vals, values)
             state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
+            print(train_models.currentName(), j, action)
             cv2.imshow('frame',raw_state[0])
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -79,24 +87,34 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
                 print("Episode Reward: ", ep_reward, " ", fcnt)
                 ep_reward = 0
                 # print("reached end")
-            # proxy_environment.determine_swaps(length, needs_rewards=True) # doesn't need to generate rewards
-        if len(base_env.episode_rewards) > 0:
-            true_reward = np.median(base_env.episode_rewards)
-            mean_reward = np.mean(base_env.episode_rewards)
-            best_reward = np.max(base_env.episode_rewards)
-            print("true reward median: %f, mean: %f, max: %f"%(true_reward, mean_reward, best_reward))
+            # proxy_environment.determine_swacurrent_durationps(length, needs_rewards=True) # doesn't need to generate rewards
+        # rewards = proxy_environment.computeReward(args.num_update_model)
+        # print(rewards)
+    if len(base_env.episode_rewards) > 0:
+        true_reward = np.median(base_env.episode_rewards)
+        mean_reward = np.mean(base_env.episode_rewards)
+        best_reward = np.max(base_env.episode_rewards)
+        print("true reward median: %f, mean: %f, max: %f"%(true_reward, mean_reward, best_reward))
 
-        print(args.num_iters)
-        print(action_probs)
-        print("Episode Reward: ", ep_reward, " ", fcnt)
-        rewards = proxy_environment.computeReward(args.num_iters)
-        # print(rewards.shape)
-        # print(rewards.sum())
-        rollouts.insert_rewards(args, rewards)
-        total_duration += j
-        save_rols = copy.deepcopy(rollouts)
-        if len(args.save_dir) > 0:
-            save_to_pickle(os.path.join(args.save_dir, "rollouts.pkl"), save_rols)
+    print(args.num_iters)
+    print(action_probs)
+    print("Episode Reward: ", ep_reward, " ", fcnt)
+    print(proxy_environment.reward_fns)
+    rewards = proxy_environment.computeReward(args.num_iters * args.num_update_model)
+    # print(rewards.shape)
+    # print(rewards.sum())
+    rollouts.insert_rewards(args, rewards)
+    total_duration += j
+    save_rols = copy.deepcopy(rollouts)
+    if len(args.save_dir) > 0:
+        save_to_pickle(os.path.join(args.save_dir, "rollouts.pkl"), save_rols)
 
-        reward_total = rollouts.base_rollouts.rewards.sum(dim=1)[train_models.option_index] / args.num_iters
+    for i in range(train_models.num_options):
+        print(rollouts.base_rollouts.rewards.shape, raw_indexes)
+        reward_total = rollouts.base_rollouts.rewards.sum(dim=1)[i] / (args.num_iters * args.num_update_model)
+        # print(rollouts.base_rollouts.rewards, raw_indexes, rollouts.base_rollouts.rewards.shape)
+        reward_adjusted = rollouts.base_rollouts.rewards[i, np.array(raw_indexes[train_models.models[i].name]) + args.num_stack].sum(dim=0) / len(raw_indexes[train_models.models[i].name])
+        print("Num policy steps:", len(raw_indexes[train_models.models[i].name]))
+        print("Rewards during Policy:", reward_adjusted)
         print("Rewards for Policy:", reward_total)
+

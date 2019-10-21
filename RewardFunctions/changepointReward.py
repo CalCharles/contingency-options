@@ -38,7 +38,7 @@ class ChangepointReward():
         self.parameter_minmax = [np.array([0]), np.array([84])] # TODO: where does this come from?
         self.state_class = GetState(0, self.head, state_forms=[(self.head, 'bounds'), *[(tail, 'bounds') for tail in self.tail]]) # TODO: technically, multibounds for both
 
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         '''
         takes in states, actions in format: [num in batch (sequential), dim of state/action], there is one more state than action
         for state, action, nextstate
@@ -49,7 +49,7 @@ class ChangepointReward():
 
     def determineChanged(self, states, actions, resps):
         '''
-        finds out if there was a chance in the correlate, to determine if a goal state was reached.
+        finds out if there was a change in the correlate, to determine if a goal state was reached.
         Returns true if so, and the state at which the change occurred, or false and None
         '''
         return False, None
@@ -105,40 +105,91 @@ class ChangepointDetectionReward(ChangepointReward):
         # self.traj_dim = args.traj_dim
         self.desired_mode = desired_mode
         self.seg_reward = args.segment
+        self.reward_base = -0.001
 
-    def compute_reward(self, states, actions, resps):
+    def precompute(self, states, actions, resps):
         trajectory = pytorch_model.unwrap(states[:-1,:self.traj_dim])
         saliency_trajectory = pytorch_model.unwrap(states[:-1,self.traj_dim:])
         # print("states shape", trajectory.shape, saliency_trajectory.shape)
         assignments, cps = self.model.get_mode(trajectory, saliency_trajectory)
+        return assignments, cps
+
+    def compute_reward(self, states, actions, resps, precomputed=None):
+        self.reward_base = -0.01 # TODO: patchwork line
+        trajectory = pytorch_model.unwrap(states[:-1,:self.traj_dim])
+        saliency_trajectory = pytorch_model.unwrap(states[:-1,self.traj_dim:])
+        # print("states shape", trajectory.shape, saliency_trajectory.shape)
+        if precomputed is not None:
+            assignments, cps = precomputed
+        else:
+            assignments, cps = self.model.get_mode(trajectory, saliency_trajectory)
+        # print(assignments, cps, self.desired_mode)
         rewards = []
         # print(assignments, cps)
         rewarded = False
-        for asmt in assignments:
-            # if asmt == self.desired_mode:
+        for cp, asmt in zip(cps, assignments):
+            # print(cp, asmt, asmt == self.desired_mode)
+            if asmt == self.desired_mode:
             #### DANGEROUS LINE ####
-            if asmt == self.desired_mode and not rewarded:
+            # if asmt == self.desired_mode and not rewarded:
                 rewards.append(1)
-                rewarded = True
+                # rewarded = True
             else:
-                rewards.append(0)
-        rewards.append(0) # match the number of changepoints
+                rewards.append(self.reward_base)
+        rewards = [self.reward_base] + rewards # match the number of changepoints, first value ignored
         full_rewards = []
         lcp = 0
         lr = 0
-        cps.append(len(trajectory))
-        # print(cps, rewards)
+        # cps.append(len(trajectory))
+        # print(len(cps), len(rewards), len(assignments), cps, rewards) 
         for cp, r in zip(cps, rewards):
             if self.seg_reward: # reward copied over all time steps
                 full_rewards += [r] * (cp - lcp)
             else:
                 if r == 1 and cp == 0:
-                    r = 0
-                full_rewards +=  [0] * (cp-lcp-1) + [r]
+                    r = self.reward_base
+                full_rewards +=  [self.reward_base] * (cp-lcp-1) + [r]
             lcp = cp
             lr = r
+        # print(full_rewards, trajectory)
+        # print(np.concatenate((np.array(full_rewards).reshape(len(full_rewards),1), trajectory), axis=1))
         # print(rewards, cps, full_rewards)
         return pytorch_model.wrap(np.array(full_rewards), cuda=self.cuda)
+
+class MergedMarkovReward(ChangepointReward):
+    def __init__(self, model, args, markov_rewards):
+        super(ChangepointMarkovReward, self).__init__(model, args)
+        # self.traj_dim = args.traj_dim
+        self.reward_fns = markov_rewards
+        self.seg_reward = args.segment
+        self.hist = args.num_stack
+        self.lr = args.lr
+        self.eps = args.eps
+        self.betas = args.betas
+        self.weight_decay = args.weight_decay
+        self.max_dev = .5 # TODO: this doesn't need to be hardcoded
+
+    def compute_reward(self, states, actions, resps, precomputed=None):
+        rewards = [reward_fn(states, actions, resps, precomputed=precomputed) for reward_fn in self.reward_fns]
+        reward = np.max(np.stack(rewards, axis=0), axis=0)
+        return reward
+
+# class ChangepointMarkovReward(ChangepointReward): # TODO: make a markov reward without extensive training (just variance)
+#     def __init__(self, model, args, desired_mode):
+#         super(ChangepointMarkovReward, self).__init__(model, args)
+#         # self.traj_dim = args.traj_dim
+#         self.desired_mode = desired_mode
+#         self.seg_reward = args.segment
+#         self.hist = args.num_stack
+#         self.lr = args.lr
+#         self.eps = args.eps
+#         self.betas = args.betas
+#         self.weight_decay = args.weight_decay
+#         self.max_dev = .5 # TODO: this doesn't need to be hardcoded
+
+#     def compute_reward(self, states, actions, resps, precomputed=None):
+#         trajectory = pytorch_model.unwrap(states[:-1,:self.traj_dim])
+#         saliency_trajectory = pytorch_model.unwrap(states[:-1,self.traj_dim:])
 
 class ChangepointMarkovReward(ChangepointReward):
     def __init__(self, model, args, desired_mode):
@@ -256,14 +307,14 @@ class ChangepointMarkovReward(ChangepointReward):
         var[var < .1] = .1
         # var[var > 6] = 6
         print(var)
-        model.variance = var
+        model.variance.data = var
         self.markovModel = model.cpu()
 
     def setvar(self, var):
         if type(var) == torch.tensor:
-            self.markovModel.variance = var
+            self.markovModel.variance.data = var
         else: 
-            self.markovModel.variance = pytorch_model.wrap(var, cuda=self.cuda)
+            self.markovModel.variance.data = pytorch_model.wrap(var, cuda=self.cuda)
 
     def compute_fit(self, traj):
         '''
@@ -274,13 +325,15 @@ class ChangepointMarkovReward(ChangepointReward):
         pairs = self.pytorch_form_batch(traj)
         n_traj = self.markovModel(pairs[:,0])
         t_traj = pairs[:,1]
+        # print(pairs.shape)
         # print(n_traj.squeeze())
+        # print([t for t in zip(traj, n_traj.squeeze(), t_traj.squeeze())])
         probs = self.markovModel.compute_prob(n_traj, t_traj)
         probs = torch.sum(probs, dim=2).squeeze()
         # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-1:], self.markovModel.variance)
         return probs
 
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         # print(states)
         # print(actions)
         probs = self.compute_fit(states)
@@ -294,7 +347,6 @@ class ChangepointMarkovReward(ChangepointReward):
             reward = reward.cuda()
         # print(states, probs, self.max_dev)
         # print(reward)
-        # error
         return reward
 
 class LDSlearner(nn.Module):
@@ -306,6 +358,7 @@ class LDSlearner(nn.Module):
         self.mode = mode
         self.hist = hist # number of states in the reward function
         self.variance = pytorch_model.wrap([-1 for i in range(dim)])
+        self.variance.requires_grad = False
         self.is_cuda = False
 
     def forward(self, x):
@@ -319,9 +372,10 @@ class LDSlearner(nn.Module):
         # print (xs)
         return torch.stack(xs, dim=1)
 
-    def cuda(self):
+    def cuda(self, device=None):
         self.is_cuda = True
-        self.As.cuda()
+        self.As = self.As.cuda(device=device)
+        self.variance = self.variance.cuda(device=device)
         return self
 
     def compute_prob(self, predstep, nextstep):
@@ -336,4 +390,4 @@ class LDSlearner(nn.Module):
         # print ("err", self.forward(inputs[:, 0]) , inputs[:, 0], inputs[:, 1], inputs.shape)
         return self.forward(inputs[:, 0]) - inputs[:, 1]
 
-reward_forms = {"changepoint": ChangepointDetectionReward, "markov": ChangepointMarkovReward}
+reward_forms = {"changepoint": ChangepointDetectionReward, "markov": ChangepointMarkovReward, "merged": MergedMarkovReward}

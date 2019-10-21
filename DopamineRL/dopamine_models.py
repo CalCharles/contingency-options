@@ -117,7 +117,7 @@ class RainbowWrapper(Model):
     self.minmax = default_value_arg(kwargs, 'minmax', None)
     network = create_rainbow_network(self.minmax)
     observation_shape = (num_inputs, )
-    if args.true_environment:
+    if args.true_environment and args.state_forms[0] == 'raw':
       network = atari_lib.rainbow_network 
       observation_shape = (84,84)
 

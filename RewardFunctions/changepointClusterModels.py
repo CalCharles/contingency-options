@@ -76,3 +76,39 @@ class BayesianGaussianMixture(ClusterModel):
 
     def mean(self):
         return self.model.means_
+
+class FilteredBayesianGaussianMixture(ClusterModel):
+    def __init__(self, args):
+        self.dp_gmm = args.dp_gmm
+        self.args = args
+        self.model = None
+        self.prox = args.period
+
+    def fit(self, data):
+        self.model = BayesianGaussianMixture(self.args)
+        # fits = np.zeros(data.shape[0])
+        print(data[data[:,-1] <= self.prox].shape)
+        use_data = data[data[:,-1] <= self.prox]
+        use_data = use_data[np.sum(np.abs(use_data[:,:-1]), axis=1) <= self.prox]
+        use_data = use_data[np.sum(np.abs(use_data[:,:-1]), axis=1) != 0]
+        print(use_data)
+        modelfit = self.model.fit(use_data[:,:-1])
+        fits = modelfit.predict(data[:,:-1])
+        fits[data[:,-1] > self.prox] = -1
+        fits[np.sum(np.abs(data[:,:-1]), axis=1) > self.prox] = -1
+        fits[np.sum(np.abs(data[:,:-1]), axis=1) == 0] = -1
+        print(fits.shape)
+        return self
+
+    def predict(self, data):
+        fits = self.model.predict(data[:,:-1])
+        fits[data[:,-1] > self.prox] = -1
+        fits[np.sum(np.abs(data[:,:-1]), axis=1) > self.prox] = -1
+        fits[np.sum(np.abs(data[:,:-1]), axis=1) == 0] = -1
+        # print(fits.shape)
+        return fits
+
+    def mean(self):
+        return self.model.model.means_
+
+cluster_models = {"DPGMM": BayesianGaussianMixture, "FDPGMM": FilteredBayesianGaussianMixture}

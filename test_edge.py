@@ -12,8 +12,10 @@ from ReinforcementLearning.test_policies import testRL
 from Environments.environment_specification import ChainMDP, ProxyEnvironment
 from Environments.state_definition import GetRaw, GetState, compute_minmax
 from Environments.multioption import MultiOption
+from Pushing.screen import Pushing
 from SelfBreakout.paddle import Paddle
-from RewardFunctions.dummy_rewards import BounceReward
+from RewardFunctions.changepointReward import ChangepointMarkovReward
+from RewardFunctions.dummy_rewards import BounceReward, RewardDirection, RawReward
 from BehaviorPolicies.behavior_policies import behavior_policies
 from OptionChain.option_chain import OptionChain
 from file_management import get_edge, load_from_pickle
@@ -31,6 +33,8 @@ if __name__ == "__main__":
     # python test_template.py --train-edge "Action->chain" --num-stack 1 --num-iters 1000 --changepoint-dir data/optgraph --save-dir data/testtest/ --record-rollouts data/testchain/ --greedy-epsilon 0
     # python test_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 1 --num-frames 10000 --state-forms prox svel bounds --state-names Paddle Ball Ball --base-node Paddle --changepoint-dir ./data/paddlegraph --behavior-policy esp --reward-form bounce --gamma .9 --init-form xnorm --num-layers 1 --select-ratio .2 --num-population 10 --sample-duration 100 --warm-up 0 --log-interval 1 --scale 1 --gpu 2
     # python test_edge.py --model-form population --optimizer-form CMAES --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 1 --state-forms prox svel bounds --state-names Paddle Ball Ball --base-node Paddle --changepoint-dir ./data/paddlegraph2 --behavior-policy esp --reward-form dir --gamma .9 --init-form xnorm --num-layers 1 --select-ratio .2 --num-population 10 --sample-duration 100 --warm-up 0 --log-interval 1 --scale 1 --gpu 1 --load-weights --num-iters 1000
+    # python test_edge.py --train-edge "Action->Gripper" --num-stack 1 --num-iters 2500 --changepoint-dir data/pushergraph --frameskip 3 --num-stack 2 --state-forms bounds --state-names Gripper --save-dir data/extragripper/ --record-rollouts data/testchain/ --greedy-epsilon 0 --num-update-model 2 --true-environment --env SelfPusher --behavior-policy egq --load-weights
+    # python test_edge.py --train-edge "Gripper->Block" --num-stack 1 --num-iters 500 --changepoint-dir data/grippergraph2 --frameskip 3 --state-forms prox bounds bounds --state-names Gripper Gripper Block --save-dir data/extragripper/ --record-rollouts data/testchain/ --greedy-epsilon 0 --num-update-model 30 --true-environment --env SelfPusher --behavior-policy esp --load-weights --reward-form move_dirall --base-node Gripper
     args = get_args()
     torch.cuda.set_device(args.gpu)
     # # loading vision model
@@ -70,7 +74,12 @@ if __name__ == "__main__":
     if args.true_environment:
         model = None
     print(args.true_environment, args.env)
-    if args.env == 'SelfBreakout':
+    if args.env == 'SelfPusher':
+        if args.true_environment:
+            true_environment = Pushing(pushgripper=True, frameskip=args.frameskip)
+        else:
+            true_environment = None # TODO: implement
+    elif args.env == 'SelfBreakout':
         if args.true_environment:
             true_environment = Screen(frameskip=args.frameskip)
         else:
@@ -85,8 +94,11 @@ if __name__ == "__main__":
 
 
     head, tail = get_edge(args.train_edge)
-
-    if args.reward_form.find('dir') != -1:
+    if args.reward_form == 'raw':
+        reward_classes = [RawReward(args)]
+    elif args.reward_form.find('move_dirall') != -1:
+        reward_classes = [RewardDirection(args, 1), RewardDirection(args, 2), RewardDirection(args, 3), RewardDirection(args, 4)]
+    elif args.reward_form.find('dir') != -1:
         reward_classes = [BounceReward(0, args), BounceReward(1, args), BounceReward(2, args), BounceReward(3, args)]
     elif args.reward_form == 'bounce':
         reward_classes = [BounceReward(-1, args)]
@@ -96,6 +108,9 @@ if __name__ == "__main__":
             print(reward_paths)
             reward_paths.sort(key=lambda x: int(x.split("__")[2]))
             reward_classes = [load_from_pickle(pth) for pth in reward_paths]
+            for rc in reward_classes:
+                if type(rc) == ChangepointMarkovReward:
+                    rc.markovModel = rc.markovModel.cuda(args.gpu)
         else:
             reward_classes = None
 
@@ -108,6 +123,7 @@ if __name__ == "__main__":
         num_actions = len(environments[-1].reward_fns)
     else:
         num_actions = environments[-1].num_actions
+    print(num_actions, true_environment)
     print(args.state_names, args.state_forms)
     state_class = GetState(head, state_forms=list(zip(args.state_names, args.state_forms)))
     if args.normalize:

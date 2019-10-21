@@ -188,7 +188,12 @@ class GetState(StateGet):
 		estate = []
 		resp = []
 		for name, f in zip(self.names, self.functions):
-			comp = f.compute_comparison(state, self.target, name)
+			target = self.target
+			if name.find("__") != -1:
+				# print(name)
+				target = name.split("__")[1]
+				name = name.split("__")[0]
+			comp = f.compute_comparison(state, target, name)
 			resp.append(len(comp))
 			estate += comp
 		# print(np.array(estate).shape)

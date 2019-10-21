@@ -126,8 +126,8 @@ def save_focus_img(dataset, all_focus, save_path, changepoints=[]):
         marker_pos = np.around(all_focus[i] * dataset.get_shape()[2:]).astype(int)
         img[0, marker_pos[0], :] = 1
         img[0, :, marker_pos[1]] = 1
-        if cp_mask[i]:
-            img = 1 - img
+        # if cp_mask[i]:
+        #     img = 1 - img
         pos_cnt[marker_pos[0], marker_pos[1]] += 1
         util.imsave(marker_file_path, img[0])
     print('focus by marker saved under', save_subpath)

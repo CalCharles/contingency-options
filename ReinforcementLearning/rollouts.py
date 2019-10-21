@@ -155,22 +155,29 @@ class ReinforcementStorage(object):
     def insert_rewards(self, args, rewards, lag_num = 0):
         # if self.buffer_filled != self.buffer_steps:
         #     lag_num -= 1 # add one to adapt to retest value
-        self.insert_rewards_at(args, rewards, start_at = self.buffer_filled - lag_num) # the +1 is from the last state not yet inserted into the buffer
+        self.insert_rewards_at(args, rewards, start_at = self.buffer_filled - lag_num + int(lag_num > 1), lag_num=lag_num) # the +1 is from the last state not yet inserted into the buffer
         self.last_buffer_filled = self.buffer_filled
         self.last_start_at = self.buffer_filled - lag_num
 
-    def insert_rewards_at(self, args, rewards, start_at):
+    def insert_rewards_at(self, args, rewards, start_at, lag_num):
+        # print(self.last_buffer_filled, self.buffer_filled, rewards.size(1), self.buffer_steps, self.last_start_at)
         if self.last_buffer_filled + rewards.size(1) > self.buffer_steps:
             # roll_num = max(start_at - self.buffer_steps + rewards.size(1), 0)
             roll_num = max(self.last_buffer_filled - self.buffer_steps + rewards.size(1), 0)
+            # print("rolls", roll_num, self.last_buffer_filled, self.buffer_steps, rewards.size(1))
             self.rewards = self.rewards.roll(-roll_num, 1)
         # print("inserting Rewards", max(start_at - rewards.size(1), 0), start_at, rewards.size(1))
         # print(start_at, max(start_at - rewards.size(1), 0), self.rewards.shape, self.rewards[:, max(start_at - rewards.size(1), 0):start_at].shape, rewards.shape)
         # print(start_at, self.buffer_steps, rewards.size(1), self.rewards[:, max(start_at - rewards.size(1), 0):start_at].shape)
+        # print(start_at, rewards.size(1), max(start_at - rewards.size(1), 0), self.last_buffer_filled + rewards.size(1), self.buffer_steps)
         self.rewards[:, max(start_at - rewards.size(1), 0):start_at] = rewards.detach()
-        # print(self.buffer_filled, rewards.size(1), self.rewards)
-        self.compute_returns(args, rewards, self.value_preds[:, start_at-1], start_at)
+        # print(self.rewards, rewards, rewards.shape, self.rewards.shape)
+        # print(self.buffer_filled, rewards.size(1), self.rewards, start_at)
+        self.compute_returns(args, rewards, self.value_preds[:, start_at - int(lag_num==0)], self.dones[start_at - int(lag_num==0)], start_at)
         self.reset_lists()
+        # print(self.rewards.shape, self.extracted_state.shape)
+        # torch.set_printoptions(precision=2)
+        # print(torch.cat([self.rewards.squeeze().unsqueeze(1).float(), self.returns.squeeze().unsqueeze(1).float(), self.extracted_state.float()], dim=1)[:100].cpu().numpy())
 
     def buffer_get_last(self, i, n, names=[]):
         # TODO: choose values to get from the queue
@@ -231,14 +238,16 @@ class ReinforcementStorage(object):
             return tuple([oa[i:self.buffer_filled-j] for oa in self.option_agnostic] + [os[:,i:self.buffer_filled-j] for os in self.option_specific])
 
 
-    def compute_returns(self, args, rewards, next_value, start_at):
+    def compute_returns(self, args, rewards, next_value, done, start_at):
         gamma = args.gamma
         tau = args.tau
+        # print(self.last_start_at, start_at, max(start_at - self.buffer_steps + rewards.size(1), 0), self.buffer_steps, rewards.size(1))
         if start_at + rewards.size(1) > self.buffer_steps and args.buffer_steps > 0:
             roll_num = max(start_at - self.buffer_steps + rewards.size(1), 0)
-            self.last_start_at = max(self.last_start_at - roll_num, 0)
+            self.last_start_at = max(self.last_start_at - roll_num, 0) # TODO: roll this properly
             self.returns = self.returns.roll(-roll_num, 1)
-            self.returns[-roll_num:] = 0
+            self.returns[self.returns.size(1)-roll_num:] = 0
+        # print(start_at, rewards.size(1), self.buffer_steps, self.last_start_at, roll_num, start_at - self.buffer_steps + rewards.size(1), self.last_start_at)
         # must call reset_lists afterwards
         for idx in range(self.num_options):
             update_last = min(args.buffer_clip * self.gamma_dilation, start_at * self.gamma_dilation, self.buffer_filled + 1) # imposes an artificial limit on Gamma
@@ -257,7 +266,7 @@ class ReinforcementStorage(object):
                 # print(self.returns[idx, max(start_at-update_last-i, 0):start_at-i].shape, update_last, i, max(start_at-update_last-i, 0),start_at-i+1, last_values[-min(start_at-i+1, update_last):].shape)
                 # print(max(start_at-update_last-i, 0), start_at-i + p1, p1, self.buffer_filled, start_at, rew)
                 # cv2.imshow('frame',pytorch_model.unwrap(self.extracted_state[start_at-i + p1-1].view(84,84)))
-                # # a = pytorch_model.unwrap(next_state_eval[i].view(84,84) - state_eval[i].view(84,84))
+                # a = pytorch_model.unwrap(next_state_eval[i].view(84,84) - state_eval[i].view(84,84))
                 # # a[a < 0] = 0
                 # # cv2.imshow('frame diff',a)
                 # cv2.imshow('next frame',pytorch_model.unwrap(self.extracted_state[start_at-i + p1].view(84,84)))
@@ -266,12 +275,20 @@ class ReinforcementStorage(object):
                 if start_at - i > 0:
                     self.returns[idx, max(start_at - update_last - i, 0):start_at - i] += (torch.pow(gamma,last_values[-min(start_at - i, update_last):]) * rew).unsqueeze(1).detach()
             if self.return_form == 'value':
+                # lsa = max(self.last_start_at - 2, 0)
                 # print(args.buffer_clip * self.gamma_dilation, start_at * self.gamma_dilation, self.buffer_filled + 1, next_value.shape, self.returns[idx, self.last_start_at:start_at].shape, (start_at - self.last_start_at), self.last_start_at, start_at, last_values[-(start_at - self.last_start_at):].shape)
-                self.returns[idx, self.last_start_at:start_at] += (torch.pow(gamma,last_values[-(start_at - self.last_start_at):]) * next_value[idx]).unsqueeze(1).detach()
+                # print(self.returns.shape, self.returns[idx, self.last_start_at:start_at].shape, (torch.pow(gamma,last_values[-(start_at - self.last_start_at):]) * next_value[idx]).unsqueeze(1).detach().shape)
+                # print(last_values.shape, start_at, self.last_start_at, update_last, self.buffer_filled + 1, args.buffer_clip, args.buffer_clip * self.gamma_dilation, start_at * self.gamma_dilation, self.dones[start_at])
+                if self.last_start_at - start_at != 0:
+                    # self.returns[idx, lsa:start_at] += (torch.pow(gamma,last_values[-(start_at - lsa):]) * next_value[idx] * (1-self.dones[start_at+1])).unsqueeze(1).detach()
+                    self.returns[idx, self.last_start_at:start_at] += (torch.pow(gamma,last_values[-(start_at - self.last_start_at):]) * next_value[idx]).unsqueeze(1).detach()
+                else:
+                    print("zeroed$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+            # print(self.returns.squeeze(), (torch.pow(gamma,last_values[-(start_at - self.last_start_at):]) * next_value[idx] * (1-self.dones[start_at])))
             # print(self.returns[:, self.last_start_at:start_at].squeeze(), rewards.squeeze(), next_value)
             # print(start_at, rewards.shape )
             # print(rewards.squeeze(), self.returns.squeeze(), next_value)
-        # print(self.returns)
+        # print(self.returns, self.rewards)[:, max(start_at - rewards.size(1), 0):start_at]
             # print(self.returns[idx,start_at - rewards.size(1) - update_last:start_at].squeeze())
             # print("bef", self.returns, rewards, self.buffer_filled, update_last)
             # if args.buffer_steps < 0: # if we are using a true queue, we will ignore value estimation, since we expect not to draw from the top of the queue too often
@@ -339,7 +356,7 @@ class RolloutOptionStorage(object):
             if not self.base_rollouts.buffer_filled - self.lag_num < 0:
                 lag_rollout.copy_values(0,self.lag_num,self.base_rollouts,self.base_rollouts.buffer_filled - self.lag_num)
             # print("lag_state", lag_rollout.extracted_state)
-            self.base_rollouts.reset_length(num_steps + self.lag_num + 1)
+            self.base_rollouts.reset_length(num_steps + min(self.lag_num, 1))
             self.base_rollouts.copy_values(0,self.lag_num,lag_rollout,0)
             self.base_rollouts.buffer_filled = self.lag_num
             # print("lag number", self.lag_num)

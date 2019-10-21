@@ -31,7 +31,7 @@ def get_args():
                         help='determines what return equation to use. true is true returns, gae is gae (not implemented), value uses the value function')
     parser.add_argument('--tau', type=float, default=0.95,
                         help='gae parameter (default: 0.95)')
-    parser.add_argument('--entropy-coef', type=float, default=1e-4,
+    parser.add_argument('--entropy-coef', type=float, default=1e-2,
                         help='entropy loss term coefficient (default: 1e-7)')
     parser.add_argument('--high-entropy', type=float, default=0,
                         help='high entropy (for low frequency) term coefficient (default: 1)')
@@ -229,6 +229,8 @@ def get_args():
                         help='after n updates, the episode is determined by the episode from the true environment, (default 99999)')
 
     # Replay buffer settings
+    parser.add_argument('--match-option', action='store_true', default=False,
+                        help='use data only from the option currently learning (default False')
     parser.add_argument('--buffer-steps', type=int, default=-1,
                         help='number of buffered steps in the record buffer, -1 implies it is not used (default: -1)')
     parser.add_argument('--buffer-clip', type=int, default=20,
@@ -291,13 +293,15 @@ def get_args():
     parser.add_argument('--determiner', default='',
                         help='defines the determiner to use, using strings as defined in RewardFunctions.changepointDeterminers')
     parser.add_argument('--reward-form', default='',
-                        help='defines the kind of reward function to use, as defined in RewardFunctions.changepointReward, also: dense, x, bounce')
+                        help='defines the kind of reward function to use, as defined in RewardFunctions.changepointReward, also: dense, x, bounce, dir, move_dir[0,1,2,3,4, all] for different cardinal directions')
     parser.add_argument('--changepoint-name', default='changepoint',
                         help='name to save changepoint related values')
     parser.add_argument('--champ-parameters', default=["Paddle"], nargs='+',
                         help='parameters for champ in the order len_mean, len_sigma, min_seg_len, max_particles, model_sigma, dynamics model enum (0 is position, 1 is velocity, 2 is displacement). Pre built Paddle and Ball can be input as "paddle", "ball"')
     parser.add_argument('--window', type=int, default=3,
                         help='A window over which to compute changepoint statistics')
+    parser.add_argument('--min-cluster', type=int, default=15,
+                        help='A number defining the number of elements in a cluster')
     parser.add_argument('--focus-dumps-name', default='object_dumps.txt',
                     help='the name of the dump file used for CHAMP')
 
@@ -322,6 +326,8 @@ def get_args():
     # parser.add_argument('--load-networks', default=[], nargs='+',
     #                     help='load weights from the network')
     # DP-GMM parameters
+    parser.add_argument('--cluster-model', default="DPGMM",
+                    help='Which clustering model to use, current DPGMM or Filtered DPGMM')
     parser.add_argument('--dp-gmm', default=["default"], nargs='+',
                     help='parameters for dirichlet process gaussian mixture model, in order number of components, maximum iteration number, prior, covariance type and covariance prior')
             
@@ -332,6 +338,8 @@ def get_args():
         args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
     elif args.dp_gmm[0] == 'ataripaddle':
         args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
+    elif args.dp_gmm[0] == 'block':
+        args.dp_gmm = [10, 6000, 1, 'diag', 40]
     elif args.dp_gmm[0] == 'atariball':
         args.dp_gmm = [10, 6000, 1e-10, 'diag', 20]
     elif args.dp_gmm[0] == 'far':
@@ -340,6 +348,8 @@ def get_args():
         args.dp_gmm = [10, 6000, 1e-30, 'diag', 20]
     if args.champ_parameters[0] == "Paddle":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-2, 3]
+    elif args.champ_parameters[0] == "PaddleLong":
+        args.champ_parameters = [3, 30, 1, 100, 100, 2, 1e-2, 3]
     elif args.champ_parameters[0] == "PaddleAtari":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1, 3]
     elif args.champ_parameters[0] == "Ball": 

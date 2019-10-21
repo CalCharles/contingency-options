@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
 from Models.models import Model, pytorch_model
+from file_management import default_value_arg
 
 class BasisModel(Model):
     def __init__(self, **kwargs):
@@ -15,7 +16,7 @@ class BasisModel(Model):
         '''
         super().__init__(**kwargs)
         args, num_inputs, num_outputs, factor = self.get_args(kwargs)
-        addbias = default_val_arg(kwargs, 'addbias', False)
+        addbias = default_value_arg(kwargs, 'addbias', False)
         self.num_stack = args.num_stack
         self.dim = num_inputs // self.num_stack
         self.order = args.order + 1 # include zero order
@@ -95,7 +96,7 @@ class BasisModel(Model):
             self.basis_matrix = pytorch_model.wrap(self.basis_matrix)
             self.basis_size = (self.order) ** (self.num_inputs)
             self.QFunction = nn.Linear((self.order) ** (self.num_inputs), self.num_outputs, bias=addbias)
-        print(self.basis_matrix.shape)
+        print("basis matrix", self.basis_matrix.shape)
         self.QFunction = nn.Linear(self.basis_size, self.num_outputs, bias=addbias)
         self.action_probs = nn.Linear(self.basis_size, self.num_outputs, bias=addbias)
         self.layers[2] = self.QFunction
@@ -202,6 +203,7 @@ class GaussianBasisModel(BasisModel):
                 else:
                     order_vector.append((i / (self.order - 1)))
             self.order_vectors.append(pytorch_model.wrap(np.array(order_vector)))
+        print(self.order_vectors)
         for vec in self.order_vectors:
             vec.requires_grad = False   
         self.train()
@@ -218,6 +220,7 @@ class GaussianBasisModel(BasisModel):
         bat = []
         # print("ord", self.order_vector)
         for datapt in inputs:
+            # print (datapt)
             basis = []
             for order_vector, val in zip(self.order_vectors, datapt):
                 # print ("input single", val)
@@ -228,6 +231,8 @@ class GaussianBasisModel(BasisModel):
             # print(basis)
             basis = torch.cat(basis)
             bat.append(basis)
+            # print(val, order_vector)
+            # print(basis)
         return torch.stack(bat)
 
 class GaussianMultilayerModel(GaussianBasisModel):

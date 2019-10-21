@@ -53,6 +53,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
         train_models.initialize(args, len(reward_classes), state_class, proxy_environment.action_size, parameter_minmax = reward_classes[0].parameter_minmax)
         proxy_environment.set_models(train_models)
     else:
+        print("loading weights", len(reward_classes))
         train_models.initialize(args, len(reward_classes), state_class, proxy_environment.action_size, parameter_minmax = reward_classes[0].parameter_minmax)
         train_models.session(args)
         proxy_environment.duplicate(args)
@@ -69,6 +70,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
     # print("initial_state (s, hs, rs, cps)", state, hist_state, raw_state, cp_state)
     # print(cp_state.shape, state.shape, hist_state.shape, state_class.shape)
     print(args.trace_len, args.trace_queue_len)
+    args.buffer_clip = max(args.buffer_clip, args.reward_check)
     rollouts = RolloutOptionStorage(args.num_processes, (state_class.shape,), proxy_environment.action_size, cr.flatten().shape[0],
         state.shape, hist_state.shape, args.buffer_steps, args.changepoint_queue_len, args.trace_len, 
         args.trace_queue_len, args.dilated_stack, args.target_stack, args.dilated_queue_len, train_models.currentOptionParam().shape[1:], len(train_models.models), cp_state[0].shape,
@@ -103,17 +105,19 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
 
                 current_state, current_resp = proxy_environment.getHistState()
                 estate = proxy_environment.getState()
-                values, log_probs, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0), current_resp.unsqueeze(0))
+                values, log_probs, action_probs, Q_vals = train_models.determine_action(current_state.unsqueeze(0), current_resp.unsqueeze(0), use_grad = False)
                 v, ap, lp, qv = train_models.get_action(values, action_probs, log_probs, Q_vals)
 
                 # a = time.time()
                 # print("choose action", a-s)
+                # print(action_probs, Q_vals, ap, lp, qv)
                 action = behavior_policy.take_action(ap, qv)
                 cp_state = proxy_environment.changepoint_state([raw_state])
                 # print(state, action)
                 # print("before_insert", state)
-                # cv2.imshow('nextframe',pytorch_model.unwrap(state.view(84,84) / 255.0))
-                # if cv2.waitKey(10000) & 0xFF == ord('q'):
+                # print(current_state.reshape((4,84,84))[0].cpu().numpy().shape)
+                # cv2.imshow('frame',current_state.reshape((4,84,84))[0].cpu().numpy())
+                # if cv2.waitKey(1) & 0xFF == ord('q'):
                 #     pass
 
                 rollouts.insert(retest, state, current_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), done, current_resp, action, cp_state[0], train_models.currentOptionParam(), train_models.option_index, None, None, action_probs, Q_vals, values)
@@ -133,6 +137,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 if args.reward_form == 'raw':
                     for rc in reward_classes:
                         rc.insert_reward(base_env.reward)
+                # print(base_env.reward)
                 # print(action_list, action)
                 # print("step check (al, s)", action_list, state)
                 #### logging
@@ -157,6 +162,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             # rl = time.time()
             # print("run loop", start - rl)
             rewards = proxy_environment.computeReward(m+1)
+            # print(rewards)
             # print(rewards.sum())
             # a = time.time()
             # print("reward time", a-s)
@@ -240,7 +246,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 loss= learning_algorithm.correlate_diversity_step(args, train_models, rollouts)
                 # print("corr", time.time() - start)
             if args.greedy_epsilon_decay > 0 and j % args.greedy_epsilon_decay == 0 and j != 0:
-                behavior_policy.epsilon = max(args.min_greedy_epsilon, behavior_policy.epsilon * 0.5) # TODO: more advanced greedy epsilon methods
+                behavior_policy.epsilon = max(args.min_greedy_epsilon, behavior_policy.epsilon * 0.9) # TODO: more advanced greedy epsilon methods
                 # print("eps", time.time() - start)
             if args.sample_schedule > 0 and j % sample_schedule == 0 and j != 0:
                 learning_algorithm.sample_duration = (j // args.sample_schedule + 1) * args.sample_duration

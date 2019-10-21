@@ -7,7 +7,7 @@ def add_changepoint_argument(parser):
 
 
 def add_dataset_argument(parser):
-    parser.add_argument('dataset_name', choices=['self', 'self-b', 'atari-ball', 'atari', 'self-test', 'self-test2'],
+    parser.add_argument('dataset_name', choices=['self', 'self-b', 'atari-ball', 'atari', 'self-test', 'self-test2', 'self-test-push', 'self-test2-push', 'self-test-pusher'],
                         help='game name to train with')
     parser.add_argument('--n_state', type=int, default=1000,
                         help='number of states in an episode')

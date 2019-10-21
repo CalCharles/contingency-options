@@ -122,6 +122,7 @@ class ObjectVectorModel(Model):
             r = r.long().squeeze()
             l = self.class_sizes[i]
             cx = x[:, lr:r]
+            # print(x.shape)
             maps.append(self.acti(self.key_map[i](cx)))
         # print(maps[0].shape, torch.stack(maps, dim = 1).shape, self.reduce_function(torch.stack(maps, dim = 1), dim=1).shape)
         x = self.reduce_function(torch.stack(maps, dim = 1), dim=1)

@@ -22,7 +22,7 @@ class RawReward(ChangepointReward):
         self.rewards[self.reward_filled-1].copy_(pytorch_model.wrap(float(reward), cuda=self.iscuda))
         # print(self.reward_filled, self.rewards, reward)
 
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         return self.rewards[-len(states):] 
 
 
@@ -48,7 +48,7 @@ class BounceReward(ChangepointReward):
         self.form = args.reward_form
 
 
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         '''
         states must have at least two in the stack: to keep size of rewards at num_states - 1
         assumes ball is the last state
@@ -113,7 +113,7 @@ class Xreward(ChangepointReward):
         self.head, self.tail = get_edge(args.train_edge)
         self.name = "x"
 
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         '''
         states must have at least two in the stack: to keep size of rewards at num_states - 1
         assumes ball is the last state
@@ -140,7 +140,7 @@ class BlockReward(ChangepointReward):
         self.cuda = args.cuda
         self.parameter_minmax = [np.array([0,0]), np.array([84,84])]
 
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         rewards = torch.zeros(len(states))
         change_indexes, ats, st = self.state_class.determine_delta_target(pytorch_model.unwrap(states))
         if len(change_indexes) > 0:
@@ -151,7 +151,7 @@ class BlockReward(ChangepointReward):
             rewards = rewards.cuda()
         return rewards
 
-    def determineChanged(self, states, actions, resps):
+    def determineChanged(self, states, actions, resps, precomputed=None):
         change_indexes, ats, states = self.state_class.determine_delta_target(pytorch_model.unwrap(states))
         change = len(change_indexes) > 0
         if change:
@@ -177,7 +177,7 @@ class BlockReward(ChangepointReward):
         return pytorch_model.wrap(np.stack(states), cuda=self.cuda)
 
 class RewardRight(ChangepointReward):
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         '''
 
         TODO: make support multiple processes
@@ -193,7 +193,7 @@ class RewardRight(ChangepointReward):
         return pytorch_model.wrap(rewards, cuda=True)
 
 class RewardLeft(ChangepointReward):
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         '''
 
         TODO: make support multiple processes
@@ -210,7 +210,7 @@ class RewardLeft(ChangepointReward):
 
 
 class RewardCenter(ChangepointReward):
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         '''
 
         TODO: make support multiple processes
@@ -226,7 +226,7 @@ class RewardCenter(ChangepointReward):
         return pytorch_model.wrap(rewards, cuda=True)
 
 class RewardCorner(ChangepointReward):
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         '''
 
         TODO: make support multiple processes
@@ -246,7 +246,7 @@ class RewardTarget(ChangepointReward):
         super().__init__(model, args)
         self.target = target
 
-    def compute_reward(self, states, actions, resps):
+    def compute_reward(self, states, actions, resps, precomputed=None):
         '''
 
         TODO: make support multiple processes
@@ -259,4 +259,70 @@ class RewardTarget(ChangepointReward):
                 rewards.append(1)
             else:
                 rewards.append(-0.01)
+        return pytorch_model.wrap(rewards, cuda=True)
+
+class RewardDirection(ChangepointReward):
+    def compute_reward(self, states, actions, resps, precomputed=None):
+        '''
+
+        TODO: make support multiple processes
+        possibly make this not iterative?
+        '''
+        rewards = []
+        for state, action, nextstate in zip(states, actions, states[1:]):
+            # print(state, state - nextstate == -1)
+            if state - nextstate == -1:
+                rewards.append(1)
+            else:
+                rewards.append(0)
+        return pytorch_model.wrap(rewards, cuda=True)
+
+class RewardDirection(ChangepointReward):
+    def __init__(self, args, direc = 0): 
+        super().__init__(None, args)
+        self.traj_dim = 2 # SET THIS
+        self.head, self.tail = get_edge(args.train_edge)
+        self.name = args.reward_form
+        self.anydir = direc == -1
+        self.dir = None
+        if direc == 0:
+            self.dir = pytorch_model.wrap(np.array([0,0]), cuda = args.cuda)
+            self.dir.requires_grad = False
+        elif direc == 1:
+            self.dir = pytorch_model.wrap(np.array([0,-1]), cuda = args.cuda)
+            self.dir.requires_grad = False
+        elif direc == 2:
+            self.dir = pytorch_model.wrap(np.array([0,1]), cuda = args.cuda)
+            self.dir.requires_grad = False
+        elif direc == 3:
+            self.dir = pytorch_model.wrap(np.array([-1,0]), cuda = args.cuda)
+            self.dir.requires_grad = False
+        elif direc == 4:
+            self.dir = pytorch_model.wrap(np.array([1,0]), cuda = args.cuda)
+            self.dir.requires_grad = False
+        self.epsilon = 1e-3
+
+    def compute_reward(self, states, actions, resps, precomputed=None):
+        '''
+        states must have at least two in the stack: to keep size of rewards at num_states - 1
+        assumes ball is the last state
+        assuming input shape: [state_size = num_stack*traj_dim]
+        '''
+        rewards = []
+        # print(states.shape)
+        for last_state, state, action, nextstate in zip(states, states[1:], actions, states[2:]):
+            corr = state.squeeze()[:2]
+            corr = corr - last_state.squeeze()[:2]
+            # print(base, corr)
+            norm_corr = corr
+            if corr.norm() > 0:
+                norm_corr = corr / corr.norm()
+            r = -1e-2
+            if (self.anydir and norm_corr.norm() > self.epsilon) or (self.dir is not None and (self.dir - norm_corr).norm() < self.epsilon):
+                r = 1
+            # print(corr.cpu().numpy(), self.dir.cpu().numpy(), last_state.cpu().numpy(), r)
+            # print(state, norm_corr, r)
+            # print(corr, self.dir, (self.dir - norm_corr).norm(), r)
+            # print(state, -abs(int(state[1])))
+            rewards.append(r)
         return pytorch_model.wrap(rewards, cuda=True)
