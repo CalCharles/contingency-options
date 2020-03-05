@@ -10,7 +10,7 @@ import os, copy
 from Environments.environment_specification import RawEnvironment
 
 class Pushing(RawEnvironment):
-    def __init__(self, pushgripper=False, frameskip=5):
+    def __init__(self, pushgripper=False, frameskip=5, reset_max=300):
         super().__init__()
         self.actionObj = Action()
         self.gripper = CartesianGripper(2)
@@ -24,11 +24,12 @@ class Pushing(RawEnvironment):
         else:
             self.objects = [self.actionObj, self.gripper, self.stick, self.ball, self.target]
         self.num_actions = 5
+        self.frameskip = frameskip
         self.render()
         self.reset()
         self.reset_counter = 0
+        self.reset_max = reset_max
         self.reward = -.01
-        self.frameskip = frameskip
         self.distance_reward = False
         self.name = "Pusher"
 
@@ -38,6 +39,8 @@ class Pushing(RawEnvironment):
     def reset_object(self, o):
         newy = o.limits[0] + np.round((o.limits[2] - o.limits[0]) * np.random.rand())
         newx = o.limits[1] + np.round((o.limits[3] - o.limits[1]) * np.random.rand())
+        # newy = newy - (newy % self.frameskip)
+        # newx = newx - (newy % self.frameskip)
         o.updateBounding(np.array([newy, newx]))
         o.touched = False
         o.gripped = None
@@ -136,14 +139,19 @@ class Pushing(RawEnvironment):
                 rawframe = self.render()
             done = False
             if self.distance_reward:
-                self.reward = -.0001 * np.linalg.norm(self.ball.center - self.target.center, 1) + -.03 * (1-int(self.ball.moved))
+                # self.reward = -.01 + .005*float(min(self.gripper.center - self.ball.center) <= 7) + .
+                # self.reward = -.0001 * np.linalg.norm(self.ball.center - self.target.center, 1) + -.01 * (1-int(self.ball.moved))
+                # self.reward = 1/self.reset_max*(.05-(.001 * np.linalg.norm(self.ball.center - self.target.center, 1))) + 1/self.reset_max*(.1-(.002 * np.linalg.norm(self.gripper.center - self.ball.center, 1)))
+                # self.reward = 1/self.reset_max*(.5-(.01 * np.linalg.norm(self.ball.center - self.target.center, 1))) + 1/self.reset_max*(2-(.02 * np.linalg.norm(self.gripper.center - self.ball.center, 1))) + 1/self.reset_max * int(self.ball.moved)
+                self.reward = .2 * int(self.ball.moved) # -(.0002 * np.linalg.norm(self.gripper.center - self.ball.center, 1))
                 # print(self.ball.center, int(self.ball.moved), self.reward)
             if self.target.touched:
-                self.reward = 1
+                # self.reward = 1
+                self.reward = 100
                 self.reset()
                 done = True
                 break
-            if self.reset_counter % 300 == 0 and self.reset_counter > 0:
+            if self.reset_counter % self.reset_max == 0 and self.reset_counter > 0:
                 self.reset()
                 done = True
                 break

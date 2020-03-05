@@ -31,6 +31,7 @@ if __name__ == "__main__":
     # python paddle_bounce.py --model-form fourier --optimizer-form SARSA --record-rollouts "data/action/" --train-edge "Paddle->Ball" --num-stack 2 --train --num-iters 100000 --save-dir data/paddleballpg --state-forms xprox --state-names Paddle --base-node Paddle --changepoint-dir data/paddlegraphpg --factor 10 --num-layers 1 --greedy-epsilon .1 --lr .001 --normalize --behavior-policy egq --save-dir data/xstates/ --optim base > out.txt
     # python dopamine_paddle.py --record-rollouts data/integrationpaddle --changepoint-dir data/dopegraph --model-form rainbow --true-environment --train-edge "Action->Reward" --state-forms raw --state-names Action --num-steps 5 --num-stack 4 --num-iters 2000000 --log-interval 200 --save-dir ../datasets/caleb_data/dopamine/rainbow/ --optim base > baselines/rainbow.txt
     # python dopamine_paddle.py --record-rollouts data/extragripper --changepoint-dir data/dopepushgraph --model-form rainbow --true-environment --train-edge "Action->Reward" --state-forms raw --state-names Action --num-steps 5 --num-stack 4 --num-iters 10000000 --log-interval 200 --save-dir ../datasets/caleb_data/dopamine/rainbowpushing/ --optim base --env SelfPusher > pushingrainbow.txt
+    # python dopamine_paddle.py --record-rollouts data/extragripper --changepoint-dir data/dopepushgraph --model-form rainbow --true-environment --train-edge "Action->Reward" --state-forms bounds bounds bounds prox prox --state-names Gripper Block Target Gripper__Block Block__Target --num-steps 5 --num-stack 1 --num-iters 10000000 --log-interval 200 --save-dir ../datasets/caleb_data/dopamine/rainbowpushing/ --optim base --env SelfPusher --gpu 3 --frameskip 3 --normalize --reward-form rawdist > pushingrainbowstate.txt
     args = get_args()
     # true_environment = Paddle()
     # true_environment = PaddleNoBlocks()
@@ -80,7 +81,7 @@ if __name__ == "__main__":
             minv += [0,0]
             maxv += [84,84]
     state_class.minmax = np.stack((np.array(minv), np.array(maxv)))
-    print(state_class.minmax)
+    print("state class minmax", state_class.minmax)
 
     for reward_class in reward_classes:
         reward_class.traj_dim = state_class.shape

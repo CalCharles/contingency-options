@@ -452,6 +452,7 @@ class PPO_optimizer(LearningOptimizer):
             # print(action_probs, action_eval, old_action_probs)
             action_log_probs, old_action_log_probs = log_probs.gather(1, action_eval), torch.log(old_action_probs + 1e-10).gather(1, action_eval)
             advantages = rollout_returns.view(-1, 1) - value_eval
+            # print(rollout_returns.view(-1, 1))
             # print("returns", current_state_eval, rollout_returns, values, (advantages.std() + 1e-5), advantages)
             # print(advantages.shape)
             a = (advantages - advantages.mean())

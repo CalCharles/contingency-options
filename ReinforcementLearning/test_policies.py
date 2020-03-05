@@ -79,7 +79,7 @@ def testRL(args, save_path, true_environment, proxy_chain, proxy_environment, st
             state, raw_state, resp, done, action_list = proxy_environment.step(action, model = False)#, render=len(args.record_rollouts) != 0, save_path=args.record_rollouts, itr=fcnt)
             print(train_models.currentName(), j, action)
             cv2.imshow('frame',raw_state[0])
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(50) & 0xFF == ord('q'):
                 break
             raw_states[train_models.currentName()].append(raw_state)
             option_actions[train_models.currentName()][int(pytorch_model.unwrap(action.squeeze()))] += 1

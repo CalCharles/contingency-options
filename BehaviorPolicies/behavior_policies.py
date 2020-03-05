@@ -68,5 +68,28 @@ class EpsilonStochasticProbs():
     def set_test(self):
         self.epsilon = 0
 
+class Demonstrator():
 
-behavior_policies = {"egq": EpsilonGreedyQ, "esq": EpsilonStochasticQ, "egp": EpsilonGreedyProbs, "esp": EpsilonStochasticProbs}
+    def initialize(self, args, num_outputs):
+        self.epsilon = args.greedy_epsilon
+        self.num_outputs = num_outputs
+
+    def take_action(self, probs, q_vals):
+        action = -1
+        while action == -1:
+            try:
+                action = int(input(""))
+            except ValueError as e:
+                continue
+            if action > self.num_outputs-1:
+                action = -1
+        action = torch.tensor([action])
+        if np.random.rand() < self.epsilon:
+            action = pytorch_model.wrap(np.random.randint(self.num_outputs, size = probs.shape[0]), cuda = True)
+        return action
+
+    def set_test(self):
+        self.epsilon = 0
+
+
+behavior_policies = {"egq": EpsilonGreedyQ, "esq": EpsilonStochasticQ, "egp": EpsilonGreedyProbs, "esp": EpsilonStochasticProbs, "dem": Demonstrator}

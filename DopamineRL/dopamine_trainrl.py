@@ -82,6 +82,7 @@ def train_dopamine(args, save_path, true_environment, train_models, proxy_enviro
                 reward = pytorch_model.wrap([[base_env.reward]])
             else:
                 reward = proxy_environment.computeReward(1)
+            # print(current_state, reward)
             true_reward += base_env.reward
             ep_reward += base_env.reward
             # print(current_state, reward[train_models.option_index])

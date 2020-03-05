@@ -286,6 +286,8 @@ def get_args():
                         help='directory to load data for computing minmax')
     parser.add_argument('--segment', action='store_true', default=False,
                     help='if true, the reward function gives reward for a full segment, while if false, will apply a single sparse reward')
+    parser.add_argument('--remove-outliers', type=int, default=-1,
+                        help='removes outliers prior to clustering, that is, removes |x| > remove value, -1 is not used')
     parser.add_argument('--transforms', default=[''], nargs='+',
                     help='Different transforms to be used to reduce a segment or window to a single value. Options are in RewardFunctions.dataTransforms.py')
     parser.add_argument('--train-edge', default='',
@@ -331,6 +333,9 @@ def get_args():
     parser.add_argument('--dp-gmm', default=["default"], nargs='+',
                     help='parameters for dirichlet process gaussian mixture model, in order number of components, maximum iteration number, prior, covariance type and covariance prior')
             
+    # testing parameters
+    parser.add_argument('--visualize', action='store_true', default=False,
+                        help='show an image of the output')
 
 
     args = parser.parse_args()
@@ -339,7 +344,7 @@ def get_args():
     elif args.dp_gmm[0] == 'ataripaddle':
         args.dp_gmm = [10, 6000, 100, 'diag', 1e-10]
     elif args.dp_gmm[0] == 'block':
-        args.dp_gmm = [10, 6000, 1, 'diag', 40]
+        args.dp_gmm = [10, 6000, 1, 'diag', 10]
     elif args.dp_gmm[0] == 'atariball':
         args.dp_gmm = [10, 6000, 1e-10, 'diag', 20]
     elif args.dp_gmm[0] == 'far':
@@ -350,6 +355,8 @@ def get_args():
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1e-2, 3]
     elif args.champ_parameters[0] == "PaddleLong":
         args.champ_parameters = [3, 30, 1, 100, 100, 2, 1e-2, 3]
+    elif args.champ_parameters[0] == "Block":
+        args.champ_parameters = [3, 30, 1, 100, 100, 2, 1, 3]
     elif args.champ_parameters[0] == "PaddleAtari":
         args.champ_parameters = [3, 5, 1, 100, 100, 2, 1, 3]
     elif args.champ_parameters[0] == "Ball": 

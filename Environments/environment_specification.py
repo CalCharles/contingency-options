@@ -403,7 +403,7 @@ class ProxyEnvironment():
         resps = self.changepoint_resp_queue[:self.changepoint_filled]
         rewards = []
         # print(rollout.changepoint_queue.shape)
-        # print(states)
+        # print("raw", states, self.reward_fns[0].rewards)
         # print(self.reward_fns)
         # start=time.time()
 
@@ -432,6 +432,7 @@ class ProxyEnvironment():
         # print(length, self.lag_num, self.changepoint_filled)
         # print(states, rewards)
         self.current_rewards = torch.stack(rewards, dim=0)[:,max(self.changepoint_filled-length-self.lag_num, 0):self.changepoint_filled-self.lag_num]
+        # print("attached", self.current_rewards, rewards)
         # print(states.shape, self.current_rewards.shape)
         # print(torch.cat([self.current_rewards.transpose(0,1), states[-self.current_rewards.shape[1]:]], dim=1)[:100])
         # print(torch.stack(rewards, dim=0).shape)

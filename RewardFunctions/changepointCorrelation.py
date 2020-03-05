@@ -11,18 +11,20 @@ class ChangepointModels():
         self.changepoint_model = changepoint_model
         self.determiner = determiner
         self.window = args.window
+        self.remove_outliers = args.remove_outliers
 
     def changepoint_statistics(self, models, changepoints, trajectory, correlate_trajectory):
         '''
         fits the determiner, clusters and applys the transformers to the champ-applied data
         '''
         datas = []
+        for i in range(1000):
+            print(trajectory[-i])
         for transformer in self.transforms: # transformers must be ordered if multiple
             data = transformer.mode_statistics(models, changepoints, trajectory, correlate_trajectory, self.window)
             # print(data.shape)
 
             datas.append(data)
-        # ndatas = [[] for _ in range(len(datas))]
         # for d in zip(*datas): # hardcoded outlier removal. TODO: make not hardcoded
         #     keep = True
         #     for i in range(len(d)):
@@ -33,8 +35,23 @@ class ChangepointModels():
         #             ndatas[i].append(v)
         # for i in range(len(self.transforms)):
         #     ndatas[i] = np.array(ndatas[i])
+        if self.remove_outliers > 0:
+            ndatas = [[] for _ in range(len(datas))]
+            for d in datas:
+                keep = True
+                for i in range(len(d)):
+                    v = d[i]
+                    print(np.sum(np.abs(v)))
+                    if np.sum(np.abs(v)) > self.remove_outliers:
+                        keep = False
+                    if keep:
+                        ndatas[0].append(v)
+                    keep = True
+            for i in range(len(self.transforms)):
+                ndatas[i] = np.array(ndatas[i])
+            datas = ndatas
         self.mode_model.fit(datas)
-        # print([v for v in zip(*datas)])
+        print([v for v in zip(*datas)])
         # print(self.mode_model.mean())
         assignments = self.mode_model.predict(datas)
         # for a, value in zip(assignments, datas[0]):
@@ -65,7 +82,9 @@ class ChangepointModels():
         # print("datas", mode_assignments, changepoints)
         # print(mode_assignments)
         mode_assignments = np.stack(mode_assignments, axis=0)
-        assignments = self.determiner.collapse_assignments(mode_assignments.squeeze())
+        # assignments = self.determiner.collapse_assignments(mode_assignments.squeeze()) TODO: Why is this line used in other parts?
+        print(mode_assignments)
+        assignments = self.determiner.collapse_assignments(mode_assignments)
         # for i in range(200):
         #     print(assignments[i], mode_assignments[i,0],datas[0][i], trajectory[changepoints[i]:changepoints[i+1]+1], changepoints[i], changepoints[i+1])
         return assignments, changepoints

@@ -108,6 +108,7 @@ class ProximityDeterminer(ChangepointDeterminer):
         for mode in assigned_modes:
             seen_modes[mode[0]] += 1
         self.used_clusters = set()
+        print(seen_modes)
         for k in seen_modes.keys():
             if seen_modes[k] > self.min_cluster:
                 self.used_clusters.add(k)
@@ -128,6 +129,9 @@ class ProximityDeterminer(ChangepointDeterminer):
 
     def collapse_assignments(self, assigned_modes):
         mode_assignments = []
+        if len(assigned_modes.shape) == 0:
+            assigned_modes = np.expand_dims(np.expand_dims(assigned_modes, axis= 0), axis=0)
+        print("assigned modes", assigned_modes)
         for am in assigned_modes:
             if am[0] not in self.used_clusters:
                 mode_assignments.append(-1)
@@ -176,7 +180,7 @@ class MergedDeterminer(ChangepointDeterminer):
 
 class BehaviorDeterminer(ChangepointDeterminer):
     '''
-    finds modes based on whether they are proximal and then the subsequent behavior (velocity)
+    finds modes based on the subsequent behavior (velocity)
     '''
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -207,7 +211,10 @@ class BehaviorDeterminer(ChangepointDeterminer):
 
     def collapse_assignments(self, assigned_modes):
         mode_assignments = []
-        for am in assigned_modes.squeeze():
+        assigned_modes = assigned_modes.squeeze()
+        if len(assigned_modes.shape) == 0:
+            assigned_modes = np.expand_dims(assigned_modes, axis= 0)
+        for am in assigned_modes:
             if am not in self.key_mapping:
                 mode_assignments.append(-1)
             else:

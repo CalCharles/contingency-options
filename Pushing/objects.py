@@ -209,6 +209,7 @@ class CartesianPusher(Gripper):
         if action_obj.attribute == 4:
             if self.center[1] < self.limits[1 + self.dim]:
                 self.setmove(np.array([0,1]), None)
+        # print(action_obj.attribute, self.vel)
     
     def pushed(self, other):
         vec = other.center - self.center

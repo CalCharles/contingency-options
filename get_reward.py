@@ -45,7 +45,7 @@ if __name__ == "__main__":
     head, tail = get_edge(args.train_edge)
     cp_dict = load_from_pickle(os.path.join(changepoints_path, "changepoints-" + head + ".pkl"))
     changepoints, models = get_cp_models_from_dict(cp_dict)
-    obj_dumps = read_obj_dumps(dataset_path, filename = args.focus_dumps_name)
+    obj_dumps = read_obj_dumps(dataset_path, i=-1, rng=args.num_iters, filename = args.focus_dumps_name)
 
     trajectory = get_individual_data(head, obj_dumps, pos_val_hash=1)
     # TODO: automatically determine if correlate pos_val_hash is 1 or 2

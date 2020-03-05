@@ -120,6 +120,14 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
                 # if cv2.waitKey(1) & 0xFF == ord('q'):
                 #     pass
 
+                if args.behavior_policy == "dem" or args.visualize:
+                    cv2.imshow('frame',raw_state[0].reshape((84,84)))
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        pass
+                # cv2.imshow('frame',raw_state[0].reshape((84,84)))
+                # if cv2.waitKey(1) & 0xFF == ord('q'):
+                #     pass
+
                 rollouts.insert(retest, state, current_state, pytorch_model.wrap(args.greedy_epsilon, cuda=args.cuda), done, current_resp, action, cp_state[0], train_models.currentOptionParam(), train_models.option_index, None, None, action_probs, Q_vals, values)
                 rollouts.insert_dilation(proxy_environment.swap)
 
@@ -162,7 +170,7 @@ def trainRL(args, save_path, true_environment, train_models, learning_algorithm,
             # rl = time.time()
             # print("run loop", start - rl)
             rewards = proxy_environment.computeReward(m+1)
-            # print(rewards)
+            # print(rewards, proxy_environment.changepoint_queue)
             # print(rewards.sum())
             # a = time.time()
             # print("reward time", a-s)

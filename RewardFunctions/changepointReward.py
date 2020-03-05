@@ -140,7 +140,7 @@ class ChangepointDetectionReward(ChangepointReward):
         full_rewards = []
         lcp = 0
         lr = 0
-        # cps.append(len(trajectory))
+        cps.append(len(trajectory))
         # print(len(cps), len(rewards), len(assignments), cps, rewards) 
         for cp, r in zip(cps, rewards):
             if self.seg_reward: # reward copied over all time steps
@@ -325,18 +325,23 @@ class ChangepointMarkovReward(ChangepointReward):
         pairs = self.pytorch_form_batch(traj)
         n_traj = self.markovModel(pairs[:,0])
         t_traj = pairs[:,1]
+        # print(torch.cat([n_traj.squeeze(), t_traj.squeeze()], dim=1))
         # print(pairs.shape)
         # print(n_traj.squeeze())
         # print([t for t in zip(traj, n_traj.squeeze(), t_traj.squeeze())])
         probs = self.markovModel.compute_prob(n_traj, t_traj)
         probs = torch.sum(probs, dim=2).squeeze()
-        # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-1:], self.markovModel.variance)
+        # print(list(zip(pairs[:,0].squeeze(), n_traj.squeeze(), t_traj.squeeze()))[-1:], probs[-1:], self.markovModel.variance, self.max_dev)
         return probs
 
     def compute_reward(self, states, actions, resps, precomputed=None):
         # print(states)
         # print(actions)
+        if states.shape[1] > 2:
+            states = states[:,:2]
         probs = self.compute_fit(states)
+        # print(probs.unsqueeze(1).shape, states.shape)
+        # print("computing", torch.cat([states[:-1], probs.unsqueeze(1)], dim=1))
         reward = torch.ones(probs.size()) * -1
         # print(states.squeeze(), actions.squeeze())
         reward[probs <= self.max_dev] = 2

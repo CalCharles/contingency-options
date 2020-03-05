@@ -121,7 +121,7 @@ def load_from_txt(txt_pth, start = 0, stops = -1):
         if l.find('Episode Reward') != -1:
             # print(l, l.split('  ')[2].split(' '))
             timesteps.append(start + float(l.split('  ')[2].split(' ')[1]))
-            last_5_ep_rewards.append(float(l.split('  ')[1]))
+            last_5_ep_rewards.append(float(l.split('  ')[1]) // 100)
             if len(last_5_ep_rewards) > 150:
                 last_5_ep_rewards.pop(0)
             if len(last_5_ep_rewards) < 150:
@@ -265,27 +265,34 @@ if __name__=='__main__':
     if len(args.txt_files) > 0:
         ax, ay = [], []
         start = 0
-        stops = [50000, 1500000, 1000000]
-        for stop, pth in zip(stops, args.txt_files):
-            tx, ty = load_from_txt(pth, start=start, stops=stop)
-            # print(tx,ty)
-            ax += tx
-            ay += ty
-            start = stop
+        # stops = [50000, 1500000, 1000000]
+        # for stop, pth in zip(stops, args.txt_files):
+        #     tx, ty = load_from_txt(pth, start=start, stops=stop)
+        #     # print(tx,ty)
+        #     ax += tx
+        #     ay += ty
+        #     start = stop
+        tx, ty = load_from_txt(args.txt_files[0], start=start, stops=-1)
+        # print(tx,ty)
+        ax = tx
+        ay = ty
+        # start = stop
+
         ax = np.array(ax)
         ay = (np.array(ay) + .3) / 1.2
         print(len(ax), len(ay))
-        plt.plot(ax, ay, label="HyPE", color=color_defaults[0])
+        plt.plot(ax, ay, label="Baseline", color=color_defaults[3])
         # plt.fill_between(ax, ay + .01, ay-.01, alpha=0.1, color=color_defaults[0])
     # plt.fill_between(tx, y_mean+y_err, y_mean-y_err, alpha=0.1, color=color_defaults[m_idx])
     # plt.plot([0, xlim], [244, 244], linewidth =2, color = color_defaults[7], label="HyPE Test Performance at 55k frames ")
     # plt.plot([0, xlim], [17.5, 17.5], linewidth =2, color = color_defaults[7], label="HyPE Test Performance at 55k frames ")
-    plt.plot([2000, 2000], [-0.0, 20], linewidth =1, color = color_defaults[4])
-    plt.plot([10000, 10000], [-0.0, 20], linewidth =1, color = color_defaults[5])
-    plt.plot([50000, 50000], [-0.0, 20], linewidth =1, color = color_defaults[6])
-    plt.plot([1500000, 1500000], [-0.0, 20], linewidth =1, color = color_defaults[7])
+    # plt.plot([2000, 2000], [-0.0, 20], linewidth =1, color = color_defaults[4])
+    # plt.plot([10000, 10000], [-0.0, 20], linewidth =1, color = color_defaults[5])
+    # plt.plot([50000, 50000], [-0.0, 20], linewidth =1, color = color_defaults[6])
+    # plt.plot([1500000, 1500000], [-0.0, 20], linewidth =1, color = color_defaults[7])
     # plt.xticks([1e5, 2e5, 3e5, 4e5, 5e5, 6e5, 7e5, 8e5, 9e5, 10e5], ["100k", "200k", "300k", "400k", "500k", "600k", "700k", "800k", "900k", "1m"])
-    plt.xticks([1e5, 4e5, 7e5, 10e5, 13e5, 16e5, 20e5], ["100k", "400k", "700k", "1m", '1.3m', '1.6m', '2.0m'])
+    plt.xticks([1e5, 4e5, 7e5, 10e5, 13e5, 16e5, 20e5, 25e5], ["100k", "400k", "700k", "1M", '1.3M', '1.6M', '2.0M', '2.5M'])
+    # plt.xticks([0, 10e5, 20e5, 30e5, 40e5, 50e5, 60e5], ["0", "1m", "2m", "3m", '4m', '5m', '6m'])
     # plt.xticks([1e3, 1e4, 1e5, 5e5, 1e6, 5e6], ["1k", "10k", "100k", "500k", "1m", "5m"])
     # xlim = min(xlim, args.xlim)
     # plt.xlim(0, math.ceil(xlim/1e6)*1e6)

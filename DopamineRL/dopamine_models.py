@@ -100,6 +100,7 @@ def create_rainbow_network(minmax):
     net: _network_type object containing the tensors output by the network.
     """
     print(minmax)
+    print(state)
     net = gym_lib._basic_discrete_domain_network(
       pytorch_model.unwrap(minmax[0]), pytorch_model.unwrap(minmax[1]), num_actions, state,
       num_atoms=num_atoms)
@@ -115,11 +116,14 @@ class RainbowWrapper(Model):
     super(RainbowWrapper, self).__init__(**kwargs)
     args, num_inputs, num_outputs, factor = self.get_args(kwargs)
     self.minmax = default_value_arg(kwargs, 'minmax', None)
-    network = create_rainbow_network(self.minmax)
-    observation_shape = (num_inputs, )
     if args.true_environment and args.state_forms[0] == 'raw':
       network = atari_lib.rainbow_network 
+      print(network)
       observation_shape = (84,84)
+    else:
+      network = create_rainbow_network(self.minmax)
+      print("num inputs", num_inputs)
+      observation_shape = (num_inputs, )
 
     self.sess = tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))
     # local_device_protos = device_lib.list_local_devices()
@@ -147,7 +151,7 @@ class RainbowWrapper(Model):
            epsilon_eval=0.001,
            epsilon_decay_period=250000,
            replay_scheme='prioritized',
-           tf_device='/gpu:2',
+           tf_device='/gpu:' + str(args.gpu),
            use_staging=True,
            optimizer=tf.train.AdamOptimizer(
                learning_rate=.00025, epsilon=0.0003125),
@@ -158,6 +162,7 @@ class RainbowWrapper(Model):
 
   def forward(self, x, reward):
     x = pytorch_model.unwrap(x)
+    # print(reward[0], x)
     return self.dope_rainbow.step(reward[0], x)
 
   def begin_episode(self, observation):

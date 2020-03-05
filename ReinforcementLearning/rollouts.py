@@ -249,6 +249,7 @@ class ReinforcementStorage(object):
             self.returns[self.returns.size(1)-roll_num:] = 0
         # print(start_at, rewards.size(1), self.buffer_steps, self.last_start_at, roll_num, start_at - self.buffer_steps + rewards.size(1), self.last_start_at)
         # must call reset_lists afterwards
+        # print(self.num_options, rewards)
         for idx in range(self.num_options):
             update_last = min(args.buffer_clip * self.gamma_dilation, start_at * self.gamma_dilation, self.buffer_filled + 1) # imposes an artificial limit on Gamma
             if self.iscuda:
@@ -272,6 +273,7 @@ class ReinforcementStorage(object):
                 # cv2.imshow('next frame',pytorch_model.unwrap(self.extracted_state[start_at-i + p1].view(84,84)))
                 # if cv2.waitKey(10000) & 0xFF == ord('q'):
                 #     pass
+                # print(start_at - i, rew)
                 if start_at - i > 0:
                     self.returns[idx, max(start_at - update_last - i, 0):start_at - i] += (torch.pow(gamma,last_values[-min(start_at - i, update_last):]) * rew).unsqueeze(1).detach()
             if self.return_form == 'value':
@@ -284,6 +286,7 @@ class ReinforcementStorage(object):
                     self.returns[idx, self.last_start_at:start_at] += (torch.pow(gamma,last_values[-(start_at - self.last_start_at):]) * next_value[idx]).unsqueeze(1).detach()
                 else:
                     print("zeroed$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+        # print("returns", self.returns)
             # print(self.returns.squeeze(), (torch.pow(gamma,last_values[-(start_at - self.last_start_at):]) * next_value[idx] * (1-self.dones[start_at])))
             # print(self.returns[:, self.last_start_at:start_at].squeeze(), rewards.squeeze(), next_value)
             # print(start_at, rewards.shape )
