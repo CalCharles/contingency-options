@@ -37,6 +37,7 @@ def initialize_optimizer(args, model):
     if args.model_form == "population":
         return PopOptim(model, args)
     elif args.optim == "RMSprop":
+        print("optimparams", args.lr, args.eps, args.alpha)
         return optim.RMSprop(model.parameters(), args.lr, eps=args.eps, alpha=args.alpha)
     elif args.optim == "Adam":
         return optim.Adam(model.parameters(), args.lr, eps=args.eps, betas=args.betas, weight_decay=args.weight_decay)
@@ -174,6 +175,7 @@ class LearningOptimizer():
         should be added here
         '''
         if RL == 0:
+            print("maxgrad", self.max_grad_norm)
             optimizer.zero_grad()
             # for param in model.parameters():
             #     print("bef", param.grad)
@@ -505,6 +507,13 @@ class A2C_optimizer(LearningOptimizer):
         state_eval, next_state_eval, current_state_eval, next_current_state_eval, action_eval, next_action_eval, rollout_returns, rollout_rewards, next_rollout_returns, q_eval, next_q_eval, value_eval, action_probs_eval, epsilon_eval, resp_eval, full_rollout_returns = self.get_rollouts_state(args.num_grad_states, rollouts, self.models.option_index, use_range=use_range, weights=args.prioritized_replay)    
         if len(state_eval) <= 0:
             return None, None, None, None, None, None
+        # print(current_state_eval.shape)
+        # for stack in current_state_eval:
+        #     print(stack.shape)
+        #     cv2.imshow('frame',stack.reshape((4,84,84))[-1].cpu().numpy()/255.0)
+        #     if cv2.waitKey(100) & 0xFF == ord('q'):
+        #         pass
+
         values, log_probs, action_probs, qv = train_models.determine_action(current_state_eval, resp_eval)
         values, action_probs, log_probs, _ = train_models.get_action(values, action_probs, log_probs, qv)
         # log_output_probs = torch.log(action_probs + 1e-10).gather(1, action_eval)
@@ -533,6 +542,7 @@ class A2C_optimizer(LearningOptimizer):
         dist_entropy = -(log_probs * action_probs).sum(-1).mean()
         output_probs = torch.sum(action_probs, dim=0) / action_probs.size(0)
         output_entropy = -torch.sum(log_output_probs * output_probs) * args.high_entropy
+        print(values, action_probs, log_probs, dist_entropy, advantages, rollout_returns, log_output_probs, action_eval, action_loss)
         if args.high_entropy <= 0:
             entropy_loss = -dist_entropy * args.entropy_coef
         else:

@@ -112,7 +112,9 @@ class Model(nn.Module):
         relu_gain = nn.init.calculate_gain('relu')
         for layer in self.layers:
             if type(layer) == nn.Conv2d:
+                print("layer", layer, self.init_form)
                 if self.init_form == "orth":
+                    # print(layer.weight.shape, layer.weight)
                     nn.init.orthogonal_(layer.weight.data, gain=nn.init.calculate_gain('relu'))
                 else:
                     nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu') 
@@ -125,9 +127,10 @@ class Model(nn.Module):
                 if type(layer) != nn.ModuleList:
                     fulllayer = [layer]
                 for layer in fulllayer:
-                    # print("layer", self, layer)
+                    print("layer", layer, self.init_form)
                     if self.init_form == "orth":
                         nn.init.orthogonal_(layer.weight.data, gain=nn.init.calculate_gain('relu'))
+                        # print(layer.weight[10:,10:])
                     if self.init_form == "uni":
                         # print("div", layer.weight.data.shape[0], layer.weight.data.shape)
                          nn.init.uniform_(layer.weight.data, 0.0, 3 / layer.weight.data.shape[0])

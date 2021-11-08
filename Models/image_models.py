@@ -27,6 +27,7 @@ class ImageModel(Model):
         else:
             self.linear1 = nn.Linear(2 * factor * self.viewsize * self.viewsize, self.insize)
             self.layers.append(self.linear1)
+        print("activation", self.acti)
         self.factor = args.factor
         self.layers.append(self.conv1)
         self.layers.append(self.conv2)
